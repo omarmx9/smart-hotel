@@ -1,0 +1,12 @@
+backports.tarfile
+fastmrz
+flask
+hikvision-isapi-py
+importlib-metadata
+jaraco.collections
+opencv-python
+pip-chill
+platformdirs
+python-dotenv
+tomli
+torchvision
