@@ -43,7 +43,7 @@ class ScannerCoordinator:
         # Layer 1: Capture
         self.camera = Camera(camera_index=camera_index)
         
-        # Layer 2: Image Readjustment (placeholder)
+        # Layer 2: Image Readjustment with real-time detection
         self.processor = DocumentProcessor()
         
         # Layer 3: MRZ Extraction
@@ -78,6 +78,27 @@ class ScannerCoordinator:
             logger.debug(f"Failed to get preview frame: {e}")
             return None
     
+    def get_preview_with_overlay(self):
+        """
+        Get preview frame with document detection overlay
+        
+        Returns:
+            tuple: (frame, detection_info) or (None, None) on error
+        """
+        try:
+            # Get raw frame from camera
+            raw_frame = self.camera.get_preview_frame()
+            if raw_frame is None:
+                return None, None
+            
+            # Apply detection overlay
+            overlay_frame, detection_info = self.processor.get_preview_with_overlay(raw_frame)
+            return overlay_frame, detection_info
+            
+        except Exception as e:
+            logger.debug(f"Failed to get overlay frame: {e}")
+            return None, None
+    
     def release_camera(self):
         """Release camera resources (Layer 1)"""
         self.camera.release()
@@ -99,7 +120,7 @@ class ScannerCoordinator:
             raw_frame = self.camera.get_frame()
             logger.info(f"[Layer 1] Frame captured - Shape: {raw_frame.shape}")
             
-            # Layer 2: Process image (currently pass-through)
+            # Layer 2: Process image
             logger.info("[Layer 2] Processing frame...")
             processed_frame = self.processor.process(raw_frame)
             logger.info("[Layer 2] Processing complete")
@@ -200,16 +221,17 @@ def serve_static(filename):
 
 @app.route('/video_feed')
 def video_feed():
-    """Video streaming route"""
-    logger.info("Video feed requested")
+    """Video streaming route with real-time document detection overlay"""
+    logger.info("Video feed with overlay requested")
     
     def generate():
-        logger.info("Starting video stream generator")
+        logger.info("Starting video stream generator with overlay")
         scanner.initialize_camera()
         
         frame_count = 0
         while True:
-            frame = scanner.get_preview_frame()
+            # Get frame with detection overlay
+            frame, detection_info = scanner.get_preview_with_overlay()
             
             if frame is not None:
                 # Encode frame as JPEG
@@ -219,6 +241,8 @@ def video_feed():
                 frame_count += 1
                 if frame_count % 30 == 0:
                     logger.debug(f"Video stream: {frame_count} frames sent")
+                    if detection_info and detection_info.get('detected'):
+                        logger.debug(f"  Document detected: {detection_info['area_percentage']:.1f}% of frame")
                 
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
@@ -226,6 +250,28 @@ def video_feed():
                 time.sleep(0.1)
     
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/detection_status', methods=['GET'])
+def detection_status():
+    """Get current document detection status (for potential UI updates)"""
+    try:
+        _, detection_info = scanner.get_preview_with_overlay()
+        if detection_info:
+            return jsonify({
+                "success": True,
+                "detection": detection_info
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "detection": {"detected": False}
+            })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
 
 
 @app.route('/capture', methods=['POST'])
@@ -260,7 +306,7 @@ if __name__ == '__main__':
     print("=" * 60)
     print("\n📁 Project Structure:")
     print("  layer1_capture/       - Camera handling")
-    print("  layer2_readjustment/  - Document processing (placeholder)")
+    print("  layer2_readjustment/  - Document processing + Real-time Detection")
     print("  layer3_mrz/           - MRZ extraction")
     print("  web/                  - Frontend files")
     print("  models/               - OCR models (mrz.traineddata)")
@@ -274,6 +320,7 @@ if __name__ == '__main__':
     print("\n🎥 Camera:")
     print(f"  Device: /dev/video{CAMERA_INDEX}")
     print("  Resolution: 1920x1080")
+    print("  Features: Real-time document detection overlay")
     print("\n" + "=" * 60)
     print("Server starting... Press Ctrl+C to stop")
     print("=" * 60 + "\n")
