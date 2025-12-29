@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passport Scanner</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛂 Passport Scanner</h1>
+            <p>Advanced MRZ Recognition System</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="card camera-section">
+                <h2>📸 Camera View</h2>
+                <div class="video-container">
+                    <img id="videoFeed" src="/video_feed" alt="Camera Feed">
+                    <div class="countdown-overlay" id="countdown">3</div>
+                </div>
+                <div class="controls">
+                    <button class="btn btn-primary" id="captureBtn">
+                        Capture Passport
+                    </button>
+                    <button class="btn btn-secondary" id="resetBtn" disabled>
+                        Reset
+                    </button>
+                </div>
+                <div class="status-message" id="statusMessage"></div>
+            </div>
+            
+            <div class="card results-section">
+                <h2>📋 Passport Details</h2>
+                
+                <div class="results-placeholder" id="placeholder">
+                    <div style="font-size: 4em; margin-bottom: 20px;">📄</div>
+                    <p>No passport scanned yet</p>
+                    <p style="font-size: 0.9em; margin-top: 10px;">Click "Capture Passport" to begin</p>
+                </div>
+                
+                <div class="loader" id="loader">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px; color: #666;">Processing passport...</p>
+                </div>
+                
+                <div class="passport-info" id="passportInfo">
+                    <div class="info-grid">
+                        <div class="info-field">
+                            <div class="info-label">Document Type</div>
+                            <div class="info-value" id="docType">-</div>
+                        </div>
+                        <div class="info-field">
+                            <div class="info-label">Country Code</div>
+                            <div class="info-value" id="country">-</div>
+                        </div>
+                        <div class="info-field">
+                            <div class="info-label">Surname</div>
+                            <div class="info-value" id="surname">-</div>
+                        </div>
+                        <div class="info-field">
+                            <div class="info-label">Given Names</div>
+                            <div class="info-value" id="givenNames">-</div>
+                        </div>
+                        <div class="info-field">
+                            <div class="info-label">Passport Number</div>
+                            <div class="info-value" id="passportNumber">-</div>
+                        </div>
+                        <div class="info-field">
+                            <div class="info-label">Nationality</div>
+                            <div class="info-value" id="nationality">-</div>
+                        </div>
+                        <div class="info-field">
+                            <div class="info-label">Date of Birth</div>
+                            <div class="info-value" id="dob">-</div>
+                        </div>
+                        <div class="info-field">
+                            <div class="info-label">Sex</div>
+                            <div class="info-value" id="sex">-</div>
+                        </div>
+                        <div class="info-field">
+                            <div class="info-label">Expiration Date</div>
+                            <div class="info-value" id="expiryDate">-</div>
+                        </div>
+                        <div class="info-field">
+                            <div class="info-label">Personal Number</div>
+                            <div class="info-value" id="personalNumber">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="main.js"></script>
+</body>
+</html>
