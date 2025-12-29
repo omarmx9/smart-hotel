@@ -1,16 +1,17 @@
 """
 Layer 4 — Document Filling (PDF)
-Responsibility: Automatically fill PDF templates with extracted MRZ data
+Responsibility: Automatically fill PDF templates with extracted MRZ data by overlaying text
 Output: Filled PDF document (.pdf)
 """
 import logging
-from reportlab.lib.pagesizes import A4
+from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
-from reportlab.lib.units import mm
+from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from datetime import datetime
 import os
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +50,26 @@ class TemplateSaveError(DocumentFillingError):
 
 
 class DocumentFiller:
-    """Handles automatic filling of registration card templates as PDF"""
+    """Handles automatic filling of registration card templates by overlaying on PDF"""
     
-    def __init__(self, template_path=None, output_dir="filled_documents"):
+    def __init__(self, template_path, output_dir="filled_documents"):
         """
         Initialize PDF document filler
         
         Args:
+            template_path: Path to the blank PDF template
             output_dir: Directory to save filled documents
+            
+        Raises:
+            TemplateNotFoundError: If template file doesn't exist
         """
+        self.template_path = template_path
         self.output_dir = output_dir
+        
+        # Verify template exists
+        if not os.path.exists(template_path):
+            logger.error(f"Template not found: {template_path}")
+            raise TemplateNotFoundError(template_path)
         
         # Create output directory if needed
         if not os.path.exists(output_dir):
@@ -71,24 +82,22 @@ class DocumentFiller:
         
         # Register fonts (fallback to Helvetica if custom fonts unavailable)
         try:
-            # Try to register custom fonts if available
             pdfmetrics.registerFont(TTFont('CustomBold', 'fonts/Arial-Bold.ttf'))
             pdfmetrics.registerFont(TTFont('CustomRegular', 'fonts/Arial.ttf'))
             self.font_bold = 'CustomBold'
             self.font_regular = 'CustomRegular'
         except:
-            # Fallback to built-in fonts
             self.font_bold = 'Helvetica-Bold'
             self.font_regular = 'Helvetica'
             logger.debug("Using built-in Helvetica fonts")
         
-        logger.info("DocumentFiller initialized (PDF mode)")
-        logger.debug(f"  Template path: {template_path} (not used for PDF)")
+        logger.info("DocumentFiller initialized (PDF overlay mode)")
+        logger.debug(f"  Template: {template_path}")
         logger.debug(f"  Output dir: {output_dir}")
     
     def fill_registration_card(self, mrz_data, timestamp=None):
         """
-        Fill the DWA Registration Card with MRZ data
+        Fill the DWA Registration Card with MRZ data by overlaying on template
         
         Args:
             mrz_data: Dictionary containing extracted MRZ information
@@ -130,8 +139,8 @@ class DocumentFiller:
             output_filename = f"registration_card_{timestamp}_{safe_name}.pdf"
             output_path = os.path.join(self.output_dir, output_filename)
             
-            # Create PDF
-            self._create_registration_pdf(
+            # Fill PDF by overlaying on template
+            self._overlay_data_on_template(
                 output_path,
                 surname=surname,
                 given_name=given_name,
@@ -160,14 +169,14 @@ class DocumentFiller:
                 details={"error_type": type(e).__name__}
             )
     
-    def _create_registration_pdf(self, output_path, surname, given_name, 
-                                 nationality, passport_no, birth_date, 
-                                 expiry_date, issuer_country):
+    def _overlay_data_on_template(self, output_path, surname, given_name, 
+                                   nationality, passport_no, birth_date, 
+                                   expiry_date, issuer_country):
         """
-        Create a registration card PDF from scratch
+        Overlay MRZ data on the blank PDF template
         
         Args:
-            output_path: Path to save the PDF
+            output_path: Path to save the filled PDF
             surname: Guest surname
             given_name: Guest given name
             nationality: Guest nationality
@@ -177,122 +186,75 @@ class DocumentFiller:
             issuer_country: Passport issuing country
         """
         try:
-            c = canvas.Canvas(output_path, pagesize=A4)
-            width, height = A4
+            # Read the template PDF
+            template_pdf = PdfReader(self.template_path)
+            template_page = template_pdf.pages[0]
             
-            # Define margins and positions
-            margin_left = 40
-            margin_top = height - 50
-            line_height = 20
+            # Get actual page dimensions from template
+            width = float(template_page.mediabox.width)
+            height = float(template_page.mediabox.height)
             
-            # Title
-            c.setFont(self.font_bold, 16)
-            c.drawString(margin_left, margin_top, "DWA REGISTRATION CARD")
+            # Create overlay with text
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=(width, height))
             
-            # Draw a line under title
-            c.line(margin_left, margin_top - 5, width - margin_left, margin_top - 5)
+            # Get today's date components for From field
+            now = datetime.now()
+            today_day = now.strftime('%d')
+            today_month = now.strftime('%m')
+            today_year = now.strftime('%y')  # Just last 2 digits (25, 26, etc.)
             
-            y_pos = margin_top - 40
+            # Field positions (x, y from bottom-left) - finalized coordinates
+            # Page is Letter size: 612 x 792 pts
             
-            # Personal Information Section
-            c.setFont(self.font_bold, 12)
-            c.drawString(margin_left, y_pos, "PERSONAL INFORMATION")
-            y_pos -= line_height * 1.5
+            # Draw date fields with larger font (size 12)
+            can.setFont(self.font_regular, 12)
             
-            c.setFont(self.font_regular, 10)
+            # *From: broken into day/month/year
+            can.drawString(75, 679, today_day)
+            can.drawString(100, 679, today_month)
+            can.drawString(141, 679, today_year)
             
-            # Field helper function
-            def draw_field(label, value, y):
-                c.setFont(self.font_bold, 10)
-                c.drawString(margin_left, y, label)
-                c.setFont(self.font_regular, 10)
-                c.drawString(margin_left + 150, y, value)
-                # Draw underline for value
-                c.line(margin_left + 150, y - 2, width - margin_left, y - 2)
+            # *Ex.: expiry date
+            can.drawString(80, 646, expiry_date)
             
-            # Draw all fields
-            draw_field("Surname:", surname, y_pos)
-            y_pos -= line_height
+            # *Date of Birth
+            can.drawString(150, 561, birth_date)
             
-            draw_field("Given Name:", given_name, y_pos)
-            y_pos -= line_height
+            # Draw other fields with normal font (size 10)
+            can.setFont(self.font_regular, 10)
             
-            draw_field("Nationality:", nationality, y_pos)
-            y_pos -= line_height
+            # *Surname / *Name
+            can.drawString(150, 619, surname)
+            can.drawString(400, 619, given_name)
             
-            draw_field("Date of Birth:", birth_date, y_pos)
-            y_pos -= line_height
+            # *Nationality / *Passport No.
+            can.drawString(150, 590, nationality)
+            can.drawString(430, 590, passport_no)
             
-            # Passport Information Section
-            y_pos -= line_height
-            c.setFont(self.font_bold, 12)
-            c.drawString(margin_left, y_pos, "PASSPORT INFORMATION")
-            y_pos -= line_height * 1.5
+            # *Country
+            can.drawString(420, 533, issuer_country)
             
-            draw_field("Passport Number:", passport_no, y_pos)
-            y_pos -= line_height
+            # Save the overlay
+            can.save()
+            packet.seek(0)
             
-            draw_field("Issuing Country:", issuer_country, y_pos)
-            y_pos -= line_height
+            # Read the overlay
+            overlay_pdf = PdfReader(packet)
+            overlay_page = overlay_pdf.pages[0]
             
-            draw_field("Expiry Date:", expiry_date, y_pos)
-            y_pos -= line_height
+            # Merge overlay onto template
+            template_page.merge_page(overlay_page)
             
-            # Stay Information Section
-            y_pos -= line_height
-            c.setFont(self.font_bold, 12)
-            c.drawString(margin_left, y_pos, "STAY INFORMATION")
-            y_pos -= line_height * 1.5
+            # Write output
+            output = PdfWriter()
+            output.add_page(template_page)
             
-            today_date = self._get_today_date()
-            draw_field("Check-in Date:", today_date, y_pos)
-            y_pos -= line_height
-            
-            draw_field("Expected Check-out:", "", y_pos)
-            y_pos -= line_height
-            
-            # Additional Information Section (blank for manual entry)
-            y_pos -= line_height
-            c.setFont(self.font_bold, 12)
-            c.drawString(margin_left, y_pos, "ADDITIONAL INFORMATION")
-            y_pos -= line_height * 1.5
-            
-            draw_field("Profession:", "", y_pos)
-            y_pos -= line_height
-            
-            draw_field("Hometown:", "", y_pos)
-            y_pos -= line_height
-            
-            draw_field("Email:", "", y_pos)
-            y_pos -= line_height
-            
-            draw_field("Phone Number:", "", y_pos)
-            y_pos -= line_height
-            
-            draw_field("Cabin Number:", "", y_pos)
-            y_pos -= line_height * 2
-            
-            # Signature Section
-            y_pos -= line_height
-            c.setFont(self.font_regular, 10)
-            c.drawString(margin_left, y_pos, "Guest Signature:")
-            c.line(margin_left + 100, y_pos - 2, margin_left + 250, y_pos - 2)
-            
-            c.drawString(width - 200, y_pos, "Date:")
-            c.line(width - 160, y_pos - 2, width - margin_left, y_pos - 2)
-            
-            # Footer
-            y_pos = 50
-            c.setFont(self.font_regular, 8)
-            c.drawString(margin_left, y_pos, 
-                        f"Generated: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-            c.drawString(width - 150, y_pos, "DWA Automated System")
-            
-            # Save PDF
-            c.save()
+            with open(output_path, 'wb') as output_file:
+                output.write(output_file)
             
         except Exception as e:
-            logger.error(f"Failed to create PDF: {e}")
+            logger.error(f"Failed to overlay data on PDF: {e}")
             raise TemplateSaveError(output_path, str(e))
     
     def _get_today_date(self):
