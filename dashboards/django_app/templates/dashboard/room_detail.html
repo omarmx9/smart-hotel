@@ -1,0 +1,527 @@
+{% extends 'base.html' %}
+
+{% block title %}Room {{ room.room_number }} - Smart Hotel{% endblock %}
+
+{% block extra_css %}
+<style>
+    .room-header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-text-secondary);
+        text-decoration: none;
+        font-size: 14px;
+        transition: color 0.2s;
+    }
+
+    .back-link:hover { color: var(--color-text-primary); }
+    .back-link svg { width: 16px; height: 16px; }
+
+    .room-title {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .room-badge {
+        padding: 4px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: 20px;
+        text-transform: uppercase;
+    }
+
+    .room-badge.occupied { background-color: rgba(66, 133, 244, 0.15); color: var(--color-accent-blue); }
+    .room-badge.vacant { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .room-badge.maintenance { background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange); }
+
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 20px;
+    }
+
+    .card {
+        background-color: var(--color-bg-card);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        overflow: hidden;
+    }
+
+    .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .card-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--color-text-secondary);
+    }
+
+    .card-title svg { width: 18px; height: 18px; }
+
+    .card-body { padding: 20px; }
+
+    .metric-value {
+        font-size: 48px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        line-height: 1;
+    }
+
+    .metric-unit {
+        font-size: 20px;
+        font-weight: 400;
+        color: var(--color-text-secondary);
+        margin-left: 4px;
+    }
+
+    .metric-label {
+        font-size: 13px;
+        color: var(--color-text-muted);
+        margin-top: 8px;
+    }
+
+    .temp-card { grid-column: span 4; }
+    .humidity-card { grid-column: span 4; }
+    .luminosity-card { grid-column: span 4; }
+    .gas-card { grid-column: span 6; }
+    .control-card { grid-column: span 6; }
+    .chart-card { grid-column: span 12; }
+
+    .alert-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: 20px;
+    }
+
+    .alert-badge.normal { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .alert-badge.warning { background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange); animation: pulse 1.5s infinite; }
+    .alert-badge.danger { background-color: rgba(234, 67, 53, 0.15); color: var(--color-accent-red); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+    }
+
+    .gas-bar-container {
+        margin-top: 16px;
+    }
+
+    .gas-bar {
+        width: 100%;
+        height: 12px;
+        background-color: var(--color-bg-elevated);
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .gas-bar-fill {
+        height: 100%;
+        border-radius: 6px;
+        transition: width 0.5s, background-color 0.3s;
+    }
+
+    .gas-bar-fill.safe { background: linear-gradient(90deg, var(--color-accent-green), #45b058); }
+    .gas-bar-fill.warning { background: linear-gradient(90deg, var(--color-accent-orange), #ffbf00); }
+    .gas-bar-fill.danger { background: linear-gradient(90deg, var(--color-accent-red), #ff5252); }
+
+    .gas-labels {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        font-size: 11px;
+        color: var(--color-text-muted);
+    }
+
+    .control-row {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 16px 0;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .control-row:last-child { border-bottom: none; }
+
+    .control-label {
+        flex: 1;
+        font-size: 14px;
+        color: var(--color-text-secondary);
+    }
+
+    .control-slider {
+        flex: 2;
+        height: 8px;
+        border-radius: 4px;
+        background: var(--color-bg-elevated);
+        appearance: none;
+        outline: none;
+        cursor: pointer;
+    }
+
+    .control-slider::-webkit-slider-thumb {
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--color-accent-cyan);
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 188, 212, 0.4);
+    }
+
+    .control-slider:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .control-value {
+        min-width: 70px;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--color-accent-cyan);
+        text-align: right;
+    }
+
+    .chart-wrapper {
+        height: 300px;
+    }
+
+    .no-control-notice {
+        padding: 16px;
+        background-color: var(--color-bg-elevated);
+        border-radius: var(--radius-md);
+        color: var(--color-text-muted);
+        font-size: 13px;
+        text-align: center;
+    }
+
+    @media (max-width: 1200px) {
+        .temp-card, .humidity-card, .luminosity-card { grid-column: span 4; }
+        .gas-card, .control-card { grid-column: span 6; }
+    }
+
+    @media (max-width: 992px) {
+        .temp-card, .humidity-card, .luminosity-card { grid-column: span 6; }
+        .gas-card, .control-card { grid-column: span 12; }
+    }
+
+    @media (max-width: 768px) {
+        .temp-card, .humidity-card, .luminosity-card { grid-column: span 12; }
+    }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+{% if access_denied %}
+<div class="empty-state">
+    <h2>Access Denied</h2>
+    <p>You do not have permission to view this room.</p>
+</div>
+{% else %}
+<div class="room-header-bar">
+    {% if not user.is_guest %}
+    <a href="{% url 'dashboard:index' %}" class="back-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Back to Dashboard
+    </a>
+    {% else %}
+    <span></span>
+    {% endif %}
+    <div class="room-title">
+        <h1 class="header-title">Room {{ room.room_number }}</h1>
+        <span class="room-badge {{ room.status }}">{{ room.get_status_display }}</span>
+    </div>
+</div>
+
+<div class="dashboard-grid">
+    <!-- Temperature Card -->
+    <div class="card temp-card">
+        <div class="card-header">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+                Temperature
+            </div>
+            <span class="alert-badge {{ room.temperature_alert }}" id="temp-alert">
+                {% if room.temperature_alert == 'danger' %}High{% elif room.temperature_alert == 'warning' %}Warning{% else %}Normal{% endif %}
+            </span>
+        </div>
+        <div class="card-body">
+            <div class="metric-value">
+                <span id="temperature">{{ room.temperature|floatformat:1 }}</span>
+                <span class="metric-unit">°C</span>
+            </div>
+            <div class="metric-label">Current reading</div>
+        </div>
+    </div>
+
+    <!-- Humidity Card -->
+    <div class="card humidity-card">
+        <div class="card-header">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                Humidity
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="metric-value">
+                <span id="humidity">{{ room.humidity|floatformat:0 }}</span>
+                <span class="metric-unit">%</span>
+            </div>
+            <div class="metric-label">Relative humidity</div>
+        </div>
+    </div>
+
+    <!-- Luminosity Card -->
+    <div class="card luminosity-card">
+        <div class="card-header">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+                Luminosity
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="metric-value">
+                <span id="luminosity">{{ room.luminosity }}</span>
+                <span class="metric-unit">lux</span>
+            </div>
+            <div class="metric-label">Light intensity</div>
+        </div>
+    </div>
+
+    <!-- Gas Card -->
+    <div class="card gas-card">
+        <div class="card-header">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg>
+                Gas Detection
+            </div>
+            <span class="alert-badge {{ room.gas_alert }}" id="gas-alert">
+                {% if room.gas_alert == 'danger' %}Danger{% elif room.gas_alert == 'warning' %}Warning{% else %}Safe{% endif %}
+            </span>
+        </div>
+        <div class="card-body">
+            <div class="metric-value" style="font-size: 36px;">
+                <span id="gas-value">{{ room.gas_level }}</span>
+                <span class="metric-unit">ppm</span>
+            </div>
+            <div class="gas-bar-container">
+                <div class="gas-bar">
+                    <div class="gas-bar-fill {% if room.gas_alert == 'danger' %}danger{% elif room.gas_alert == 'warning' %}warning{% else %}safe{% endif %}" id="gas-bar" style="width: {{ room.gas_level|divisibleby:10 }}%;"></div>
+                </div>
+                <div class="gas-labels">
+                    <span>0 ppm</span>
+                    <span>Safe: &lt;400</span>
+                    <span>1000 ppm</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Control Card -->
+    <div class="card control-card">
+        <div class="card-header">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
+                Climate Control
+            </div>
+        </div>
+        <div class="card-body">
+            {% if can_control %}
+            <div class="control-row">
+                <span class="control-label">Target Temperature</span>
+                <input type="range" min="16" max="32" value="{{ room.target_temperature|floatformat:0 }}" class="control-slider" id="temp-slider">
+                <span class="control-value" id="target-temp">{{ room.target_temperature|floatformat:1 }}°C</span>
+            </div>
+            <div class="control-row">
+                <span class="control-label">HVAC Status</span>
+                <span class="alert-badge" id="hvac-status" style="{% if room.heating_status %}background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange);{% else %}background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green);{% endif %}">
+                    {% if room.heating_status %}Heating{% else %}Standby{% endif %}
+                </span>
+                <span class="control-value" id="heating-status">{% if room.heating_status %}ON{% else %}OFF{% endif %}</span>
+            </div>
+            {% else %}
+            <div class="no-control-notice">
+                <p>You have view-only access. Temperature control is disabled.</p>
+            </div>
+            <div class="control-row">
+                <span class="control-label">Target Temperature</span>
+                <span class="control-value">{{ room.target_temperature|floatformat:1 }}°C</span>
+            </div>
+            <div class="control-row">
+                <span class="control-label">HVAC Status</span>
+                <span class="control-value">{% if room.heating_status %}ON{% else %}OFF{% endif %}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Chart Card -->
+    <div class="card chart-card">
+        <div class="card-header">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                Sensor History
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="chart-wrapper">
+                <canvas id="sensorChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const roomId = {{ room.id }};
+    const canControl = {{ can_control|yesno:"true,false" }};
+    let ws = null;
+
+    // Chart setup
+    const ctx = document.getElementById('sensorChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Temperature (°C)',
+                    data: [],
+                    borderColor: '#ea4335',
+                    backgroundColor: 'rgba(234, 67, 53, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    borderWidth: 2
+                },
+                {
+                    label: 'Humidity (%)',
+                    data: [],
+                    borderColor: '#4285f4',
+                    backgroundColor: 'rgba(66, 133, 244, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    borderWidth: 2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#9aa0a6', font: { size: 12 } }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: { color: '#5f6368' },
+                    grid: { color: 'rgba(60, 67, 84, 0.5)' }
+                },
+                x: {
+                    ticks: { color: '#5f6368', maxRotation: 0 },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+
+    function updateUI(data) {
+        document.getElementById('temperature').textContent = data.temperature.toFixed(1);
+        document.getElementById('humidity').textContent = Math.round(data.humidity);
+        document.getElementById('luminosity').textContent = data.luminosity;
+        document.getElementById('gas-value').textContent = data.gas_level;
+
+        // Update alerts
+        const tempAlert = document.getElementById('temp-alert');
+        tempAlert.className = 'alert-badge ' + data.temperature_alert;
+        tempAlert.textContent = data.temperature_alert === 'danger' ? 'High' : data.temperature_alert === 'warning' ? 'Warning' : 'Normal';
+
+        const gasAlert = document.getElementById('gas-alert');
+        gasAlert.className = 'alert-badge ' + data.gas_alert;
+        gasAlert.textContent = data.gas_alert === 'danger' ? 'Danger' : data.gas_alert === 'warning' ? 'Warning' : 'Safe';
+
+        // Update gas bar
+        const gasBar = document.getElementById('gas-bar');
+        const gasPercent = Math.min((data.gas_level / 1000) * 100, 100);
+        gasBar.style.width = gasPercent + '%';
+        gasBar.className = 'gas-bar-fill ' + (data.gas_alert === 'danger' ? 'danger' : data.gas_alert === 'warning' ? 'warning' : 'safe');
+
+        // Update chart
+        if (data.history && data.history.length > 0) {
+            chart.data.labels = data.history.map(h => h.timestamp.split(' ')[1]);
+            chart.data.datasets[0].data = data.history.map(h => h.temperature);
+            chart.data.datasets[1].data = data.history.map(h => h.humidity);
+            chart.update('none');
+        }
+    }
+
+    // WebSocket connection
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    function connectWS() {
+        ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/room/${roomId}/`);
+        ws.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            if (data.room) updateUI(data.room);
+        };
+        ws.onclose = function() { setTimeout(connectWS, 3000); };
+    }
+    connectWS();
+
+    // Temperature control
+    if (canControl) {
+        const slider = document.getElementById('temp-slider');
+        const targetDisplay = document.getElementById('target-temp');
+
+        slider.addEventListener('input', function() {
+            targetDisplay.textContent = this.value + '°C';
+        });
+
+        slider.addEventListener('change', function() {
+            const target = parseFloat(this.value);
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'set_target', target: target }));
+            } else {
+                fetch(`/api/room/${roomId}/set_target/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({ target: target })
+                });
+            }
+        });
+    }
+
+    // Poll for updates
+    setInterval(() => {
+        fetch(`/api/room/${roomId}/`)
+            .then(r => r.json())
+            .then(updateUI)
+            .catch(() => {});
+    }, 5000);
+</script>
+{% endblock %}

@@ -1,0 +1,297 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Smart Hotel{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 20px;
+    }
+
+    .room-card {
+        background-color: var(--color-bg-card);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .room-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .room-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .room-number {
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .room-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: 500;
+        border-radius: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .room-status.occupied { background-color: rgba(66, 133, 244, 0.15); color: var(--color-accent-blue); }
+    .room-status.vacant { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .room-status.maintenance { background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange); }
+
+    .room-body {
+        padding: 20px;
+    }
+
+    .sensor-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+
+    .sensor-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .sensor-label {
+        font-size: 11px;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .sensor-value {
+        font-size: 24px;
+        font-weight: 700;
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+    }
+
+    .sensor-unit {
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--color-text-secondary);
+    }
+
+    .alert-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+    }
+
+    .alert-indicator.normal { background-color: var(--color-accent-green); }
+    .alert-indicator.warning { background-color: var(--color-accent-orange); animation: pulse 1.5s infinite; }
+    .alert-indicator.danger { background-color: var(--color-accent-red); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .room-footer {
+        padding: 12px 20px;
+        background-color: var(--color-bg-elevated);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .room-link {
+        color: var(--color-accent-blue);
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: color 0.2s;
+    }
+
+    .room-link:hover { color: #5a95f5; }
+    .room-link svg { width: 14px; height: 14px; }
+
+    .empty-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--color-text-muted);
+    }
+
+    .empty-state svg {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .connection-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--color-text-secondary);
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--color-accent-red);
+    }
+
+    .status-dot.connected { background-color: var(--color-accent-green); }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="header">
+    <h1 class="header-title">Dashboard Overview</h1>
+    <div class="connection-status">
+        <span class="status-dot" id="mqtt-status"></span>
+        <span id="mqtt-text">Connecting...</span>
+    </div>
+</header>
+
+<div class="dashboard-grid" id="rooms-container">
+    {% for room in rooms %}
+    <div class="room-card" data-room-id="{{ room.id }}">
+        <div class="room-header">
+            <span class="room-number">Room {{ room.room_number }}</span>
+            <span class="room-status {{ room.status }}">{{ room.get_status_display }}</span>
+        </div>
+        <div class="room-body">
+            <div class="sensor-grid">
+                <div class="sensor-item">
+                    <span class="sensor-label">Temperature</span>
+                    <span class="sensor-value">
+                        <span class="alert-indicator {{ room.temperature_alert }}"></span>
+                        <span class="temp-value">{{ room.temperature|floatformat:1 }}</span>
+                        <span class="sensor-unit">°C</span>
+                    </span>
+                </div>
+                <div class="sensor-item">
+                    <span class="sensor-label">Humidity</span>
+                    <span class="sensor-value">
+                        <span class="humidity-value">{{ room.humidity|floatformat:0 }}</span>
+                        <span class="sensor-unit">%</span>
+                    </span>
+                </div>
+                <div class="sensor-item">
+                    <span class="sensor-label">Luminosity</span>
+                    <span class="sensor-value">
+                        <span class="lux-value">{{ room.luminosity }}</span>
+                        <span class="sensor-unit">lux</span>
+                    </span>
+                </div>
+                <div class="sensor-item">
+                    <span class="sensor-label">Gas Level</span>
+                    <span class="sensor-value">
+                        <span class="alert-indicator {{ room.gas_alert }}"></span>
+                        <span class="gas-value">{{ room.gas_level }}</span>
+                        <span class="sensor-unit">ppm</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="room-footer">
+            <span class="sensor-label">Target: <strong class="target-value">{{ room.target_temperature|floatformat:1 }}°C</strong></span>
+            <a href="{% url 'dashboard:room_detail' room.id %}" class="room-link">
+                View Details
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </a>
+        </div>
+    </div>
+    {% empty %}
+    <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <p>No rooms available</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let ws = null;
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+    function connectWebSocket() {
+        ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/dashboard/`);
+
+        ws.onopen = function() {
+            document.getElementById('mqtt-status').classList.add('connected');
+            document.getElementById('mqtt-text').textContent = 'Connected';
+        };
+
+        ws.onclose = function() {
+            document.getElementById('mqtt-status').classList.remove('connected');
+            document.getElementById('mqtt-text').textContent = 'Disconnected';
+            setTimeout(connectWebSocket, 3000);
+        };
+
+        ws.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            if (data.type === 'room_update' || data.type === 'update') {
+                updateRooms(data.rooms || [data.room]);
+            }
+        };
+    }
+
+    function updateRooms(rooms) {
+        rooms.forEach(room => {
+            const card = document.querySelector(`[data-room-id="${room.id}"]`);
+            if (!card) return;
+
+            card.querySelector('.temp-value').textContent = room.temperature.toFixed(1);
+            card.querySelector('.humidity-value').textContent = Math.round(room.humidity);
+            card.querySelector('.lux-value').textContent = room.luminosity;
+            card.querySelector('.gas-value').textContent = room.gas_level;
+            card.querySelector('.target-value').textContent = room.target_temperature.toFixed(1) + '°C';
+
+            const tempIndicator = card.querySelector('.sensor-item:first-child .alert-indicator');
+            tempIndicator.className = 'alert-indicator ' + room.temperature_alert;
+
+            const gasIndicator = card.querySelector('.sensor-item:last-child .alert-indicator');
+            gasIndicator.className = 'alert-indicator ' + room.gas_alert;
+        });
+    }
+
+    // Poll for updates as fallback
+    function pollUpdates() {
+        fetch('/api/rooms/')
+            .then(r => r.json())
+            .then(data => {
+                if (data.mqtt_connected) {
+                    document.getElementById('mqtt-status').classList.add('connected');
+                    document.getElementById('mqtt-text').textContent = 'Connected';
+                }
+                updateRooms(data.rooms);
+            })
+            .catch(() => {});
+    }
+
+    connectWebSocket();
+    setInterval(pollUpdates, 5000);
+</script>
+{% endblock %}

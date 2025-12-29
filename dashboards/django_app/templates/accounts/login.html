@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Smart Hotel</title>
+    <style>
+        :root {
+            --color-bg-primary: #0f1419;
+            --color-bg-secondary: #1a1f2e;
+            --color-bg-card: #242b3d;
+            --color-text-primary: #e8eaed;
+            --color-text-secondary: #9aa0a6;
+            --color-accent-blue: #4285f4;
+            --color-accent-cyan: #00bcd4;
+            --color-accent-red: #ea4335;
+            --color-border: #3c4354;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--color-bg-primary);
+            color: var(--color-text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-card {
+            background-color: var(--color-bg-card);
+            border-radius: var(--radius-lg);
+            padding: 40px;
+            border: 1px solid var(--color-border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+
+        .logo svg {
+            width: 40px;
+            height: 40px;
+            color: var(--color-accent-cyan);
+        }
+
+        .logo-text {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .login-title {
+            text-align: center;
+            font-size: 20px;
+            font-weight: 500;
+            margin-bottom: 24px;
+            color: var(--color-text-secondary);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 14px;
+            background-color: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            color: var(--color-text-primary);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--color-accent-blue);
+            box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: 600;
+            background-color: var(--color-accent-blue);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn-login:hover {
+            background-color: #5a95f5;
+        }
+
+        .error-message {
+            background-color: rgba(234, 67, 53, 0.1);
+            border: 1px solid var(--color-accent-red);
+            color: var(--color-accent-red);
+            padding: 12px 16px;
+            border-radius: var(--radius-md);
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+
+        .messages {
+            margin-bottom: 20px;
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .message.error {
+            background-color: rgba(234, 67, 53, 0.1);
+            border: 1px solid var(--color-accent-red);
+            color: var(--color-accent-red);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .login-card {
+            animation: fadeIn 0.4s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+                <span class="logo-text">Smart Hotel</span>
+            </div>
+
+            <h1 class="login-title">Sign in to your account</h1>
+
+            {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                <div class="message {{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if form.errors %}
+            <div class="error-message">
+                Invalid username or password. Please try again.
+            </div>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label class="form-label" for="id_username">Username</label>
+                    <input type="text" name="username" id="id_username" class="form-input" required autofocus>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="id_password">Password</label>
+                    <input type="password" name="password" id="id_password" class="form-input" required>
+                </div>
+
+                <button type="submit" class="btn-login">Sign In</button>
+                
+                <div class="forgot-password">
+                    <a href="{% url 'accounts:forgot_password' %}">Forgot your password?</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <style>
+        .forgot-password {
+            text-align: center;
+            margin-top: 16px;
+        }
+        
+        .forgot-password a {
+            color: var(--color-accent-cyan);
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</body>
+</html>

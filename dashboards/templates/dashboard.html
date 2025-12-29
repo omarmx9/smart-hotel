@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Hotel Dashboard</title>
+    <style>
+        :root {
+            --color-bg-primary: #0f1419;
+            --color-bg-secondary: #1a1f2e;
+            --color-bg-card: #242b3d;
+            --color-bg-elevated: #2d364a;
+            --color-text-primary: #e8eaed;
+            --color-text-secondary: #9aa0a6;
+            --color-text-muted: #5f6368;
+            --color-accent-blue: #4285f4;
+            --color-accent-cyan: #00bcd4;
+            --color-accent-green: #34a853;
+            --color-accent-orange: #f9ab00;
+            --color-accent-red: #ea4335;
+            --color-border: #3c4354;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --transition-fast: 150ms ease;
+            --transition-base: 250ms ease;
+            --transition-slow: 400ms ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--color-bg-primary);
+            color: var(--color-text-primary);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        .app {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 260px;
+            background-color: var(--color-bg-secondary);
+            border-right: 1px solid var(--color-border);
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 8px 24px;
+            border-bottom: 1px solid var(--color-border);
+            margin-bottom: 24px;
+        }
+
+        .logo svg {
+            width: 32px;
+            height: 32px;
+            color: var(--color-accent-cyan);
+        }
+
+        .logo-text {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            background-color: var(--color-bg-card);
+            border-radius: var(--radius-md);
+            margin-bottom: 24px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--color-accent-red);
+            animation: pulse-dot 2s infinite;
+        }
+
+        .status-dot.connected {
+            background-color: var(--color-accent-green);
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            font-size: 13px;
+            color: var(--color-text-secondary);
+        }
+
+        .nav-section {
+            margin-bottom: 24px;
+        }
+
+        .nav-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-text-muted);
+            padding: 0 8px;
+            margin-bottom: 8px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .nav-item:hover {
+            background-color: var(--color-bg-card);
+            color: var(--color-text-primary);
+        }
+
+        .nav-item.active {
+            background-color: var(--color-accent-blue);
+            color: white;
+        }
+
+        .nav-item svg {
+            width: 18px;
+            height: 18px;
+            opacity: 0.8;
+        }
+
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 24px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .header-title {
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .header-timestamp {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--color-text-secondary);
+        }
+
+        .header-timestamp svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 20px;
+        }
+
+        .card {
+            background-color: var(--color-bg-card);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--color-border);
+            overflow: hidden;
+            transition: transform var(--transition-base), box-shadow var(--transition-base);
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+        }
+
+        .card-title svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .card-body {
+            padding: 20px;
+        }
+
+        .metric-value {
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+
+        .metric-unit {
+            font-size: 18px;
+            font-weight: 400;
+            color: var(--color-text-secondary);
+            margin-left: 4px;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: var(--color-text-muted);
+        }
+
+        .temperature-card { grid-column: span 4; }
+        .humidity-card { grid-column: span 4; }
+        .luminosity-card { grid-column: span 4; }
+        .gas-card { grid-column: span 6; }
+        .room-status-card { grid-column: span 6; }
+        .control-card { grid-column: span 12; }
+        .chart-card { grid-column: span 12; }
+
+        .alert-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 500;
+            border-radius: 20px;
+            animation: alert-pulse 1.5s infinite;
+        }
+
+        .alert-badge.warning {
+            background-color: rgba(249, 171, 0, 0.15);
+            color: var(--color-accent-orange);
+        }
+
+        .alert-badge.danger {
+            background-color: rgba(234, 67, 53, 0.15);
+            color: var(--color-accent-red);
+        }
+
+        .alert-badge.normal {
+            background-color: rgba(52, 168, 83, 0.15);
+            color: var(--color-accent-green);
+            animation: none;
+        }
+
+        @keyframes alert-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .control-slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: var(--color-bg-elevated);
+            appearance: none;
+            outline: none;
+            cursor: pointer;
+            transition: background var(--transition-fast);
+        }
+
+        .control-slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--color-accent-cyan);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 188, 212, 0.4);
+            transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+        }
+
+        .control-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+            box-shadow: 0 4px 12px rgba(0, 188, 212, 0.6);
+        }
+
+        .control-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--color-accent-cyan);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0, 188, 212, 0.4);
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            padding: 16px 0;
+        }
+
+        .control-label {
+            min-width: 120px;
+            font-size: 14px;
+            color: var(--color-text-secondary);
+        }
+
+        .control-value {
+            min-width: 80px;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-accent-cyan);
+            text-align: right;
+        }
+
+        .room-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .room-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 16px;
+            background-color: var(--color-bg-elevated);
+            border-radius: var(--radius-md);
+            transition: transform var(--transition-fast), background-color var(--transition-fast);
+        }
+
+        .room-item:hover {
+            transform: scale(1.02);
+            background-color: var(--color-bg-secondary);
+        }
+
+        .room-icon {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-sm);
+            background-color: var(--color-bg-card);
+        }
+
+        .room-icon svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .room-icon.occupied { background-color: rgba(66, 133, 244, 0.2); color: var(--color-accent-blue); }
+        .room-icon.vacant { background-color: rgba(52, 168, 83, 0.2); color: var(--color-accent-green); }
+        .room-icon.maintenance { background-color: rgba(249, 171, 0, 0.2); color: var(--color-accent-orange); }
+
+        .room-name {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .room-status-text {
+            font-size: 11px;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .gas-indicator {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .gas-level-bar {
+            width: 100%;
+            height: 12px;
+            background-color: var(--color-bg-elevated);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .gas-level-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width var(--transition-slow), background-color var(--transition-base);
+            position: relative;
+        }
+
+        .gas-level-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .gas-level-fill.safe { background: linear-gradient(90deg, var(--color-accent-green), #45b058); }
+        .gas-level-fill.warning { background: linear-gradient(90deg, var(--color-accent-orange), #ffbf00); }
+        .gas-level-fill.danger { background: linear-gradient(90deg, var(--color-accent-red), #ff5252); }
+
+        .gas-readings {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--color-text-muted);
+        }
+
+        .chart-wrapper {
+            height: 300px;
+            position: relative;
+        }
+
+        .loading-skeleton {
+            background: linear-gradient(90deg, var(--color-bg-elevated) 25%, var(--color-bg-card) 50%, var(--color-bg-elevated) 75%);
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s infinite;
+            border-radius: var(--radius-sm);
+        }
+
+        @keyframes skeleton-loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card {
+            animation: fade-in 0.4s ease backwards;
+        }
+
+        .temperature-card { animation-delay: 0.05s; }
+        .humidity-card { animation-delay: 0.1s; }
+        .luminosity-card { animation-delay: 0.15s; }
+        .gas-card { animation-delay: 0.2s; }
+        .room-status-card { animation-delay: 0.25s; }
+        .control-card { animation-delay: 0.3s; }
+        .chart-card { animation-delay: 0.35s; }
+
+        @media (max-width: 1200px) {
+            .temperature-card, .humidity-card, .luminosity-card { grid-column: span 4; }
+            .gas-card, .room-status-card { grid-column: span 6; }
+        }
+
+        @media (max-width: 992px) {
+            .sidebar { display: none; }
+            .main-content { margin-left: 0; }
+            .temperature-card, .humidity-card, .luminosity-card { grid-column: span 6; }
+            .gas-card, .room-status-card { grid-column: span 12; }
+        }
+
+        @media (max-width: 768px) {
+            .temperature-card, .humidity-card, .luminosity-card { grid-column: span 12; }
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+                <span class="logo-text">Smart Hotel</span>
+            </div>
+
+            <div class="connection-status">
+                <span class="status-dot" id="mqtt-dot"></span>
+                <span class="status-text" id="mqtt-status">Disconnected</span>
+            </div>
+
+            <nav class="nav-section">
+                <div class="nav-label">Monitoring</div>
+                <div class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    <span>Dashboard</span>
+                </div>
+                <div class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+                    <span>Climate</span>
+                </div>
+                <div class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    <span>Lighting</span>
+                </div>
+                <div class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                    <span>Air Quality</span>
+                </div>
+            </nav>
+
+            <nav class="nav-section">
+                <div class="nav-label">Management</div>
+                <div class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span>Rooms</span>
+                </div>
+                <div class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span>Settings</span>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="header">
+                <h1 class="header-title">Dashboard Overview</h1>
+                <div class="header-timestamp">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span id="last-update">--</span>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <!-- Temperature Card -->
+                <div class="card temperature-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+                            Temperature
+                        </div>
+                        <span class="alert-badge normal" id="temp-alert">Normal</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-value">
+                            <span id="temperature">--</span>
+                            <span class="metric-unit">°C</span>
+                        </div>
+                        <div class="metric-label">Current reading</div>
+                    </div>
+                </div>
+
+                <!-- Humidity Card -->
+                <div class="card humidity-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                            Humidity
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-value">
+                            <span id="humidity">--</span>
+                            <span class="metric-unit">%</span>
+                        </div>
+                        <div class="metric-label">Relative humidity</div>
+                    </div>
+                </div>
+
+                <!-- Luminosity Card -->
+                <div class="card luminosity-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                            Luminosity
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="metric-value">
+                            <span id="luminosity">--</span>
+                            <span class="metric-unit">lux</span>
+                        </div>
+                        <div class="metric-label">Light intensity</div>
+                    </div>
+                </div>
+
+                <!-- Gas Alert Card -->
+                <div class="card gas-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                            Gas Detection
+                        </div>
+                        <span class="alert-badge normal" id="gas-alert">Safe</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="gas-indicator">
+                            <div class="metric-value" style="font-size: 32px;">
+                                <span id="gas-value">--</span>
+                                <span class="metric-unit">ppm</span>
+                            </div>
+                            <div class="gas-level-bar">
+                                <div class="gas-level-fill safe" id="gas-bar" style="width: 20%;"></div>
+                            </div>
+                            <div class="gas-readings">
+                                <span>0 ppm</span>
+                                <span>Safe limit: 400 ppm</span>
+                                <span>1000 ppm</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Room Status Card -->
+                <div class="card room-status-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            Room Status
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="room-grid" id="room-grid">
+                            <div class="room-item">
+                                <div class="room-icon occupied">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                </div>
+                                <span class="room-name">Room 101</span>
+                                <span class="room-status-text">Occupied</span>
+                            </div>
+                            <div class="room-item">
+                                <div class="room-icon vacant">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+                                </div>
+                                <span class="room-name">Room 102</span>
+                                <span class="room-status-text">Vacant</span>
+                            </div>
+                            <div class="room-item">
+                                <div class="room-icon occupied">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                </div>
+                                <span class="room-name">Room 103</span>
+                                <span class="room-status-text">Occupied</span>
+                            </div>
+                            <div class="room-item">
+                                <div class="room-icon maintenance">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                                </div>
+                                <span class="room-name">Room 104</span>
+                                <span class="room-status-text">Maintenance</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control Card -->
+                <div class="card control-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                            Climate Control
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="control-row">
+                            <span class="control-label">Target Temperature</span>
+                            <input type="range" min="16" max="32" value="22" class="control-slider" id="temp-slider" style="flex: 1;">
+                            <span class="control-value" id="target-temp">22°C</span>
+                        </div>
+                        <div class="control-row">
+                            <span class="control-label">HVAC Status</span>
+                            <div style="flex: 1;">
+                                <span class="alert-badge" id="hvac-status" style="animation: none;">Standby</span>
+                            </div>
+                            <span class="control-value" id="heating-status">OFF</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart Card -->
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                            Sensor History
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-wrapper">
+                            <canvas id="sensorChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        const chartColors = {
+            temperature: { border: '#ea4335', background: 'rgba(234, 67, 53, 0.1)' },
+            humidity: { border: '#4285f4', background: 'rgba(66, 133, 244, 0.1)' },
+            luminosity: { border: '#f9ab00', background: 'rgba(249, 171, 0, 0.1)' }
+        };
+
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Temperature (°C)',
+                        data: [],
+                        borderColor: chartColors.temperature.border,
+                        backgroundColor: chartColors.temperature.background,
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointBackgroundColor: chartColors.temperature.border
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        data: [],
+                        borderColor: chartColors.humidity.border,
+                        backgroundColor: chartColors.humidity.background,
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointBackgroundColor: chartColors.humidity.border
+                    },
+                    {
+                        label: 'Luminosity (lux)',
+                        data: [],
+                        borderColor: chartColors.luminosity.border,
+                        backgroundColor: chartColors.luminosity.background,
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointBackgroundColor: chartColors.luminosity.border,
+                        hidden: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            color: '#9aa0a6',
+                            font: { size: 12, weight: '500' },
+                            padding: 20,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#242b3d',
+                        titleColor: '#e8eaed',
+                        bodyColor: '#9aa0a6',
+                        borderColor: '#3c4354',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: true
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        ticks: { color: '#5f6368', font: { size: 11 } },
+                        grid: { color: 'rgba(60, 67, 84, 0.5)', drawBorder: false }
+                    },
+                    x: {
+                        ticks: { color: '#5f6368', font: { size: 11 }, maxRotation: 0 },
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+
+        function updateTemperatureAlert(temp) {
+            const alertEl = document.getElementById('temp-alert');
+            if (temp > 30) {
+                alertEl.textContent = 'High';
+                alertEl.className = 'alert-badge danger';
+            } else if (temp > 26) {
+                alertEl.textContent = 'Warm';
+                alertEl.className = 'alert-badge warning';
+            } else if (temp < 16) {
+                alertEl.textContent = 'Cold';
+                alertEl.className = 'alert-badge warning';
+            } else {
+                alertEl.textContent = 'Normal';
+                alertEl.className = 'alert-badge normal';
+            }
+        }
+
+        function updateGasAlert(gasLevel) {
+            const alertEl = document.getElementById('gas-alert');
+            const barEl = document.getElementById('gas-bar');
+            const percentage = Math.min((gasLevel / 1000) * 100, 100);
+            barEl.style.width = percentage + '%';
+
+            if (gasLevel > 600) {
+                alertEl.textContent = 'Danger';
+                alertEl.className = 'alert-badge danger';
+                barEl.className = 'gas-level-fill danger';
+            } else if (gasLevel > 400) {
+                alertEl.textContent = 'Warning';
+                alertEl.className = 'alert-badge warning';
+                barEl.className = 'gas-level-fill warning';
+            } else {
+                alertEl.textContent = 'Safe';
+                alertEl.className = 'alert-badge normal';
+                barEl.className = 'gas-level-fill safe';
+            }
+        }
+
+        function updateHVACStatus(heating) {
+            const statusEl = document.getElementById('hvac-status');
+            const heatingEl = document.getElementById('heating-status');
+            
+            if (heating) {
+                statusEl.textContent = 'Heating';
+                statusEl.className = 'alert-badge warning';
+                heatingEl.textContent = 'ON';
+            } else {
+                statusEl.textContent = 'Standby';
+                statusEl.className = 'alert-badge normal';
+                statusEl.style.animation = 'none';
+                heatingEl.textContent = 'OFF';
+            }
+        }
+
+        function updateDashboard() {
+            fetch('/api/data')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('temperature').textContent = data.temperature.toFixed(1);
+                    document.getElementById('humidity').textContent = data.humidity.toFixed(0);
+                    document.getElementById('luminosity').textContent = data.luminosity || '--';
+                    document.getElementById('gas-value').textContent = data.gas_level || 0;
+                    document.getElementById('last-update').textContent = data.last_update || '--';
+
+                    updateTemperatureAlert(data.temperature);
+                    updateGasAlert(data.gas_level || 0);
+                    updateHVACStatus(data.heating_status);
+
+                    const mqttDot = document.getElementById('mqtt-dot');
+                    const mqttStatus = document.getElementById('mqtt-status');
+                    if (data.mqtt_connected) {
+                        mqttDot.classList.add('connected');
+                        mqttStatus.textContent = 'Connected';
+                    } else {
+                        mqttDot.classList.remove('connected');
+                        mqttStatus.textContent = 'Disconnected';
+                    }
+
+                    if (data.history && data.history.length > 0) {
+                        const labels = data.history.map(h => h.timestamp.split(' ')[1]);
+                        const temps = data.history.map(h => h.temperature);
+                        const humidity = data.history.map(h => h.humidity);
+                        const luminosity = data.history.map(h => h.luminosity || 0);
+
+                        chart.data.labels = labels;
+                        chart.data.datasets[0].data = temps;
+                        chart.data.datasets[1].data = humidity;
+                        chart.data.datasets[2].data = luminosity;
+                        chart.update('none');
+                    }
+                })
+                .catch(error => console.error('Dashboard update error:', error));
+        }
+
+        const tempSlider = document.getElementById('temp-slider');
+        const targetTempDisplay = document.getElementById('target-temp');
+
+        tempSlider.addEventListener('input', function() {
+            targetTempDisplay.textContent = this.value + '°C';
+        });
+
+        tempSlider.addEventListener('change', function() {
+            const newTarget = parseFloat(this.value);
+            fetch('/api/set_target/' + newTarget)
+                .then(response => response.json())
+                .then(data => console.log('Target set:', data))
+                .catch(error => console.error('Error setting target:', error));
+        });
+
+        updateDashboard();
+        setInterval(updateDashboard, 2000);
+    </script>
+</body>
+</html>

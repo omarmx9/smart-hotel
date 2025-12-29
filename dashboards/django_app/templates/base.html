@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Smart Hotel Dashboard{% endblock %}</title>
+    <script>
+        // Apply theme immediately to prevent flash
+        (function() {
+            const theme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            if (theme === 'light') {
+                document.documentElement.style.setProperty('--color-bg-primary', '#f5f5f7');
+                document.documentElement.style.setProperty('--color-bg-secondary', '#ffffff');
+                document.documentElement.style.setProperty('--color-bg-tertiary', '#f0f0f2');
+                document.documentElement.style.setProperty('--color-bg-card', '#ffffff');
+                document.documentElement.style.setProperty('--color-text-primary', '#1d1d1f');
+                document.documentElement.style.setProperty('--color-text-secondary', '#6e6e73');
+                document.documentElement.style.setProperty('--color-text-muted', '#86868b');
+                document.documentElement.style.setProperty('--color-border', '#d2d2d7');
+            }
+        })();
+    </script>
+    <style>
+        :root {
+            --color-bg-primary: #0d1117;
+            --color-bg-secondary: #161b22;
+            --color-bg-tertiary: #21262d;
+            --color-bg-card: #1c2128;
+            --color-bg-elevated: #2d364a;
+            --color-text-primary: #e6edf3;
+            --color-text-secondary: #8b949e;
+            --color-text-muted: #6e7681;
+            --color-accent-blue: #4285f4;
+            --color-accent-cyan: #00bcd4;
+            --color-accent-green: #34a853;
+            --color-accent-orange: #f9ab00;
+            --color-accent-red: #ea4335;
+            --color-border: #30363d;
+            --color-primary: #3b82f6;
+            --color-primary-dark: #2563eb;
+            --color-success: #22c55e;
+            --color-warning: #f59e0b;
+            --color-danger: #ef4444;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --transition-fast: 150ms ease;
+            --transition-base: 250ms ease;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--color-bg-primary);
+            color: var(--color-text-primary);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        .app { display: flex; min-height: 100vh; }
+
+        .sidebar {
+            width: 260px;
+            background-color: var(--color-bg-secondary);
+            border-right: 1px solid var(--color-border);
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 8px 24px;
+            border-bottom: 1px solid var(--color-border);
+            margin-bottom: 24px;
+        }
+
+        .logo svg { width: 32px; height: 32px; color: var(--color-accent-cyan); }
+        .logo-text { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+
+        .user-info {
+            padding: 16px;
+            background-color: var(--color-bg-card);
+            border-radius: var(--radius-md);
+            margin-bottom: 24px;
+        }
+
+        .user-name { font-weight: 600; font-size: 14px; }
+        .user-role {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .nav-section { margin-bottom: 24px; }
+
+        .nav-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-text-muted);
+            padding: 0 8px;
+            margin-bottom: 8px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            text-decoration: none;
+        }
+
+        .nav-item:hover {
+            background-color: var(--color-bg-card);
+            color: var(--color-text-primary);
+        }
+
+        .nav-item.active {
+            background-color: var(--color-accent-blue);
+            color: white;
+        }
+
+        .nav-item svg { width: 18px; height: 18px; opacity: 0.8; }
+
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 24px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .header-title { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background-color: var(--color-accent-blue);
+            color: white;
+        }
+
+        .btn-primary:hover { background-color: #5a95f5; }
+
+        .btn-secondary {
+            background-color: var(--color-bg-elevated);
+            color: var(--color-text-primary);
+        }
+
+        .btn-secondary:hover { background-color: var(--color-bg-card); }
+
+        .btn-danger {
+            background-color: var(--color-accent-red);
+            color: white;
+        }
+
+        @media (max-width: 992px) {
+            .sidebar { display: none; }
+            .main-content { margin-left: 0; }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% block body %}
+    <div class="app">
+        {% block sidebar %}
+        <aside class="sidebar">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+                <span class="logo-text">Smart Hotel</span>
+            </div>
+
+            {% if user.is_authenticated %}
+            <div class="user-info">
+                <div class="user-name">{{ user.username }}</div>
+                <div class="user-role">{{ user.get_role_display }}</div>
+            </div>
+            {% endif %}
+
+            <nav class="nav-section">
+                <div class="nav-label">Navigation</div>
+                <a href="{% url 'dashboard:index' %}" class="nav-item {% if request.resolver_match.url_name == 'index' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    <span>Dashboard</span>
+                </a>
+                {% if user.is_admin %}
+                <a href="{% url 'dashboard:guest_management' %}" class="nav-item {% if request.resolver_match.url_name == 'guest_management' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span>Guest Management</span>
+                </a>
+                {% endif %}
+            </nav>
+
+            <nav class="nav-section" style="margin-top: auto;">
+                <a href="{% url 'accounts:settings' %}" class="nav-item {% if request.resolver_match.url_name == 'settings' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span>Settings</span>
+                </a>
+                <a href="{% url 'accounts:logout' %}" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>Logout</span>
+                </a>
+            </nav>
+        </aside>
+        {% endblock %}
+
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    {% endblock %}
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
