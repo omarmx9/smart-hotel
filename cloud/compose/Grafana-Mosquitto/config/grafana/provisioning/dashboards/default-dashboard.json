@@ -48,11 +48,10 @@
       "type": "text"
     },
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "P951FEA4DE68E13C5"
-      },
+      "datasource": "influxdb",
       "fieldConfig": {
+        "defaults": {
+          "color": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
