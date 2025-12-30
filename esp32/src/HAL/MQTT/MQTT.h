@@ -10,6 +10,5 @@ void MQTT_Loop(void);
 void MQTT_SubscribeAll(void);
 void MQTT_Publish(const char* topic, const char* payload);  // ← Make sure this line exists
 bool MQTT_IsConnected(void);
-void MQTT_PublishRandom(void);
 
 #endif // MQTT_H

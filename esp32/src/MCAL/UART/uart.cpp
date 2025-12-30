@@ -9,12 +9,7 @@
 #define DEBUG_PRINTLN(var)
 #endif
 
-static UART_t UART[UART_MAXLENGH] = {{
-    UART_BAUD_RATE,
-    UART_FRAME_LENGTH,
-    UART_TX_PIN,
-    UART_RX_PIN
-}};
+static UART_t UART[UART_MAXLENGH] = {{UART_BAUD_RATE, UART_FRAME_LENGTH, UART_TX_PIN, UART_RX_PIN}};
 static HardwareSerial myserial[UART_MAXLENGH] = {Serial1, Serial2};
 
 void UART_Init(void)

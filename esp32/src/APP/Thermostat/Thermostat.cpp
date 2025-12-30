@@ -1,12 +1,10 @@
 #include "Thermostat.h"
 #include "../../App_cfg.h"
-#include "../POT/POT.h"
-#include "../LED/LED.h"
+#include "../../HAL/POT/POT.h"
+#include "../../HAL/LED/LED.h"
 #include "../../HAL/MQTT/MQTT.h"
-#include "../../HAL/GSM/SIM2.h"
 #include <Arduino.h>
 
-// Pin definitions (adjust based on your hardware)
 #define POT_TEMP_PIN     34  // POT1 for temperature reading
 #define POT_HUMIDITY_PIN 35  // POT2 for humidity reading
 #define POT_TARGET_PIN   32  // POT3 for target temperature knob
@@ -15,7 +13,6 @@
 #define LED_MED_SPEED    26  // LED2 for medium fan speed
 #define LED_HIGH_SPEED   27  // LED3 for high fan speed
 
-// Conversion constants
 #define POT_TO_TEMP_MIN    15.0f  // Min temp 15°C
 #define POT_TO_TEMP_MAX    35.0f  // Max temp 35°C
 #define POT_TO_HUMIDITY_MIN 20.0f // Min humidity 20%
@@ -25,9 +22,15 @@
 #define UPDATE_INTERVAL_MS 1000   // Update every 1 second
 #define MQTT_PUBLISH_INTERVAL_MS 5000 // Publish every 5 seconds
 
+typedef enum {
+    STATE_OFF,
+    STATE_HEATING_LOW,
+    STATE_HEATING_MEDIUM,
+    STATE_HEATING_HIGH
+} ThermostatState_t;
 
+static ThermostatState_t g_state = STATE_OFF;
 
-// Static variables
 static Thermostat_Status_t g_status = {
     .temperature = 0.0f,
     .humidity = 0.0f,
@@ -36,9 +39,6 @@ static Thermostat_Status_t g_status = {
     .mode = THERMOSTAT_MODE_AUTO,
     .heating = false
 };
-
-static Fan_Speed_t g_lastFanSpeed = FAN_SPEED_OFF;
-
 
 static unsigned long g_lastUpdate = 0;
 static unsigned long g_lastPublish = 0;
@@ -74,9 +74,6 @@ void Thermostat_Process(void)
     // Update sensor readings periodically
     if (now - g_lastUpdate >= UPDATE_INTERVAL_MS)
     {
-        // Read POT values and convert to meaningful data
-        // Note: You'll need to modify POT.cpp to read from specific pins
-        // For now, using placeholder reads
         
         // Read temperature POT
         uint16_t temp_raw = analogRead(POT_TEMP_PIN);
@@ -133,14 +130,6 @@ void Thermostat_SetFanSpeed(Fan_Speed_t speed)
     if (g_status.mode == THERMOSTAT_MODE_MANUAL)
     {
         g_status.fan_speed = speed;
-
-        if (g_status.fan_speed != g_lastFanSpeed) {
-            char msg[50];
-            snprintf(msg, sizeof(msg), "Fan speed changed: %d", g_status.fan_speed);
-            SIM_SendSMS(SMS_RECIPIENT, msg);
-            g_lastFanSpeed = g_status.fan_speed;
-        }
-
         updateLEDs();
     }
 }
@@ -220,7 +209,6 @@ static void updateLEDs(void)
             break;
         case FAN_SPEED_OFF:
         default:
-            // All LEDs already off
             break;
     }
 }
@@ -259,13 +247,5 @@ static void autoControlLogic(void)
         // Within deadband, maintain current state or turn off
         g_status.heating = false;
         g_status.fan_speed = FAN_SPEED_OFF;
-    }
-
-    if (g_status.fan_speed != g_lastFanSpeed) {
-
-        char msg[50];
-        snprintf(msg, sizeof(msg), "Fan speed changed: %d", g_status.fan_speed);
-        SIM_SendSMS(SMS_RECIPIENT, msg);
-        g_lastFanSpeed = g_status.fan_speed;
     }
 }

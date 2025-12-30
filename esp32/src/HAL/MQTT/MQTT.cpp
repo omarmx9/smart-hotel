@@ -1,33 +1,12 @@
 #include "MQTT.h"
 #include <WiFi.h>
 #include "../WIFI/wifi.h"
-#include "App_cfg.h"
+
 static WiFiClient wifiClient;
 static PubSubClient mqttClient(wifiClient);
 
-
-
 static const char* g_broker;
 static int g_port;
-
-static const char* mqtt_sub_topics[] =
-{
-    MQTT_TOPIC_TEMP,
-    MQTT_TOPIC_HUMIDITY,
-    MQTT_TOPIC_TARGET,
-    MQTT_TOPIC_HEATING,
-    MQTT_TOPIC_LUMINOSITY,
-    MQTT_TOPIC_GAS,
-    MQTT_TOPIC_CONTROL
-};
-
-void MQTT_SubscribeAll(void)
-{
-    for (uint8_t i = 0; i < (sizeof(mqtt_sub_topics) / sizeof(mqtt_sub_topics[0])); i++)
-    {
-        mqttClient.subscribe(mqtt_sub_topics[i]);
-    }
-}
 
 static void MQTT_Reconnect(void);
 
@@ -58,45 +37,17 @@ void MQTT_Loop(void)
     }
 }
 
-void MQTT_PublishRandom(void)
+void MQTT_SubscribeAll(void)
 {
-    if (!WIFI_IsConnected())
-        return;
-
-    char payload[16];
-
-    /* Temperature: 20.0 – 30.0 */
-    float temp = 20.0f + ((float)rand() / RAND_MAX) * 10.0f;
-    snprintf(payload, sizeof(payload), "%.2f", temp);
-    mqttClient.publish(MQTT_TOPIC_TEMP, payload);
-
-    /* Humidity: 40 – 80 % */
-    int humidity = 40 + rand() % 41;
-    snprintf(payload, sizeof(payload), "%d", humidity);
-    mqttClient.publish(MQTT_TOPIC_HUMIDITY, payload);
-
-    /* Target temperature: 22 – 26 */
-    int target = 22 + rand() % 5;
-    snprintf(payload, sizeof(payload), "%d", target);
-    mqttClient.publish(MQTT_TOPIC_TARGET, payload);
-
-    /* Heating: ON / OFF */
-    int heating = rand() % 2;
-    snprintf(payload, sizeof(payload), "%d", heating);
-    mqttClient.publish(MQTT_TOPIC_HEATING, payload);
-
-    /* Luminosity: 0 – 1023 */
-    int luminosity = rand() % 1024;
-    snprintf(payload, sizeof(payload), "%d", luminosity);
-    mqttClient.publish(MQTT_TOPIC_LUMINOSITY, payload);
-
-    /* Gas level: 0 – 100 % */
-    int gas = rand() % 101;
-    snprintf(payload, sizeof(payload), "%d", gas);
-    mqttClient.publish(MQTT_TOPIC_GAS, payload);
-    Serial.println("System ready!");
-
+    mqttClient.subscribe("home/thermostat/temperature");
+    mqttClient.subscribe("home/thermostat/humidity");
+    mqttClient.subscribe("home/thermostat/target");
+    mqttClient.subscribe("home/thermostat/heating");
+    mqttClient.subscribe("home/thermostat/distance");
+    mqttClient.subscribe("home/thermostat/pot");
+    mqttClient.subscribe("home/thermostat/control");
 }
+
 
 void MQTT_Publish(const char* topic, const char* payload)
 {

@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "../../App_cfg.h"
-#include "../../HAL/SensorH/SensorH.h"
+#include "../SensorH/SensorH.h"
 #include "POT.h"
 
 #if POT_DEBUG == STD_ON

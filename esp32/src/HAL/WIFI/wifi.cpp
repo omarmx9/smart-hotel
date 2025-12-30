@@ -19,7 +19,7 @@ void onWifiConnected(void)
     
     // Initialize MQTT only when WiFi is connected
     if (!mqttInitialized) {
-        MQTT_Init(MQTT_BROKER, MQTT_PORT);
+        MQTT_Init("broker.hivemq.com", 1883);
         mqttInitialized = true;
     }
 }
@@ -32,7 +32,7 @@ void onWifiDisconnected(void)
 
 static WIFI_Config_t g_wifiCfg = {
     .ssid = WIFI_SSID,
-    .password = WIFI_PASSWORD,
+    .password = WIFI_SSID,
     .reconnect_interval_ms = 5000,
     .on_connect = NULL,  // Change these to NULL
     .on_disconnect = NULL
