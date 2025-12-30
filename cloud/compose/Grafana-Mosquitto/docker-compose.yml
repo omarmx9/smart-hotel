@@ -15,6 +15,7 @@ services:
     volumes:
       - influxdb-data:/var/lib/influxdb2:rw
       - influxdb-logs:/var/log/influxdb:rw
+      - ./config/influxdb/config.yml:/etc/influxdb2/config.yml:ro
     restart: unless-stopped
     networks:
       - default
