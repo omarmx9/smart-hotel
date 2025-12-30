@@ -15,7 +15,7 @@ services:
     volumes:
       - influxdb-data:/var/lib/influxdb2:rw
       - influxdb-config:/etc/influxdb2:rw
-      - influxdb-logs:/var/log/influxdb:rw
+      - ./config/influxdb/init-telegraf.sh:/docker-entrypoint-initdb.d/init-telegraf.sh:ro
     restart: unless-stopped
     networks:
       - default
@@ -89,7 +89,6 @@ services:
       - mosquitto
     volumes:
       - ./config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
-      - telegraf-logs:/var/log/telegraf:rw
     environment:
       - INFLUX_URL=http://influxdb:8086
       - INFLUX_TOKEN=admin-token
@@ -122,10 +121,8 @@ networks:
 volumes:
   influxdb-data:
   influxdb-config:
-  influxdb-logs:
   grafana-data:
   grafana-logs:
-  telegraf-logs:
   mosquitto-data:
   mosquitto-logs:
   postgres-data:
