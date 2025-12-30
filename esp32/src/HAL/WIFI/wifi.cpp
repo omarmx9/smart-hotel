@@ -19,7 +19,7 @@ void onWifiConnected(void)
     
     // Initialize MQTT only when WiFi is connected
     if (!mqttInitialized) {
-        MQTT_Init("broker.hivemq.com", 1883);
+        MQTT_Init(MQTT_BROKER, MQTT_PORT);
         mqttInitialized = true;
     }
 }

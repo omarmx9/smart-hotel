@@ -24,7 +24,7 @@
 #define LM35_ENABLED        STD_ON
 #define WIFI_ENABLED        STD_ON
 #define MQTT_ENABLED        STD_ON
-
+#define DHT22_ENABLED       STD_ON
 
 /* =========================
  * Debug Flags
@@ -42,7 +42,7 @@
 #define LM35_DEBUG          STD_ON
 #define WIFI_DEBUG          STD_ON
 #define MQTT_DEBUG          STD_ON
-
+#define DHT22_DEBUG         STD_ON
 
 /* =========================
  * UART Configuration
@@ -132,6 +132,12 @@
 #define LED_3_PIN           32
 
 
+/* =========================
+ * DHT22 Configuration
+ * ========================= */
+
+#define DHT22_PIN          35
+#define DHT22_TYPE         DHT22
 /* =========================
  * WiFi Configuration
  * ========================= */

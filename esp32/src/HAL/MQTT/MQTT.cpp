@@ -56,7 +56,7 @@ void MQTT_Publish(const char* topic, const char* payload)
         Serial.println("MQTT publish failed: Not connected");
         return;
     }
-    
+
     if (mqttClient.publish(topic, payload))
     {
         Serial.print("Published to ");
