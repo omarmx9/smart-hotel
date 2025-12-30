@@ -14,8 +14,8 @@ services:
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=admin-token
     volumes:
       - influxdb-data:/var/lib/influxdb2:rw
+      - influxdb-config:/etc/influxdb2:rw
       - influxdb-logs:/var/log/influxdb:rw
-      - ./config/influxdb/config.yml:/etc/influxdb2/config.yml:rw
     restart: unless-stopped
     networks:
       - default
@@ -39,7 +39,7 @@ services:
       dockerfile: Dockerfile
     container_name: dashboard
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - DATABASE_URL=postgres://smarthotel:smarthotel@postgres:5432/smarthotel
       - POSTGRES_DB=smarthotel
@@ -121,6 +121,7 @@ networks:
 
 volumes:
   influxdb-data:
+  influxdb-config:
   influxdb-logs:
   grafana-data:
   grafana-logs:
