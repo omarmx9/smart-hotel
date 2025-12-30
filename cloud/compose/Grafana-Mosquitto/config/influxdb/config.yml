@@ -1,0 +1,17 @@
+# InfluxDB 2.x Configuration
+# Pre-configured for Smart Hotel IoT data collection via Telegraf
+
+http-bind-address: ":8086"
+reporting-disabled: true
+
+storage-cache-max-memory-size: 1073741824
+storage-cache-snapshot-memory-size: 26214400
+storage-cache-snapshot-write-cold-duration: "10m"
+
+log:
+  level: info
+
+# Query configuration
+query-memory-bytes: 0
+query-concurrency: 10
+query-queue-size: 10

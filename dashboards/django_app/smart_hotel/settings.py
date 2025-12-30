@@ -12,6 +12,11 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-produ
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() == 'true'
 
 ALLOWED_HOSTS = ['*']
+# Trusted origins for CSRF (add external domains here)
+CSRF_TRUSTED_ORIGINS = [
+    'https://saddevsatator.qzz.io',
+    'https://*.saddevastator.qzz.io',
+]
 
 INSTALLED_APPS = [
     'daphne',
@@ -109,7 +114,7 @@ LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 # InfluxDB Configuration
-INFLUX_URL = os.environ.get('INFLUX_URL', 'http://localhost:8086')
+INFLUX_URL = os.environ.get('INFLUX_URL', 'http://influxdb:8086')
 INFLUX_TOKEN = os.environ.get('INFLUX_TOKEN', 'admin-token')
 INFLUX_ORG = os.environ.get('INFLUX_ORG', 'org')
 INFLUX_BUCKET = os.environ.get('INFLUX_BUCKET', 'bucket')
