@@ -1,12 +1,17 @@
 """
-Layer 4 — Document Filling
-Responsibility: Automatically fill document templates with extracted MRZ data
-Output: Filled Word document (.docx)
+Layer 4 — Document Filling (PDF)
+Responsibility: Automatically fill PDF templates with extracted MRZ data by overlaying text
+Output: Filled PDF document (.pdf)
 """
 import logging
-from docx import Document
+from PyPDF2 import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from datetime import datetime
 import os
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +50,14 @@ class TemplateSaveError(DocumentFillingError):
 
 
 class DocumentFiller:
-    """Handles automatic filling of registration card templates"""
+    """Handles automatic filling of registration card templates by overlaying on PDF"""
     
     def __init__(self, template_path, output_dir="filled_documents"):
         """
-        Initialize document filler
+        Initialize PDF document filler
         
         Args:
-            template_path: Path to the blank template .docx file
+            template_path: Path to the blank PDF template
             output_dir: Directory to save filled documents
             
         Raises:
@@ -75,13 +80,24 @@ class DocumentFiller:
                 logger.error(f"Failed to create output directory: {e}")
                 raise
         
-        logger.info("DocumentFiller initialized")
+        # Register fonts (fallback to Helvetica if custom fonts unavailable)
+        try:
+            pdfmetrics.registerFont(TTFont('CustomBold', 'fonts/Arial-Bold.ttf'))
+            pdfmetrics.registerFont(TTFont('CustomRegular', 'fonts/Arial.ttf'))
+            self.font_bold = 'CustomBold'
+            self.font_regular = 'CustomRegular'
+        except:
+            self.font_bold = 'Helvetica-Bold'
+            self.font_regular = 'Helvetica'
+            logger.debug("Using built-in Helvetica fonts")
+        
+        logger.info("DocumentFiller initialized (PDF overlay mode)")
         logger.debug(f"  Template: {template_path}")
         logger.debug(f"  Output dir: {output_dir}")
     
     def fill_registration_card(self, mrz_data, timestamp=None):
         """
-        Fill the DWA Registration Card with MRZ data
+        Fill the DWA Registration Card with MRZ data by overlaying on template
         
         Args:
             mrz_data: Dictionary containing extracted MRZ information
@@ -94,13 +110,9 @@ class DocumentFiller:
             DocumentFillingError: If document filling fails
             TemplateSaveError: If document save fails
         """
-        logger.info("Starting document filling process")
+        logger.info("Starting PDF document filling process")
         
         try:
-            # Load template
-            doc = Document(self.template_path)
-            logger.debug("Template loaded successfully")
-            
             # Extract and validate MRZ data
             surname = mrz_data.get('surname', '').strip()
             given_name = mrz_data.get('given_name', '').replace('<', ' ').strip()
@@ -119,49 +131,27 @@ class DocumentFiller:
             
             logger.debug(f"Processing data for: {given_name} {surname}")
             
-            # Define replacement mapping
-            # Only fill fields available from MRZ
-            # Leave other fields blank for manual entry
-            replacements = {
-                # MRZ fields - auto-filled
-                '*Surname:': f'*Surname: {surname}',
-                '*Name:': f'*Name: {given_name}',
-                '*Nationality:': f'*Nationality: {nationality}',
-                '*Passport No.:': f'*Passport No.: {passport_no}',
-                '*Date of Birth:': f'*Date of Birth: {birth_date}',
-                '*Country:': f'*Country: {issuer_country}',
-                
-                # Date fields
-                '*From:': f'*From: {self._get_today_date()}',  # Check-in date
-                '*To   :': f'*To   : {expiry_date}',  # Note: extra spaces in template
-                '*Ex.  :': '*Ex.  : ..................',  # Note: extra spaces
-                
-                # Non-MRZ fields - leave blank for manual entry
-                '*Profession:': '*Profession: ..........................................',
-                '*Hometown:': '*Hometown: ..........................................',
-                '*Email:': '*Email: ..........................................',
-                '*Phone No.': '*Phone No. ..........................................',
-                'Cabin No.': 'Cabin No. ..................',
-            }
-            
-            # Fill the document
-            self._replace_text_in_document(doc, replacements)
-            
             # Generate output filename
             if timestamp is None:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
             safe_name = f"{surname}_{given_name}".replace(' ', '_')[:50]
-            output_filename = f"registration_card_{safe_name}_{timestamp}.docx"
+            output_filename = f"registration_card_{timestamp}_{safe_name}.pdf"
             output_path = os.path.join(self.output_dir, output_filename)
             
-            # Save filled document
-            try:
-                doc.save(output_path)
-                logger.info(f"✓ Document filled and saved: {output_filename}")
-            except Exception as e:
-                logger.error(f"Failed to save document: {e}")
-                raise TemplateSaveError(output_path, str(e))
+            # Fill PDF by overlaying on template
+            self._overlay_data_on_template(
+                output_path,
+                surname=surname,
+                given_name=given_name,
+                nationality=nationality,
+                passport_no=passport_no,
+                birth_date=birth_date,
+                expiry_date=expiry_date,
+                issuer_country=issuer_country
+            )
+            
+            logger.info(f"✓ PDF document filled and saved: {output_filename}")
             
             return {
                 "output_path": output_path,
@@ -170,7 +160,6 @@ class DocumentFiller:
             }
             
         except DocumentFillingError:
-            # Re-raise our custom errors
             raise
         except Exception as e:
             logger.error(f"Error filling document: {e}")
@@ -180,41 +169,96 @@ class DocumentFiller:
                 details={"error_type": type(e).__name__}
             )
     
-    def _replace_text_in_document(self, doc, replacements):
+    def _overlay_data_on_template(self, output_path, surname, given_name, 
+                                   nationality, passport_no, birth_date, 
+                                   expiry_date, issuer_country):
         """
-        Replace text in all paragraphs and tables of the document
+        Overlay MRZ data on the blank PDF template
         
         Args:
-            doc: Document object
-            replacements: Dictionary of {search: replace} pairs
+            output_path: Path to save the filled PDF
+            surname: Guest surname
+            given_name: Guest given name
+            nationality: Guest nationality
+            passport_no: Passport number
+            birth_date: Date of birth (DD/MM/YYYY)
+            expiry_date: Passport expiry date (DD/MM/YYYY)
+            issuer_country: Passport issuing country
         """
-        # Replace in paragraphs
-        for paragraph in doc.paragraphs:
-            for search_text, replace_text in replacements.items():
-                if search_text in paragraph.text:
-                    # Replace inline
-                    for run in paragraph.runs:
-                        if search_text in run.text:
-                            run.text = run.text.replace(search_text, replace_text)
-        
-        # Replace in tables
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        for search_text, replace_text in replacements.items():
-                            if search_text in paragraph.text:
-                                for run in paragraph.runs:
-                                    if search_text in run.text:
-                                        run.text = run.text.replace(search_text, replace_text)
+        try:
+            # Read the template PDF
+            template_pdf = PdfReader(self.template_path)
+            template_page = template_pdf.pages[0]
+            
+            # Get actual page dimensions from template
+            width = float(template_page.mediabox.width)
+            height = float(template_page.mediabox.height)
+            
+            # Create overlay with text
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=(width, height))
+            
+            # Get today's date components for From field
+            now = datetime.now()
+            today_day = now.strftime('%d')
+            today_month = now.strftime('%m')
+            today_year = now.strftime('%y')  # Just last 2 digits (25, 26, etc.)
+            
+            # Field positions (x, y from bottom-left) - finalized coordinates
+            # Page is Letter size: 612 x 792 pts
+            
+            # Draw date fields with larger font (size 12)
+            can.setFont(self.font_regular, 12)
+            
+            # *From: broken into day/month/year
+            can.drawString(75, 679, today_day)
+            can.drawString(100, 679, today_month)
+            can.drawString(141, 679, today_year)
+            
+            # *Ex.: expiry date
+            can.drawString(80, 646, expiry_date)
+            
+            # *Date of Birth
+            can.drawString(150, 561, birth_date)
+            
+            # Draw other fields with normal font (size 10)
+            can.setFont(self.font_regular, 10)
+            
+            # *Surname / *Name
+            can.drawString(150, 619, surname)
+            can.drawString(400, 619, given_name)
+            
+            # *Nationality / *Passport No.
+            can.drawString(150, 590, nationality)
+            can.drawString(430, 590, passport_no)
+            
+            # *Country
+            can.drawString(420, 533, issuer_country)
+            
+            # Save the overlay
+            can.save()
+            packet.seek(0)
+            
+            # Read the overlay
+            overlay_pdf = PdfReader(packet)
+            overlay_page = overlay_pdf.pages[0]
+            
+            # Merge overlay onto template
+            template_page.merge_page(overlay_page)
+            
+            # Write output
+            output = PdfWriter()
+            output.add_page(template_page)
+            
+            with open(output_path, 'wb') as output_file:
+                output.write(output_file)
+            
+        except Exception as e:
+            logger.error(f"Failed to overlay data on PDF: {e}")
+            raise TemplateSaveError(output_path, str(e))
     
     def _get_today_date(self):
-        """
-        Get today's date in DD/MM/YYYY format
-        
-        Returns:
-            str: Today's date formatted as DD/MM/YYYY
-        """
+        """Get today's date in DD/MM/YYYY format"""
         return datetime.now().strftime('%d/%m/%Y')
     
     def _format_date(self, date_str):
@@ -231,12 +275,9 @@ class DocumentFiller:
             return ''
         
         try:
-            # Try YYYY-MM-DD format first
             if '-' in date_str:
                 date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-            # Try YYMMDD format (common in MRZ)
             elif len(date_str) == 6:
-                # Assume 20xx for years 00-50, 19xx for 51-99
                 year = int(date_str[0:2])
                 if year <= 50:
                     full_year = 2000 + year
@@ -248,92 +289,38 @@ class DocumentFiller:
             else:
                 return date_str
             
-            # Return DD/MM/YYYY
             return date_obj.strftime('%d/%m/%Y')
         except Exception as e:
             logger.warning(f"Could not format date '{date_str}': {e}")
             return date_str
     
     def _get_country_name(self, country_code):
-        """
-        Convert 3-letter country code to full name
-        
-        Args:
-            country_code: ISO 3166-1 alpha-3 code (e.g., 'EGY', 'USA')
-            
-        Returns:
-            str: Full country name
-        """
+        """Convert 3-letter country code to full name"""
         if not country_code:
             return ''
         
-        # Common country codes (expanded list)
         country_map = {
-            'EGY': 'Egypt',
-            'USA': 'United States',
-            'GBR': 'United Kingdom',
-            'FRA': 'France',
-            'DEU': 'Germany',
-            'ITA': 'Italy',
-            'ESP': 'Spain',
-            'CAN': 'Canada',
-            'AUS': 'Australia',
-            'JPN': 'Japan',
-            'CHN': 'China',
-            'IND': 'India',
-            'BRA': 'Brazil',
-            'RUS': 'Russia',
-            'SAU': 'Saudi Arabia',
-            'ARE': 'United Arab Emirates',
-            'TUR': 'Turkey',
-            'NLD': 'Netherlands',
-            'BEL': 'Belgium',
-            'CHE': 'Switzerland',
-            'SWE': 'Sweden',
-            'NOR': 'Norway',
-            'DNK': 'Denmark',
-            'POL': 'Poland',
-            'GRC': 'Greece',
-            'PRT': 'Portugal',
-            'AUT': 'Austria',
-            'CZE': 'Czech Republic',
-            'MEX': 'Mexico',
-            'ARG': 'Argentina',
-            'ZAF': 'South Africa',
-            'KOR': 'South Korea',
-            'SGP': 'Singapore',
-            'MYS': 'Malaysia',
-            'THA': 'Thailand',
-            'IDN': 'Indonesia',
-            'PHL': 'Philippines',
-            'VNM': 'Vietnam',
-            'NZL': 'New Zealand',
-            'IRL': 'Ireland',
-            'FIN': 'Finland',
-            'ISR': 'Israel',
-            'LBN': 'Lebanon',
-            'JOR': 'Jordan',
-            'KWT': 'Kuwait',
-            'QAT': 'Qatar',
-            'BHR': 'Bahrain',
-            'OMN': 'Oman',
-            'PAK': 'Pakistan',
-            'BGD': 'Bangladesh',
-            'LKA': 'Sri Lanka',
-            'MAR': 'Morocco',
-            'DZA': 'Algeria',
-            'TUN': 'Tunisia',
-            'SDN': 'Sudan',
-            'YEM': 'Yemen',
-            'SYR': 'Syria',
-            'IRQ': 'Iraq',
-            'IRN': 'Iran',
-            'AFG': 'Afghanistan',
+            'EGY': 'Egypt', 'USA': 'United States', 'GBR': 'United Kingdom',
+            'FRA': 'France', 'DEU': 'Germany', 'ITA': 'Italy', 'ESP': 'Spain',
+            'CAN': 'Canada', 'AUS': 'Australia', 'JPN': 'Japan', 'CHN': 'China',
+            'IND': 'India', 'BRA': 'Brazil', 'RUS': 'Russia', 'SAU': 'Saudi Arabia',
+            'ARE': 'United Arab Emirates', 'TUR': 'Turkey', 'NLD': 'Netherlands',
+            'BEL': 'Belgium', 'CHE': 'Switzerland', 'SWE': 'Sweden', 'NOR': 'Norway',
+            'DNK': 'Denmark', 'POL': 'Poland', 'GRC': 'Greece', 'PRT': 'Portugal',
+            'AUT': 'Austria', 'CZE': 'Czech Republic', 'MEX': 'Mexico',
+            'ARG': 'Argentina', 'ZAF': 'South Africa', 'KOR': 'South Korea',
+            'SGP': 'Singapore', 'MYS': 'Malaysia', 'THA': 'Thailand',
+            'IDN': 'Indonesia', 'PHL': 'Philippines', 'VNM': 'Vietnam',
+            'NZL': 'New Zealand', 'IRL': 'Ireland', 'FIN': 'Finland',
+            'ISR': 'Israel', 'LBN': 'Lebanon', 'JOR': 'Jordan', 'KWT': 'Kuwait',
+            'QAT': 'Qatar', 'BHR': 'Bahrain', 'OMN': 'Oman', 'PAK': 'Pakistan',
+            'BGD': 'Bangladesh', 'LKA': 'Sri Lanka', 'MAR': 'Morocco',
+            'DZA': 'Algeria', 'TUN': 'Tunisia', 'SDN': 'Sudan', 'YEM': 'Yemen',
+            'SYR': 'Syria', 'IRQ': 'Iraq', 'IRN': 'Iran', 'AFG': 'Afghanistan',
         }
         
         result = country_map.get(country_code.upper(), country_code)
         
-        # If not found, return the code but log it
         if result == country_code:
             logger.debug(f"Unknown country code: {country_code}")
         
