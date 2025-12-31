@@ -132,13 +132,13 @@ services:
       # Persist media files (uploaded scans, filled documents)
       - kiosk_media:/app/media
     depends_on:
-      - MRZ
+      - mrz
     restart: unless-stopped
     networks:
       - kiosk-network
 
   # MRZ AI Microservice (Flask)
-  MRZ:
+  mrz:
     build:
       context: ../kiosk/app
       dockerfile: Dockerfile
