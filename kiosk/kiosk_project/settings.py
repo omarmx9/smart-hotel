@@ -8,6 +8,11 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-change-in-production')
 DEBUG = os.environ.get('DEBUG', '0').lower() in ('1', 'true', 'yes')
 
 ALLOWED_HOSTS = ['*']
+# Trusted origins for CSRF (add external domains here)
+CSRF_TRUSTED_ORIGINS = [
+    'https://saddevsatator.qzz.io',
+    'https://*.saddevastator.qzz.io',
+]
 
 INSTALLED_APPS = [
     'django.contrib.auth',
