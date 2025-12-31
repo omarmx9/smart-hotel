@@ -1,6 +1,7 @@
 backports.tarfile
 fastmrz
 flask
+flask-cors
 hikvision-isapi-py
 importlib-metadata
 jaraco.collections
@@ -10,3 +11,6 @@ platformdirs
 python-dotenv
 tomli
 torchvision
+# PDF processing for document filling
+PyPDF2
+reportlab

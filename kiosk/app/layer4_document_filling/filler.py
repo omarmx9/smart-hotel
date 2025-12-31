@@ -52,32 +52,33 @@ class TemplateSaveError(DocumentFillingError):
 class DocumentFiller:
     """Handles automatic filling of registration card templates by overlaying on PDF"""
     
-    def __init__(self, template_path, output_dir="filled_documents"):
+    def __init__(self, template_path, output_dir="filled_documents", saved_documents_dir="filled_documents"):
         """
         Initialize PDF document filler
         
         Args:
             template_path: Path to the blank PDF template
-            output_dir: Directory to save filled documents
+            output_dir: Directory to save filled documents (deprecated, use saved_documents_dir)
+            saved_documents_dir: Directory for saved documents
             
         Raises:
             TemplateNotFoundError: If template file doesn't exist
         """
         self.template_path = template_path
-        self.output_dir = output_dir
+        self.saved_documents_dir = saved_documents_dir
         
         # Verify template exists
         if not os.path.exists(template_path):
             logger.error(f"Template not found: {template_path}")
             raise TemplateNotFoundError(template_path)
         
-        # Create output directory if needed
-        if not os.path.exists(output_dir):
+        # Create saved documents directory if needed
+        if not os.path.exists(saved_documents_dir):
             try:
-                os.makedirs(output_dir)
-                logger.info(f"Created output directory: {output_dir}")
+                os.makedirs(saved_documents_dir)
+                logger.info(f"Created saved documents directory: {saved_documents_dir}")
             except Exception as e:
-                logger.error(f"Failed to create output directory: {e}")
+                logger.error(f"Failed to create saved documents directory: {e}")
                 raise
         
         # Register fonts (fallback to Helvetica if custom fonts unavailable)
@@ -93,7 +94,7 @@ class DocumentFiller:
         
         logger.info("DocumentFiller initialized (PDF overlay mode)")
         logger.debug(f"  Template: {template_path}")
-        logger.debug(f"  Output dir: {output_dir}")
+        logger.debug(f"  Saved documents dir: {saved_documents_dir}")
     
     def fill_registration_card(self, mrz_data, timestamp=None):
         """
@@ -137,7 +138,7 @@ class DocumentFiller:
             
             safe_name = f"{surname}_{given_name}".replace(' ', '_')[:50]
             output_filename = f"registration_card_{timestamp}_{safe_name}.pdf"
-            output_path = os.path.join(self.output_dir, output_filename)
+            output_path = os.path.join(self.saved_documents_dir, output_filename)
             
             # Fill PDF by overlaying on template
             self._overlay_data_on_template(

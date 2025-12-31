@@ -1,11 +1,20 @@
 """
-Passport Scanner Web Application
-Thin coordinator for layered document scanning system
+Passport Scanner Web Application / MRZ Microservice
+Thin coordinator for layered document scanning system.
+
+Provides REST API for:
+- Camera capture and preview (local hardware)
+- MRZ extraction from captured or uploaded images
+- Document filling (PDF)
 """
-from flask import Flask, Response, jsonify, send_from_directory
+from flask import Flask, Response, jsonify, send_from_directory, request
+from flask_cors import CORS
 import cv2
 import time
 import logging
+import os
+import tempfile
+import uuid
 
 # Import layers
 from layer1_capture import Camera
@@ -31,11 +40,15 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Enable CORS for cross-origin requests from kiosk service
+CORS(app, origins=["*"])
+
 # Configuration
-CAMERA_INDEX = 2
+CAMERA_INDEX = int(os.environ.get('CAMERA_INDEX', 2))
 TESSDATA_PATH = "models/"  # Directory containing mrz.traineddata
-SAVE_DIR = "captured_passports"  # Base directory for outputs
-TEMPLATE_PATH = "templates/DWA_Registration_Card.pdf"  # Registration card template
+TEMPLATE_PATH = "templates/DWA_Registration_Card.pdf"  # Registration card template (PDF)
+SAVE_DIR = "Logs/captured_passports"  # Base directory for outputs
+SAVED_DOCUMENTS_DIR = "Logs/filled_documents"  # Directory for saved filled documents
 
 
 class ScannerCoordinator:
@@ -44,7 +57,7 @@ class ScannerCoordinator:
     Thin wrapper that delegates to layer-specific components
     """
     
-    def __init__(self, camera_index, tessdata_path, save_dir, template_path):
+    def __init__(self, camera_index, tessdata_path, save_dir, template_path, saved_documents_dir):
         logger.info("Initializing ScannerCoordinator")
         
         # Layer 1: Capture
@@ -57,9 +70,12 @@ class ScannerCoordinator:
         self.mrz_extractor = MRZExtractor(tessdata_path=tessdata_path)
         self.image_saver = ImageSaver(base_dir=save_dir)
         
-        # Layer 4: Document Filling
+        # Layer 4: Document Filling (PDF)
         try:
-            self.document_filler = DocumentFiller(template_path=template_path)
+            self.document_filler = DocumentFiller(
+                template_path=template_path,
+                saved_documents_dir=saved_documents_dir
+            )
         except Exception as e:
             logger.warning(f"Document filler initialization failed: {e}")
             logger.warning("Layer 4 will be skipped in pipeline")
@@ -155,7 +171,7 @@ class ScannerCoordinator:
             fill_result = None
             if self.document_filler is not None:
                 try:
-                    logger.info("[Layer 4] Filling registration card...")
+                    logger.info("[Layer 4] Filling registration card (PDF)...")
                     fill_result = self.document_filler.fill_registration_card(mrz_data, timestamp)
                     logger.info(f"[Layer 4] ✓ Document saved: {fill_result['output_filename']}")
                 except DocumentFillingError as e:
@@ -237,11 +253,14 @@ scanner = ScannerCoordinator(
     camera_index=CAMERA_INDEX,
     tessdata_path=TESSDATA_PATH,
     save_dir=SAVE_DIR,
-    template_path=TEMPLATE_PATH
+    template_path=TEMPLATE_PATH,
+    saved_documents_dir=SAVED_DOCUMENTS_DIR
 )
 
 
-# Flask Routes
+# ============================================================================
+# Flask Routes - Web Interface
+# ============================================================================
 
 @app.route('/')
 def index():
@@ -278,7 +297,6 @@ def video_feed():
                 
                 frame_count += 1
                 if frame_count % 30 == 0:
-                    # logger.debug(f"Video stream: {frame_count} frames sent")
                     if detection_info and detection_info.get('detected'):
                         logger.debug(f"  Document detected: {detection_info['area_percentage']:.1f}% of frame")
                 
@@ -344,26 +362,179 @@ def stop_camera():
     return jsonify({"success": True})
 
 
+# ============================================================================
+# API Endpoints for Microservice Communication
+# ============================================================================
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Health check endpoint for service discovery and load balancers"""
+    return jsonify({
+        "status": "healthy",
+        "service": "mrz-service",
+        "version": "1.0.0"
+    })
+
+
+@app.route("/api/extract", methods=["POST"])
+def api_extract_from_image():
+    """
+    Extract MRZ data from an uploaded image.
+    
+    This endpoint allows the kiosk service to send images for MRZ extraction
+    without needing direct camera access.
+    
+    Request:
+        - multipart/form-data with 'image' field containing the passport image
+        
+    Response:
+        {
+            "success": true,
+            "data": { ... MRZ fields ... },
+            "timestamp": "20231231_120000"
+        }
+    """
+    logger.info("API extract request received")
+    
+    if 'image' not in request.files:
+        return jsonify({
+            "success": False,
+            "error": "No image file provided",
+            "error_code": "NO_IMAGE"
+        }), 400
+    
+    image_file = request.files['image']
+    
+    if image_file.filename == '':
+        return jsonify({
+            "success": False,
+            "error": "Empty filename",
+            "error_code": "EMPTY_FILENAME"
+        }), 400
+    
+    try:
+        # Save uploaded file temporarily
+        temp_dir = tempfile.gettempdir()
+        unique_id = uuid.uuid4().hex[:8]
+        temp_filename = f"upload_{unique_id}_{image_file.filename}"
+        temp_path = os.path.join(temp_dir, temp_filename)
+        
+        image_file.save(temp_path)
+        logger.info(f"Saved uploaded image to: {temp_path}")
+        
+        # Read image with OpenCV
+        raw_frame = cv2.imread(temp_path)
+        if raw_frame is None:
+            os.remove(temp_path)
+            return jsonify({
+                "success": False,
+                "error": "Could not read image file",
+                "error_code": "INVALID_IMAGE"
+            }), 400
+        
+        # Layer 2: Process image
+        logger.info("[Layer 2] Processing uploaded image...")
+        processed_frame = scanner.processor.process(raw_frame)
+        
+        # Layer 3: Save and extract MRZ
+        logger.info("[Layer 3] Saving processed image...")
+        save_result = scanner.image_saver.save_image(processed_frame)
+        
+        timestamp = save_result["timestamp"]
+        filepath = save_result["filepath"]
+        
+        logger.info("[Layer 3] Extracting MRZ...")
+        mrz_data = scanner.mrz_extractor.extract(filepath)
+        
+        # Clean up temp file
+        os.remove(temp_path)
+        
+        # Prepare response
+        response = {
+            "success": True,
+            "data": mrz_data,
+            "image_path": filepath,
+            "timestamp": timestamp
+        }
+        
+        # Optionally fill document
+        if scanner.document_filler is not None:
+            try:
+                logger.info("[Layer 4] Filling registration card (PDF)...")
+                fill_result = scanner.document_filler.fill_registration_card(
+                    mrz_data, timestamp
+                )
+                response["filled_document"] = {
+                    "path": fill_result["output_path"],
+                    "filename": fill_result["output_filename"],
+                }
+            except Exception as e:
+                logger.warning(f"[Layer 4] Document filling failed: {e}")
+        
+        logger.info("API extraction successful")
+        return jsonify(response)
+        
+    except ScannerError as e:
+        logger.error(f"Scanner error during API extraction: {e}")
+        return jsonify(handle_error(e)), 422
+        
+    except Exception as e:
+        logger.error(f"Unexpected error during API extraction: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "error_code": "EXTRACTION_FAILED"
+        }), 500
+
+
+@app.route("/api/status", methods=["GET"])
+def api_status():
+    """Get service status and capabilities"""
+    return jsonify({
+        "success": True,
+        "camera_available": scanner.camera is not None,
+        "document_filler_available": scanner.document_filler is not None,
+        "tessdata_path": TESSDATA_PATH,
+        "endpoints": {
+            "health": "/health",
+            "extract": "/api/extract",
+            "capture": "/capture",
+            "video_feed": "/video_feed",
+            "detection_status": "/detection_status"
+        }
+    })
+
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+
 if __name__ == '__main__':
     print("\n" + "=" * 60)
-    print("PASSPORT SCANNER WEB SERVER")
+    print("PASSPORT SCANNER WEB SERVER / MRZ MICROSERVICE")
     print("=" * 60)
     print("\n📁 Project Structure:")
     print("  layer1_capture/          - Camera handling")
     print("  layer2_readjustment/     - Document processing + Real-time Detection")
     print("  layer3_mrz/              - MRZ extraction")
-    print("  layer4_document_filling/ - Auto-fill registration cards")
+    print("  layer4_document_filling/ - Auto-fill registration cards (PDF)")
     print("  web/                     - Frontend files")
     print("  models/                  - OCR models (mrz.traineddata)")
-    print("  templates/               - Document templates")
-    print("  captured_passports/")
-    print("    ├── captured_images/     - Saved JPG files")
-    print("    └── captured_json/       - Extraction results")
-    print("  filled_documents/        - Auto-filled registration cards")
+    print("  templates/               - Document templates (PDF)")
+    print("  Logs/captured_passports/")
+    print("    ├── captured_images/   - Saved JPG files")
+    print("    └── captured_json/     - Extraction results")
+    print("  Logs/filled_documents/   - Auto-filled registration cards")
     print("\n🌐 Server Info:")
     print("  URL: http://localhost:5000")
     print("  Debug Mode: ON")
     print("  Logging Level: DEBUG")
+    print("\n📡 API Endpoints:")
+    print("  GET  /health           - Health check")
+    print("  GET  /api/status       - Service status")
+    print("  POST /api/extract      - Extract MRZ from uploaded image")
+    print("  POST /capture          - Capture from camera and extract")
+    print("  GET  /video_feed       - MJPEG video stream")
     print("\n🎥 Camera:")
     print(f"  Device: /dev/video{CAMERA_INDEX}")
     print("  Resolution: 1920x1080")
