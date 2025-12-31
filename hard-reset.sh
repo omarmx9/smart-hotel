@@ -1,4 +1,4 @@
 #!/bin/bash
-cd cloud/compose/Grafana-Mosquitto
+cd cloud
 docker compose down -v
 docker compose up --build -d
