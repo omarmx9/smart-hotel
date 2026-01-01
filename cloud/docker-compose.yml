@@ -125,7 +125,7 @@ services:
       SECRET_KEY: 'replace-me-in-production'
       ALLOWED_HOSTS: '*'
       # MRZ backend service connection
-      MRZ_SERVICE_URL: 'http://mrz-backend:5000'
+      MRZ_SERVICE_URL: 'http://mrz-backend:5001'
     volumes:
       # Persist SQLite database across container restarts
       - kiosk_data:/app/data
@@ -138,13 +138,13 @@ services:
       - kiosk-network
 
   # MRZ Backend Microservice (Flask) - API only, no camera hardware
-  # Also serves test frontend at http://localhost:5000/ for development
+  # Also serves test frontend at http://localhost:5001/ for development
   mrz-backend:
     build:
       context: ../kiosk/app
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"   # API + Test Frontend (http://localhost:5000/)
+      - "5001:5000"   # API + Test Frontend (http://localhost:5001/)
     environment:
       PYTHONUNBUFFERED: '1'
     volumes:
