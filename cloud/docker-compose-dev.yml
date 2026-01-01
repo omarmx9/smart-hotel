@@ -1,0 +1,25 @@
+# Development Docker Compose
+# Usage: docker compose -f docker-compose.yml -f docker-compose-dev.yml up
+#
+# This file extends the base docker-compose.yml with development-specific settings.
+# The MRZ testing frontend is only available in this development configuration.
+
+services:
+  # Override mrz-backend to expose the test frontend port
+  mrz-backend:
+    ports:
+      - "5001:5000"   # API + Test Frontend (http://localhost:5001/)
+    environment:
+      PYTHONUNBUFFERED: '1'
+      FLASK_ENV: 'development'
+      FLASK_DEBUG: '1'
+
+  # Development settings for dashboard
+  dashboard:
+    environment:
+      - DJANGO_DEBUG=True
+
+  # Development settings for kiosk
+  kiosk:
+    environment:
+      DEBUG: '1'

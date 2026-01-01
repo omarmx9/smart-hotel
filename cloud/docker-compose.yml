@@ -138,13 +138,13 @@ services:
       - kiosk-network
 
   # MRZ Backend Microservice (Flask) - API only, no camera hardware
-  # Also serves test frontend at http://localhost:5001/ for development
+  # Note: Test frontend is only exposed in docker-compose-dev.yml
   mrz-backend:
     build:
       context: ../kiosk/app
       dockerfile: Dockerfile
-    ports:
-      - "5001:5000"   # API + Test Frontend (http://localhost:5001/)
+    # No ports exposed in production - only accessible internally by kiosk service
+    # Use docker-compose-dev.yml to expose port 5001 for testing
     environment:
       PYTHONUNBUFFERED: '1'
     volumes:
