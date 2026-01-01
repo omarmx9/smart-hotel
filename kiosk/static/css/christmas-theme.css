@@ -1,5 +1,11 @@
 /* ===== Christmas Theme for Smart Hotel Kiosk ===== */
 
+/* Prevent horizontal scrollbar from animations */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 /* Override brand colors with Christmas colors */
 :root {
   /* Christmas Colors */
@@ -76,6 +82,7 @@
   pointer-events: none;
   z-index: 9999;
   overflow: hidden;
+  contain: strict;
 }
 
 .snowflake {
@@ -117,19 +124,19 @@
   box-shadow: 0 4px 24px rgba(26,95,42,0.3);
   border-bottom: 3px solid var(--accent) !important;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* Christmas lights decoration on navbar */
 .navbar::after {
   content: '🎄 ✨ 🎅 ✨ 🎁 ✨ ⭐ ✨ 🦌 ✨ 🔔 ✨ ❄️ ✨ 🎄';
   position: absolute;
-  bottom: -25px;
+  bottom: 2px;
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 0.9rem;
-  letter-spacing: 8px;
+  font-size: 0.75rem;
+  letter-spacing: 6px;
   animation: twinkle 2s ease-in-out infinite;
   pointer-events: none;
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
@@ -346,6 +353,8 @@
   height: 100%;
   pointer-events: none;
   z-index: -1;
+  overflow: hidden;
+  contain: strict;
   background: 
     radial-gradient(2px 2px at 20% 30%, var(--christmas-gold) 50%, transparent 50%),
     radial-gradient(2px 2px at 40% 70%, var(--christmas-gold) 50%, transparent 50%),
@@ -365,9 +374,8 @@
 /* ===== Responsive Adjustments ===== */
 @media (max-width: 768px) {
   .navbar::after {
-    font-size: 0.7rem;
-    letter-spacing: 4px;
-    bottom: -22px;
+    font-size: 0.6rem;
+    letter-spacing: 3px;
   }
   
   .christmas-greeting::before,

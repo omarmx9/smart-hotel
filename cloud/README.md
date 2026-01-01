@@ -7,7 +7,7 @@ This small setup provides a minimal local stack with bind mounts for data and lo
 ### Production
 
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
 
 ### Development
@@ -15,11 +15,11 @@ docker compose up -d
 For development, use the dev compose file which exposes the MRZ testing frontend:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose-dev.yml up -d
+docker compose -f docker-compose.yml -f docker-compose-dev.yml up --build -d
 ```
 
 This enables:
-- MRZ Test Frontend: http://localhost:5001/
+- MRZ Test Frontend: http://localhost:5000/
 - Flask debug mode for mrz-backend
 - Django debug mode for dashboard and kiosk
 
@@ -30,4 +30,4 @@ This enables:
 - Mosquitto: mqtt://localhost:1883
 - Dashboard: http://localhost:8001
 - Kiosk: http://localhost:8002
-- MRZ Test Frontend: http://localhost:5001 (dev mode only)
+- MRZ Test Frontend: http://localhost:5000 (dev mode only)
