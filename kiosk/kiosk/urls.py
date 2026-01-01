@@ -9,6 +9,7 @@ urlpatterns = [
     path('language/', views.choose_language, name='choose_language'),
     path('checkin/', views.checkin, name='checkin'),
     path('passport/', views.start, name='start'),
+    path('passport/scan/', views.passport_scan, name='passport_scan'),  # New browser camera scan
     path('upload-scan/', views.upload_scan, name='upload_scan'),
     path('extract/status/<int:task_id>/', views.extract_status, name='extract_status'),
     path('verify/', views.verify_info, name='verify_info'),
@@ -26,17 +27,16 @@ urlpatterns = [
     path('reservation/', views.reservation_entry, name='reservation_entry'),
     path('choose-access/<int:reservation_id>/', views.choose_access, name='choose_access'),
     path('enroll-face/<int:reservation_id>/', views.enroll_face, name='enroll_face'),
+    path('face-capture/<int:reservation_id>/', views.face_capture, name='face_capture'),  # New browser camera face capture
+    path('save-faces/<int:reservation_id>/', views.save_faces, name='save_faces'),  # Save captured faces
     path('final/<int:reservation_id>/', views.finalize, name='finalize'),
     path('submit-keycards/<int:reservation_id>/', views.submit_keycards, name='submit_keycards'),
     
     # API endpoints
     path('api/save-passport-data/', views.save_passport_extraction, name='save_passport_extraction'),
     
-    # MRZ Service API proxy endpoints
+    # MRZ Backend API proxy endpoints (browser camera sends images to these)
+    path('api/mrz/detect/', views.mrz_detect, name='mrz_detect'),
+    path('api/mrz/extract/', views.mrz_extract, name='mrz_extract'),
     path('api/mrz/health/', views.mrz_service_health, name='mrz_service_health'),
-    path('api/mrz/video-feed-url/', views.mrz_video_feed_url, name='mrz_video_feed_url'),
-    path('api/mrz/capture/', views.mrz_capture, name='mrz_capture'),
-    path('api/mrz/start-camera/', views.mrz_start_camera, name='mrz_start_camera'),
-    path('api/mrz/stop-camera/', views.mrz_stop_camera, name='mrz_stop_camera'),
-    path('api/mrz/detection-status/', views.mrz_detection_status, name='mrz_detection_status'),
 ]

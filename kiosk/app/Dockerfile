@@ -6,14 +6,12 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Use German Debian mirror (faster for Egypt/Middle East)
+# Note: No camera/video dependencies needed - this is a backend-only service
 RUN sed -i 's|deb.debian.org|ftp.de.debian.org|g' /etc/apt/sources.list.d/debian.sources && \
     apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     libgl1 \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps first (cache layer)

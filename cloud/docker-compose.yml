@@ -124,40 +124,32 @@ services:
       DEBUG: '0'
       SECRET_KEY: 'replace-me-in-production'
       ALLOWED_HOSTS: '*'
-      # MRZ service connection
-      MRZ_SERVICE_URL: 'http://mrz:5000'
+      # MRZ backend service connection
+      MRZ_SERVICE_URL: 'http://mrz-backend:5000'
     volumes:
       # Persist SQLite database across container restarts
       - kiosk_data:/app/data
       # Persist media files (uploaded scans, filled documents)
       - kiosk_media:/app/media
     depends_on:
-      - mrz
+      - mrz-backend
     restart: unless-stopped
     networks:
       - kiosk-network
 
-  # MRZ AI Microservice (Flask)
-  mrz:
+  # MRZ Backend Microservice (Flask) - API only, no camera hardware
+  # Also serves test frontend at http://localhost:5000/ for development
+  mrz-backend:
     build:
       context: ../kiosk/app
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
+      - "5000:5000"   # API + Test Frontend (http://localhost:5000/)
     environment:
       PYTHONUNBUFFERED: '1'
-      # Camera device index (adjust based on hardware)
-      CAMERA_INDEX: '2'
     volumes:
-      # Persist logs (captured passports and filled documents)
+      # Persist logs (processed passports and filled documents)
       - mrz_logs:/app/Logs
-    # Camera devices - uncomment if camera hardware is connected
-    # devices:
-    #   - /dev/video0:/dev/video0
-    #   - /dev/video2:/dev/video2
-    # Required for camera access (uncomment if using devices above)
-    # group_add:
-    #   - video
     restart: unless-stopped
     networks:
       - kiosk-network

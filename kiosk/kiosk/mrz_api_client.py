@@ -1,6 +1,9 @@
 """
 MRZ API Client
-Communicates with the MRZ microservice for passport scanning and extraction.
+Communicates with the MRZ backend microservice for passport MRZ extraction.
+
+NOTE: The MRZ backend is now a pure API service. Camera capture is handled
+by the browser (WebRTC) and images are sent to this service for processing.
 """
 
 import logging
@@ -12,7 +15,7 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 # Default MRZ service URL - can be overridden via environment variable
-MRZ_SERVICE_URL = os.environ.get('MRZ_SERVICE_URL', 'http://mrz-service:5000')
+MRZ_SERVICE_URL = os.environ.get('MRZ_SERVICE_URL', 'http://mrz-backend:5000')
 
 
 class MRZAPIError(Exception):
@@ -26,13 +29,14 @@ class MRZAPIError(Exception):
 
 class MRZAPIClient:
     """
-    Client for communicating with the MRZ microservice.
+    Client for communicating with the MRZ backend microservice.
     
-    The MRZ service handles:
-    - Camera capture and preview
-    - Document detection
-    - MRZ extraction
-    - Document filling
+    The MRZ backend handles:
+    - Document detection (for auto-capture)
+    - MRZ extraction from images
+    - Document filling (PDF)
+    
+    NOTE: Camera capture is handled by the browser, not the backend.
     """
     
     def __init__(self, base_url: str = None, timeout: int = 30):
@@ -65,90 +69,48 @@ class MRZAPIClient:
             logger.warning(f"MRZ service health check failed: {e}")
             return False
     
-    def start_camera(self) -> dict:
+    def detect_document(self, image_data: str) -> dict:
         """
-        Initialize the camera on the MRZ service.
+        Detect if a document is present in the image.
+        Used for auto-capture functionality.
+        
+        Args:
+            image_data: Base64 encoded image data.
         
         Returns:
-            dict: Response with success status.
+            dict: Detection result with 'detected', 'confidence', 'ready_for_capture'.
         """
         try:
             response = self.session.post(
-                f"{self.base_url}/start_camera",
+                f"{self.base_url}/api/detect",
+                json={'image': image_data},
                 timeout=self.timeout
             )
-            response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
-            logger.error(f"Failed to start camera: {e}")
-            raise MRZAPIError(f"Failed to start camera: {e}")
+            logger.error(f"Failed to detect document: {e}")
+            return {'detected': False, 'error': str(e)}
     
-    def stop_camera(self) -> dict:
+    def extract_from_base64(self, image_data: str, filename: str = "passport.jpg") -> dict:
         """
-        Stop the camera on the MRZ service.
+        Extract MRZ data from a base64 encoded image.
+        
+        Args:
+            image_data: Base64 encoded image data.
+            filename: Original filename for logging.
         
         Returns:
-            dict: Response with success status.
-        """
-        try:
-            response = self.session.post(
-                f"{self.base_url}/stop_camera",
-                timeout=self.timeout
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            logger.error(f"Failed to stop camera: {e}")
-            raise MRZAPIError(f"Failed to stop camera: {e}")
-    
-    def get_video_feed_url(self) -> str:
-        """
-        Get the URL for the video feed stream.
-        
-        Returns:
-            str: URL for the video feed.
-        """
-        return f"{self.base_url}/video_feed"
-    
-    def get_detection_status(self) -> dict:
-        """
-        Get current document detection status.
-        
-        Returns:
-            dict: Detection status with 'detected', 'area_percentage', etc.
-        """
-        try:
-            response = self.session.get(
-                f"{self.base_url}/detection_status",
-                timeout=self.timeout
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            logger.error(f"Failed to get detection status: {e}")
-            raise MRZAPIError(f"Failed to get detection status: {e}")
-    
-    def capture_and_extract(self) -> dict:
-        """
-        Capture passport image and extract MRZ data.
-        
-        Returns:
-            dict: Extracted MRZ data including:
-                - success: bool
-                - data: dict with MRZ fields (surname, given_name, etc.)
-                - image_path: str path to saved image
-                - timestamp: str timestamp of capture
-                - filled_document: dict with document info (if available)
+            dict: Extracted MRZ data.
         
         Raises:
             MRZAPIError: If extraction fails.
         """
         try:
             response = self.session.post(
-                f"{self.base_url}/capture",
+                f"{self.base_url}/api/extract",
+                json={'image': image_data, 'filename': filename},
                 timeout=self.timeout
             )
-            response.raise_for_status()
             result = response.json()
             
             if not result.get('success'):
@@ -159,12 +121,12 @@ class MRZAPIClient:
             
             return result
         except requests.RequestException as e:
-            logger.error(f"Failed to capture and extract: {e}")
-            raise MRZAPIError(f"Failed to capture and extract: {e}")
+            logger.error(f"Failed to extract from base64 image: {e}")
+            raise MRZAPIError(f"Failed to extract from base64 image: {e}")
     
     def extract_from_image(self, image_data: bytes, filename: str = "passport.jpg") -> dict:
         """
-        Extract MRZ data from an uploaded image.
+        Extract MRZ data from an uploaded image (bytes).
         
         Args:
             image_data: Raw image bytes.
@@ -183,7 +145,6 @@ class MRZAPIClient:
                 files=files,
                 timeout=self.timeout
             )
-            response.raise_for_status()
             result = response.json()
             
             if not result.get('success'):

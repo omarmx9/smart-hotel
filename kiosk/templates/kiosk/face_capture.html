@@ -1,0 +1,603 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Face Enrollment - Smart Hotel{% endblock %}
+
+{% block head %}
+<style>
+.enroll-page {
+    max-width: 900px;
+    margin: 0 auto;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.enroll-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.enroll-header .icon-box {
+    flex-shrink: 0;
+}
+
+.enroll-header h1 {
+    margin-bottom: 0.25rem;
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+.enroll-header p {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+.camera-container {
+    position: relative;
+    background: #000;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    aspect-ratio: 4/3;
+    max-width: 600px;
+    margin: 0 auto 1.5rem;
+}
+
+#cameraVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Mirror for selfie camera */
+}
+
+#captureCanvas {
+    display: none;
+}
+
+.camera-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+.face-guide {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 220px;
+    height: 280px;
+    border: 3px dashed rgba(255, 255, 255, 0.5);
+    border-radius: 50% 50% 45% 45%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.face-guide.detected {
+    border-color: #51cf66;
+    border-style: solid;
+    box-shadow: 0 0 30px rgba(81, 207, 102, 0.5);
+}
+
+.face-guide-text {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1rem;
+    text-align: center;
+    padding: 0 20px;
+}
+
+.face-guide.detected .face-guide-text {
+    display: none;
+}
+
+.detection-status {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    background: rgba(0, 0, 0, 0.75);
+    padding: 10px 16px;
+    border-radius: 25px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: white;
+    font-size: 0.9rem;
+    backdrop-filter: blur(10px);
+}
+
+.detection-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ff6b6b;
+    animation: pulse 1.5s infinite;
+}
+
+.detection-dot.detected {
+    background: #51cf66;
+    animation: none;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.capture-countdown {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 5rem;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 0 30px rgba(0, 255, 0, 0.8);
+    display: none;
+}
+
+.processing-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.processing-overlay .spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.camera-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: white;
+    padding: 2rem;
+}
+
+.camera-error svg {
+    width: 50px;
+    height: 50px;
+    margin-bottom: 1rem;
+    color: #ff6b6b;
+}
+
+.capture-instructions {
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.capture-instructions p {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+/* Captured faces grid */
+.captured-faces {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+}
+
+.captured-face {
+    position: relative;
+    width: 100px;
+    height: 120px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 2px solid var(--accent);
+}
+
+.captured-face img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.captured-face .remove-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 0, 0, 0.8);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.capture-counter {
+    text-align: center;
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    color: var(--text-muted);
+}
+
+.capture-counter strong {
+    color: var(--accent);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="enroll-page">
+    <div class="card p-4 p-md-5">
+        <div class="enroll-header">
+            <div class="icon-box icon-brand">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+                    <path d="M8 9c-3.315 0-6 1.567-6 3.5 0 .523.101 1.037.302 1.5H1a1 1 0 0 0-1 1v.5a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V15a1 1 0 0 0-1-1h-1.302c.201-.463.302-.977.302-1.5C14 10.567 11.315 9 8 9z"/>
+                </svg>
+            </div>
+            <div>
+                <h1 data-i18n="face_enrollment">Face Enrollment</h1>
+                <p data-i18n="face_enrollment_instruction">Look at the camera. Your face will be captured automatically.</p>
+            </div>
+        </div>
+
+        <div class="capture-counter">
+            <span data-i18n="faces_captured">Faces captured:</span> 
+            <strong><span id="captureCount">0</span></strong> / <span id="maxCaptures">{{ max_faces|default:4 }}</span>
+        </div>
+
+        <div class="camera-container" id="cameraContainer">
+            <video id="cameraVideo" autoplay playsinline></video>
+            <canvas id="captureCanvas"></canvas>
+            
+            <div class="camera-overlay">
+                <div class="detection-status" id="detectionStatus">
+                    <span class="detection-dot" id="detectionDot"></span>
+                    <span id="detectionText" data-i18n="searching_face">Looking for face...</span>
+                </div>
+                
+                <div class="face-guide" id="faceGuide">
+                    <span class="face-guide-text" data-i18n="position_face">Position your face here</span>
+                </div>
+                
+                <div class="capture-countdown" id="captureCountdown">3</div>
+            </div>
+            
+            <div class="camera-error" id="cameraError" style="display: none;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                <h3 data-i18n="camera_error">Camera Access Denied</h3>
+                <p data-i18n="camera_error_message">Please allow camera access.</p>
+                <button class="btn btn-primary mt-3" onclick="initCamera()" data-i18n="retry">Retry</button>
+            </div>
+            
+            <div class="processing-overlay" id="processingOverlay" style="display: none;">
+                <div class="spinner"></div>
+                <p data-i18n="processing_face">Processing...</p>
+            </div>
+        </div>
+
+        <div class="capture-instructions">
+            <p data-i18n="face_instruction">Position your face within the oval guide. Stay still for automatic capture.</p>
+        </div>
+
+        <div class="captured-faces" id="capturedFaces">
+            <!-- Captured faces will appear here -->
+        </div>
+
+        <form id="enrollForm" method="post" action="{% url 'kiosk:save_faces' reservation.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="face_data" id="faceDataInput" value="[]">
+            
+            <div class="action-buttons">
+                <a href="{% url 'kiosk:finalize' reservation.id %}" class="btn btn-outline-secondary btn-lg">
+                    <span data-i18n="skip">Skip</span>
+                </a>
+                <button type="button" class="btn btn-secondary btn-lg" id="addAnotherBtn" style="display: none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 8px;">
+                        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                    </svg>
+                    <span data-i18n="add_another">Add Another</span>
+                </button>
+                <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>
+                    <span data-i18n="continue">Continue</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="margin-left: 8px;">
+                        <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Configuration
+const MAX_FACES = parseInt('{{ max_faces|default:4 }}');
+const DETECTION_THRESHOLD = 5; // Consecutive detections before capture
+const DETECTION_INTERVAL = 300; // ms between detection checks
+
+// State
+let stream = null;
+let detectionInterval = null;
+let consecutiveDetections = 0;
+let isProcessing = false;
+let capturedFaces = [];
+
+// DOM Elements
+const video = document.getElementById('cameraVideo');
+const canvas = document.getElementById('captureCanvas');
+const detectionDot = document.getElementById('detectionDot');
+const detectionText = document.getElementById('detectionText');
+const faceGuide = document.getElementById('faceGuide');
+const countdown = document.getElementById('captureCountdown');
+const cameraError = document.getElementById('cameraError');
+const processingOverlay = document.getElementById('processingOverlay');
+const capturedFacesContainer = document.getElementById('capturedFaces');
+const captureCountEl = document.getElementById('captureCount');
+const submitBtn = document.getElementById('submitBtn');
+const addAnotherBtn = document.getElementById('addAnotherBtn');
+const faceDataInput = document.getElementById('faceDataInput');
+
+// Initialize camera on page load
+document.addEventListener('DOMContentLoaded', initCamera);
+
+async function initCamera() {
+    cameraError.style.display = 'none';
+    
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: 'user' // Front camera for face
+            }
+        });
+        
+        video.srcObject = stream;
+        
+        video.onloadedmetadata = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            startDetectionLoop();
+        };
+        
+    } catch (error) {
+        console.error('Camera error:', error);
+        cameraError.style.display = 'block';
+    }
+}
+
+function startDetectionLoop() {
+    if (detectionInterval) return;
+    if (capturedFaces.length >= MAX_FACES) return;
+    
+    detectionInterval = setInterval(async () => {
+        if (isProcessing || !stream) return;
+        
+        // Simple face detection using canvas brightness analysis in center region
+        // In production, you'd use a proper face detection API
+        const detected = detectFaceSimple();
+        
+        if (detected) {
+            consecutiveDetections++;
+            updateDetectionUI(true);
+            
+            if (consecutiveDetections >= DETECTION_THRESHOLD) {
+                stopDetectionLoop();
+                performCapture();
+            }
+        } else {
+            consecutiveDetections = 0;
+            updateDetectionUI(false);
+        }
+        
+    }, DETECTION_INTERVAL);
+}
+
+function detectFaceSimple() {
+    // Simple detection based on center region having content
+    // In production, use face-api.js or similar
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    // Check center region for variance (indicating a face)
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const regionSize = 100;
+    
+    try {
+        const imageData = ctx.getImageData(
+            centerX - regionSize/2, 
+            centerY - regionSize/2, 
+            regionSize, 
+            regionSize
+        );
+        
+        // Calculate variance - higher variance suggests content
+        let sum = 0;
+        let sumSq = 0;
+        for (let i = 0; i < imageData.data.length; i += 4) {
+            const gray = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
+            sum += gray;
+            sumSq += gray * gray;
+        }
+        const n = imageData.data.length / 4;
+        const mean = sum / n;
+        const variance = (sumSq / n) - (mean * mean);
+        
+        // If variance is above threshold, assume face is present
+        return variance > 500;
+    } catch (e) {
+        return false;
+    }
+}
+
+function stopDetectionLoop() {
+    if (detectionInterval) {
+        clearInterval(detectionInterval);
+        detectionInterval = null;
+    }
+}
+
+function updateDetectionUI(detected) {
+    if (detected) {
+        detectionDot.classList.add('detected');
+        detectionText.textContent = 'Face detected - Hold still...';
+        faceGuide.classList.add('detected');
+    } else {
+        detectionDot.classList.remove('detected');
+        detectionText.textContent = 'Looking for face...';
+        faceGuide.classList.remove('detected');
+    }
+}
+
+async function performCapture() {
+    if (isProcessing) return;
+    isProcessing = true;
+    
+    // Show countdown
+    countdown.style.display = 'block';
+    countdown.textContent = '📸';
+    
+    setTimeout(() => {
+        countdown.style.display = 'none';
+        processingOverlay.style.display = 'flex';
+        
+        // Capture frame
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.scale(-1, 1); // Mirror to match video display
+        ctx.drawImage(video, -canvas.width, 0);
+        ctx.restore();
+        
+        const imageData = canvas.toDataURL('image/jpeg', 0.9);
+        
+        // Add to captured faces
+        addCapturedFace(imageData);
+        
+        processingOverlay.style.display = 'none';
+        isProcessing = false;
+        consecutiveDetections = 0;
+        
+        // Check if we can capture more
+        if (capturedFaces.length < MAX_FACES) {
+            addAnotherBtn.style.display = 'inline-flex';
+        } else {
+            stopDetectionLoop();
+        }
+        
+    }, 500);
+}
+
+function addCapturedFace(imageData) {
+    capturedFaces.push(imageData);
+    
+    // Update UI
+    const faceEl = document.createElement('div');
+    faceEl.className = 'captured-face';
+    faceEl.innerHTML = `
+        <img src="${imageData}" alt="Face ${capturedFaces.length}">
+        <button type="button" class="remove-btn" onclick="removeFace(${capturedFaces.length - 1})">×</button>
+    `;
+    capturedFacesContainer.appendChild(faceEl);
+    
+    // Update counter and form data
+    captureCountEl.textContent = capturedFaces.length;
+    faceDataInput.value = JSON.stringify(capturedFaces);
+    
+    // Enable submit button
+    submitBtn.disabled = false;
+}
+
+function removeFace(index) {
+    capturedFaces.splice(index, 1);
+    
+    // Rebuild UI
+    capturedFacesContainer.innerHTML = '';
+    capturedFaces.forEach((img, i) => {
+        const faceEl = document.createElement('div');
+        faceEl.className = 'captured-face';
+        faceEl.innerHTML = `
+            <img src="${img}" alt="Face ${i + 1}">
+            <button type="button" class="remove-btn" onclick="removeFace(${i})">×</button>
+        `;
+        capturedFacesContainer.appendChild(faceEl);
+    });
+    
+    // Update counter and form data
+    captureCountEl.textContent = capturedFaces.length;
+    faceDataInput.value = JSON.stringify(capturedFaces);
+    
+    // Update buttons
+    submitBtn.disabled = capturedFaces.length === 0;
+    if (capturedFaces.length < MAX_FACES) {
+        addAnotherBtn.style.display = 'inline-flex';
+    }
+    
+    // Restart detection if we have room
+    if (capturedFaces.length < MAX_FACES && !detectionInterval) {
+        startDetectionLoop();
+    }
+}
+
+// Add another face button
+addAnotherBtn.addEventListener('click', () => {
+    addAnotherBtn.style.display = 'none';
+    startDetectionLoop();
+});
+
+function stopCamera() {
+    stopDetectionLoop();
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', stopCamera);
+</script>
+{% endblock %}

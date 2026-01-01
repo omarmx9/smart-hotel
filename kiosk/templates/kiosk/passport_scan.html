@@ -1,0 +1,689 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Scan Passport - Smart Hotel{% endblock %}
+
+{% block head %}
+<style>
+.scan-page {
+    max-width: 1000px;
+    margin: 0 auto;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.scan-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.scan-header .icon-box {
+    flex-shrink: 0;
+}
+
+.scan-header h1 {
+    margin-bottom: 0.25rem;
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+.scan-header p {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+.camera-container {
+    position: relative;
+    background: #000;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    aspect-ratio: 16/9;
+    margin-bottom: 1.5rem;
+}
+
+#cameraVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#captureCanvas {
+    display: none;
+}
+
+.camera-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+.detection-status {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    background: rgba(0, 0, 0, 0.75);
+    padding: 10px 16px;
+    border-radius: 25px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: white;
+    font-size: 0.9rem;
+    backdrop-filter: blur(10px);
+}
+
+.detection-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ff6b6b;
+    animation: pulse 1.5s infinite;
+}
+
+.detection-dot.detected {
+    background: #51cf66;
+    animation: none;
+}
+
+.detection-dot.capturing {
+    background: #ffd43b;
+    animation: flash 0.3s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@keyframes flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.capture-countdown {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 6rem;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 0 30px rgba(0, 255, 0, 0.8);
+    display: none;
+}
+
+.passport-guide {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 70%;
+    height: 70%;
+    border: 3px dashed rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.passport-guide.detected {
+    border-color: #51cf66;
+    border-style: solid;
+    box-shadow: 0 0 20px rgba(81, 207, 102, 0.5);
+}
+
+.passport-guide-text {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 1.1rem;
+    text-align: center;
+    padding: 0 20px;
+}
+
+.passport-guide.detected .passport-guide-text {
+    display: none;
+}
+
+.camera-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: white;
+    padding: 2rem;
+}
+
+.camera-error svg {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 1rem;
+    color: #ff6b6b;
+}
+
+.processing-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.processing-overlay .spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.scan-instructions {
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.scan-instructions ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.scan-instructions li {
+    margin-bottom: 0.5rem;
+    color: var(--text-muted);
+}
+
+.scan-instructions li:last-child {
+    margin-bottom: 0;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Results section */
+.results-section {
+    display: none;
+}
+
+.results-section.visible {
+    display: block;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.result-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.result-header .icon-box {
+    background: linear-gradient(135deg, #51cf66, #40c057);
+}
+
+.result-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.passport-data-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.data-field {
+    background: var(--bg);
+    padding: 1rem;
+    border-radius: var(--radius);
+    border-left: 4px solid var(--accent);
+}
+
+.data-field .label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.data-field .value {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+    .passport-data-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="scan-page">
+    <!-- Camera Section -->
+    <div class="card p-4 p-md-5 mb-4" id="cameraSection">
+        <div class="scan-header">
+            <div class="icon-box icon-brand">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H6zm6 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm-4 9h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2z"/>
+                </svg>
+            </div>
+            <div>
+                <h1 data-i18n="scan_passport">Scan Your Passport</h1>
+                <p data-i18n="scan_passport_instruction">Position your passport within the guide. It will be captured automatically.</p>
+            </div>
+        </div>
+
+        <div class="camera-container" id="cameraContainer">
+            <video id="cameraVideo" autoplay playsinline></video>
+            <canvas id="captureCanvas"></canvas>
+            
+            <div class="camera-overlay">
+                <div class="detection-status" id="detectionStatus">
+                    <span class="detection-dot" id="detectionDot"></span>
+                    <span id="detectionText" data-i18n="searching_document">Searching for document...</span>
+                </div>
+                
+                <div class="passport-guide" id="passportGuide">
+                    <span class="passport-guide-text" data-i18n="position_passport">Position passport here</span>
+                </div>
+                
+                <div class="capture-countdown" id="captureCountdown">3</div>
+            </div>
+            
+            <div class="camera-error" id="cameraError" style="display: none;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                <h3 data-i18n="camera_error">Camera Access Denied</h3>
+                <p data-i18n="camera_error_message">Please allow camera access to scan your passport.</p>
+                <button class="btn btn-primary mt-3" onclick="initCamera()" data-i18n="retry">Retry</button>
+            </div>
+            
+            <div class="processing-overlay" id="processingOverlay" style="display: none;">
+                <div class="spinner"></div>
+                <h3 data-i18n="processing_passport">Processing passport...</h3>
+                <p data-i18n="please_wait">Please wait</p>
+            </div>
+        </div>
+
+        <div class="scan-instructions">
+            <ul>
+                <li data-i18n="instruction_1">Hold your passport flat and steady</li>
+                <li data-i18n="instruction_2">Ensure the MRZ (bottom text lines) is visible</li>
+                <li data-i18n="instruction_3">The camera will auto-capture when aligned</li>
+            </ul>
+        </div>
+
+        <div class="action-buttons">
+            <a href="{% url 'kiosk:checkin' %}" class="btn btn-outline-secondary btn-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 8px;">
+                    <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+                </svg>
+                <span data-i18n="back">Back</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="card p-4 p-md-5 results-section" id="resultsSection">
+        <div class="result-header">
+            <div class="icon-box">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
+                </svg>
+            </div>
+            <h2 data-i18n="passport_scanned">Passport Scanned Successfully</h2>
+        </div>
+
+        <div class="passport-data-grid" id="passportDataGrid">
+            <!-- Populated by JavaScript -->
+        </div>
+
+        <form id="verifyForm" method="post" action="{% url 'kiosk:verify_info' %}">
+            {% csrf_token %}
+            <input type="hidden" name="first_name" id="inputFirstName">
+            <input type="hidden" name="last_name" id="inputLastName">
+            <input type="hidden" name="passport_number" id="inputPassportNumber">
+            <input type="hidden" name="date_of_birth" id="inputDateOfBirth">
+            <input type="hidden" name="nationality" id="inputNationality">
+            <input type="hidden" name="access_method" value="keycard">
+
+            <div class="mb-4">
+                <label class="form-label fw-bold" data-i18n="access_method">Access Method</label>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="access-option w-100 selected" for="access_keycard">
+                            <input class="form-check-input d-none" type="radio" name="access_method" value="keycard" id="access_keycard" checked>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v1h14V4a1 1 0 0 0-1-1H2zm13 4H1v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7z"/>
+                                <path d="M2 10a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-1z"/>
+                            </svg>
+                            <span data-i18n="keycard">Keycard</span>
+                        </label>
+                    </div>
+                    <div class="col-6">
+                        <label class="access-option w-100" for="access_face">
+                            <input class="form-check-input d-none" type="radio" name="access_method" value="face" id="access_face">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
+                            </svg>
+                            <span data-i18n="face_id">Face ID</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-outline-secondary btn-lg" onclick="resetScan()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 8px;">
+                        <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                        <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                    </svg>
+                    <span data-i18n="scan_again">Scan Again</span>
+                </button>
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <span data-i18n="continue">Continue</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="margin-left: 8px;">
+                        <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Configuration
+const MRZ_SERVICE_URL = '{{ mrz_service_url|default:"/api/mrz" }}';
+const DETECTION_THRESHOLD = 3; // Consecutive detections before capture
+const DETECTION_INTERVAL = 500; // ms between detection checks
+
+// State
+let stream = null;
+let detectionInterval = null;
+let consecutiveDetections = 0;
+let isProcessing = false;
+
+// DOM Elements
+const video = document.getElementById('cameraVideo');
+const canvas = document.getElementById('captureCanvas');
+const detectionDot = document.getElementById('detectionDot');
+const detectionText = document.getElementById('detectionText');
+const passportGuide = document.getElementById('passportGuide');
+const countdown = document.getElementById('captureCountdown');
+const cameraError = document.getElementById('cameraError');
+const processingOverlay = document.getElementById('processingOverlay');
+const cameraSection = document.getElementById('cameraSection');
+const resultsSection = document.getElementById('resultsSection');
+
+// Initialize camera on page load
+document.addEventListener('DOMContentLoaded', initCamera);
+
+async function initCamera() {
+    cameraError.style.display = 'none';
+    
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                facingMode: 'environment'
+            }
+        });
+        
+        video.srcObject = stream;
+        
+        video.onloadedmetadata = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            startDetectionLoop();
+        };
+        
+    } catch (error) {
+        console.error('Camera error:', error);
+        cameraError.style.display = 'block';
+    }
+}
+
+function startDetectionLoop() {
+    if (detectionInterval) return;
+    
+    detectionInterval = setInterval(async () => {
+        if (isProcessing || !stream) return;
+        
+        try {
+            // Capture frame
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+            
+            // Send to detection endpoint
+            const response = await fetch(MRZ_SERVICE_URL + '/detect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData })
+            });
+            
+            const result = await response.json();
+            
+            if (result.detected && result.ready_for_capture) {
+                consecutiveDetections++;
+                updateDetectionUI(true, result.confidence);
+                
+                if (consecutiveDetections >= DETECTION_THRESHOLD) {
+                    stopDetectionLoop();
+                    performCapture();
+                }
+            } else {
+                consecutiveDetections = 0;
+                updateDetectionUI(false, 0);
+            }
+            
+        } catch (error) {
+            console.error('Detection error:', error);
+        }
+        
+    }, DETECTION_INTERVAL);
+}
+
+function stopDetectionLoop() {
+    if (detectionInterval) {
+        clearInterval(detectionInterval);
+        detectionInterval = null;
+    }
+}
+
+function updateDetectionUI(detected, confidence) {
+    if (detected) {
+        detectionDot.classList.add('detected');
+        detectionText.textContent = `Document detected (${confidence.toFixed(0)}%)`;
+        passportGuide.classList.add('detected');
+    } else {
+        detectionDot.classList.remove('detected');
+        detectionText.textContent = 'Searching for document...';
+        passportGuide.classList.remove('detected');
+    }
+}
+
+async function performCapture() {
+    if (isProcessing) return;
+    isProcessing = true;
+    
+    // Show countdown
+    detectionDot.classList.add('capturing');
+    countdown.style.display = 'block';
+    countdown.textContent = '📸';
+    
+    setTimeout(async () => {
+        countdown.style.display = 'none';
+        processingOverlay.style.display = 'flex';
+        
+        try {
+            // Capture high-quality frame
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+            
+            // Send to extraction endpoint
+            const response = await fetch(MRZ_SERVICE_URL + '/extract', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    image: imageData,
+                    filename: 'passport_scan.jpg'
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showResults(result.data);
+            } else {
+                showError(result.error || 'Failed to extract passport data');
+                resetForRetry();
+            }
+            
+        } catch (error) {
+            console.error('Extraction error:', error);
+            showError('Connection error. Please try again.');
+            resetForRetry();
+        }
+        
+    }, 300);
+}
+
+function showResults(data) {
+    processingOverlay.style.display = 'none';
+    stopCamera();
+    
+    // Populate form fields
+    document.getElementById('inputFirstName').value = data.given_name || '';
+    document.getElementById('inputLastName').value = data.surname || '';
+    document.getElementById('inputPassportNumber').value = data.document_number || '';
+    document.getElementById('inputDateOfBirth').value = formatDate(data.birth_date);
+    document.getElementById('inputNationality').value = data.nationality_code || '';
+    
+    // Build data display
+    const grid = document.getElementById('passportDataGrid');
+    grid.innerHTML = `
+        <div class="data-field">
+            <div class="label" data-i18n="surname">Surname</div>
+            <div class="value">${data.surname || '-'}</div>
+        </div>
+        <div class="data-field">
+            <div class="label" data-i18n="given_names">Given Names</div>
+            <div class="value">${data.given_name || '-'}</div>
+        </div>
+        <div class="data-field">
+            <div class="label" data-i18n="passport_number">Passport Number</div>
+            <div class="value">${data.document_number || '-'}</div>
+        </div>
+        <div class="data-field">
+            <div class="label" data-i18n="nationality">Nationality</div>
+            <div class="value">${data.nationality_code || '-'}</div>
+        </div>
+        <div class="data-field">
+            <div class="label" data-i18n="date_of_birth">Date of Birth</div>
+            <div class="value">${formatDate(data.birth_date) || '-'}</div>
+        </div>
+        <div class="data-field">
+            <div class="label" data-i18n="sex">Sex</div>
+            <div class="value">${data.sex || '-'}</div>
+        </div>
+    `;
+    
+    // Show results section
+    cameraSection.style.display = 'none';
+    resultsSection.classList.add('visible');
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    // Handle YYMMDD format
+    if (dateStr.length === 6) {
+        const year = parseInt(dateStr.substring(0, 2));
+        const month = dateStr.substring(2, 4);
+        const day = dateStr.substring(4, 6);
+        const century = year > 30 ? '19' : '20';
+        return `${century}${year}-${month}-${day}`;
+    }
+    return dateStr;
+}
+
+function showError(message) {
+    alert(message); // Simple alert for now, can be replaced with toast
+}
+
+function resetForRetry() {
+    isProcessing = false;
+    consecutiveDetections = 0;
+    processingOverlay.style.display = 'none';
+    detectionDot.classList.remove('capturing');
+    
+    setTimeout(() => {
+        startDetectionLoop();
+    }, 1000);
+}
+
+function resetScan() {
+    resultsSection.classList.remove('visible');
+    cameraSection.style.display = 'block';
+    isProcessing = false;
+    consecutiveDetections = 0;
+    
+    initCamera();
+}
+
+function stopCamera() {
+    stopDetectionLoop();
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+}
+
+// Access method toggle
+document.querySelectorAll('input[name="access_method"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+        document.querySelectorAll('.access-option').forEach(opt => opt.classList.remove('selected'));
+        e.target.closest('.access-option').classList.add('selected');
+    });
+});
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', stopCamera);
+</script>
+{% endblock %}

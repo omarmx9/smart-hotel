@@ -803,10 +803,46 @@ def mrz_video_feed_url(request):
 
 
 @csrf_exempt
-def mrz_capture(request):
+def mrz_detect(request):
     """
-    Trigger passport capture via the MRZ microservice.
-    Returns the extracted MRZ data.
+    Proxy document detection request to MRZ backend service.
+    Used for auto-capture functionality with browser camera.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST only'}, status=400)
+    
+    if not USE_MRZ_SERVICE:
+        # Fallback: simple detection simulation
+        return JsonResponse({
+            'detected': False,
+            'confidence': 0,
+            'ready_for_capture': False,
+            'mode': 'local'
+        })
+    
+    try:
+        import requests
+        from .mrz_api_client import MRZ_SERVICE_URL
+        
+        # Forward the request body to the MRZ backend
+        response = requests.post(
+            f"{MRZ_SERVICE_URL}/api/detect",
+            json=request.body and json.loads(request.body) or {},
+            timeout=5
+        )
+        return JsonResponse(response.json())
+    except Exception as e:
+        return JsonResponse({
+            'detected': False,
+            'error': str(e)
+        })
+
+
+@csrf_exempt
+def mrz_extract(request):
+    """
+    Proxy MRZ extraction request to MRZ backend service.
+    Receives base64 image from browser camera and returns extracted data.
     """
     if request.method != 'POST':
         return JsonResponse({'error': 'POST only'}, status=400)
@@ -819,26 +855,31 @@ def mrz_capture(request):
         })
     
     try:
-        client = get_mrz_client()
-        result = client.capture_and_extract()
+        import requests
+        from .mrz_api_client import MRZ_SERVICE_URL
         
-        # Convert to kiosk format
-        kiosk_data = convert_mrz_to_kiosk_format(result.get('data', {}))
+        # Forward the request body to the MRZ backend
+        body = json.loads(request.body) if request.body else {}
+        response = requests.post(
+            f"{MRZ_SERVICE_URL}/api/extract",
+            json=body,
+            timeout=30
+        )
+        result = response.json()
         
-        return JsonResponse({
-            'success': True,
-            'data': kiosk_data,
-            'raw_data': result.get('data'),
-            'timestamp': result.get('timestamp'),
-            'filled_document': result.get('filled_document')
-        })
-    except MRZAPIError as e:
-        return JsonResponse({
-            'success': False,
-            'error': e.message,
-            'error_code': e.error_code,
-            'details': e.details
-        }, status=422)
+        if result.get('success'):
+            # Convert to kiosk format
+            kiosk_data = convert_mrz_to_kiosk_format(result.get('data', {}))
+            return JsonResponse({
+                'success': True,
+                'data': result.get('data'),  # Return raw data for display
+                'kiosk_data': kiosk_data,    # Also return kiosk format
+                'timestamp': result.get('timestamp'),
+                'filled_document': result.get('filled_document')
+            })
+        else:
+            return JsonResponse(result, status=422)
+            
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -846,54 +887,65 @@ def mrz_capture(request):
         }, status=500)
 
 
-@csrf_exempt
-def mrz_start_camera(request):
-    """Start the camera on the MRZ microservice."""
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST only'}, status=400)
+def passport_scan(request):
+    """
+    Passport scanning page with browser-based camera and auto-capture.
+    Uses WebRTC to capture from browser, sends to MRZ backend for processing.
+    """
+    mrz_service_url = '/api/mrz'  # Proxy through Django
+    return render(request, 'kiosk/passport_scan.html', {
+        'mrz_service_url': mrz_service_url
+    })
+
+
+def face_capture(request, reservation_id):
+    """
+    Face capture page with browser-based camera and auto-capture on face detection.
+    """
+    from . import emulator as db
+    reservation = db.get_reservation(reservation_id)
+    if not reservation:
+        raise Http404('Reservation not found')
     
-    if not USE_MRZ_SERVICE:
-        return JsonResponse({'success': False, 'error': 'MRZ service not configured'})
+    # Get room capacity for max faces
+    room = reservation.get('room')
+    max_faces = room.get('capacity', 4) if room else 4
     
-    try:
-        client = get_mrz_client()
-        result = client.start_camera()
-        return JsonResponse(result)
-    except MRZAPIError as e:
-        return JsonResponse({'success': False, 'error': e.message}, status=422)
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    return render(request, 'kiosk/face_capture.html', {
+        'reservation': reservation,
+        'max_faces': max_faces
+    })
 
 
 @csrf_exempt
-def mrz_stop_camera(request):
-    """Stop the camera on the MRZ microservice."""
+def save_faces(request, reservation_id):
+    """
+    Save captured face images for a reservation.
+    Receives JSON array of base64 face images from browser camera.
+    """
     if request.method != 'POST':
         return JsonResponse({'error': 'POST only'}, status=400)
     
-    if not USE_MRZ_SERVICE:
-        return JsonResponse({'success': False, 'error': 'MRZ service not configured'})
+    from . import emulator as db
+    reservation = db.get_reservation(reservation_id)
+    if not reservation:
+        raise Http404('Reservation not found')
     
     try:
-        client = get_mrz_client()
-        result = client.stop_camera()
-        return JsonResponse(result)
-    except MRZAPIError as e:
-        return JsonResponse({'success': False, 'error': e.message}, status=422)
+        face_data = request.POST.get('face_data', '[]')
+        faces = json.loads(face_data)
+        
+        # In production, save face images to storage and register with face recognition system
+        # For now, just store the count
+        enrolled_count = len(faces)
+        
+        # Update reservation or guest with face enrollment status
+        # db.update_reservation_faces(reservation_id, enrolled_count)
+        
+        return redirect('kiosk:finalize', reservation_id=reservation_id)
+        
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
-
-
-def mrz_detection_status(request):
-    """Get the current document detection status from MRZ service."""
-    if not USE_MRZ_SERVICE:
-        return JsonResponse({'success': False, 'error': 'MRZ service not configured'})
-    
-    try:
-        client = get_mrz_client()
-        result = client.get_detection_status()
-        return JsonResponse(result)
-    except MRZAPIError as e:
-        return JsonResponse({'success': False, 'error': e.message}, status=422)
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
