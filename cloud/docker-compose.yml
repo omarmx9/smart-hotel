@@ -125,7 +125,7 @@ services:
       SECRET_KEY: 'replace-me-in-production'
       ALLOWED_HOSTS: '*'
       # MRZ backend service connection
-      MRZ_SERVICE_URL: 'http://mrz-backend:5001'
+      MRZ_SERVICE_URL: 'http://mrz-backend:5000'
     volumes:
       # Persist SQLite database across container restarts
       - kiosk_data:/app/data
@@ -144,7 +144,7 @@ services:
       context: ../kiosk/app
       dockerfile: Dockerfile
     # No ports exposed in production - only accessible internally by kiosk service
-    # Use docker-compose-dev.yml to expose port 5001 for testing
+    # Use docker-compose-dev.yml to expose port 5000 for testing
     environment:
       PYTHONUNBUFFERED: '1'
     volumes:
