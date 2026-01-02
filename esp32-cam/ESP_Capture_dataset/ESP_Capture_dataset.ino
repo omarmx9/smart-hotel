@@ -270,13 +270,19 @@ const char index_html[] PROGMEM = R"rawliteral(
         </div>
 
         <div class="input-group">
-            <label for="resolution">Resolution:</label>
+            <label for="resolution">Resolution (RHYX M21-45 max: 240x240):</label>
             <select id="resolution" onchange="changeResolution()">
-                <option value="10">UXGA (1600x1200)</option>
-                <option value="9">SXGA (1280x1024)</option>
-                <option value="8" selected>XGA (1024x768)</option>
-                <option value="7">SVGA (800x600)</option>
-                <option value="6">VGA (640x480)</option>
+                <option value="10" disabled>UXGA (1600x1200) - Not supported</option>
+                <option value="9" disabled>SXGA (1280x1024) - Not supported</option>
+                <option value="8" disabled>XGA (1024x768) - Not supported</option>
+                <option value="7" disabled>SVGA (800x600) - Not supported</option>
+                <option value="6" disabled>VGA (640x480) - Not supported</option>
+                <option value="5" disabled>CIF (400x296) - Not supported</option>
+                <option value="4" disabled>QVGA (320x240) - Not supported</option>
+                <option value="3" disabled>HQVGA (240x176) - Not supported</option>
+                <option value="2" disabled>QCIF (176x144) - Not supported</option>
+                <option value="1" disabled>QQVGA (160x120) - Not supported</option>
+                <option value="17" selected>240x240 - ONLY supported size!</option>
                 <option value="5">CIF (400x296)</option>
                 <option value="4">QVGA (320x240)</option>
                 <option value="3">HQVGA (240x176)</option>
@@ -314,6 +320,8 @@ const char index_html[] PROGMEM = R"rawliteral(
         <div class="tips">
             <h3>Tips for Best Results:</h3>
             <ul>
+                <li><strong>⚠️ RHYX M21-45 is limited to 240x240 resolution only!</strong></li>
+                <li>This sensor has NO hardware JPEG encoder</li>
                 <li>Capture 25-30 images per person minimum</li>
                 <li>Vary head angles and expressions</li>
                 <li>Different lighting conditions</li>
@@ -630,68 +638,62 @@ static esp_err_t index_handler(httpd_req_t *req) {
 }
 
 static esp_err_t stream_handler(httpd_req_t *req) {
-    if (useJPEG) {
-        camera_fb_t * fb = NULL;
-        esp_err_t res = ESP_OK;
-        size_t _jpg_buf_len = 0;
-        uint8_t * _jpg_buf = NULL;
-        char * part_buf[64];
+    camera_fb_t * fb = NULL;
+    esp_err_t res = ESP_OK;
+    size_t _jpg_buf_len = 0;
+    uint8_t * _jpg_buf = NULL;
+    char * part_buf[64];
 
-        res = httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=frame");
-        if(res != ESP_OK){
-            return res;
-        }
+    res = httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=frame");
+    if(res != ESP_OK){
+        return res;
+    }
 
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
-        while(true){
-            fb = esp_camera_fb_get();
-            if (!fb) {
-                Serial.println("Camera capture failed");
-                res = ESP_FAIL;
-            } else {
-                if(fb->format != PIXFORMAT_JPEG){
-                    bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
-                    esp_camera_fb_return(fb);
-                    fb = NULL;
-                    if(!jpeg_converted){
-                        Serial.println("JPEG compression failed");
-                        res = ESP_FAIL;
-                    }
-                } else {
-                    _jpg_buf_len = fb->len;
-                    _jpg_buf = fb->buf;
-                }
-            }
-            if(res == ESP_OK){
-                size_t hlen = snprintf((char *)part_buf, 64, "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", _jpg_buf_len);
-                res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
-            }
-            if(res == ESP_OK){
-                res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
-            }
-            if(res == ESP_OK){
-                res = httpd_resp_send_chunk(req, "\r\n--frame\r\n", 12);
-            }
-            if(fb){
+    while(true){
+        fb = esp_camera_fb_get();
+        if (!fb) {
+            Serial.println("Camera capture failed");
+            res = ESP_FAIL;
+        } else {
+            // Always convert to JPEG if not already in JPEG format
+            if(fb->format != PIXFORMAT_JPEG){
+                bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
                 esp_camera_fb_return(fb);
                 fb = NULL;
-                _jpg_buf = NULL;
-            } else if(_jpg_buf){
-                free(_jpg_buf);
-                _jpg_buf = NULL;
-            }
-            if(res != ESP_OK){
-                break;
+                if(!jpeg_converted){
+                    Serial.println("JPEG compression failed");
+                    res = ESP_FAIL;
+                }
+            } else {
+                _jpg_buf_len = fb->len;
+                _jpg_buf = fb->buf;
             }
         }
-        return res;
-    } else {
-        // Return small PNG placeholder so <img src="/stream"> still renders
-        httpd_resp_set_type(req, "image/png");
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-        return httpd_resp_send(req, (const char *)placeholder_png, placeholder_png_len);
+        if(res == ESP_OK){
+            size_t hlen = snprintf((char *)part_buf, 64, "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", _jpg_buf_len);
+            res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
+        }
+        if(res == ESP_OK){
+            res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
+        }
+        if(res == ESP_OK){
+            res = httpd_resp_send_chunk(req, "\r\n--frame\r\n", 12);
+        }
+        if(fb){
+            esp_camera_fb_return(fb);
+            fb = NULL;
+            _jpg_buf = NULL;
+        } else if(_jpg_buf){
+            free(_jpg_buf);
+            _jpg_buf = NULL;
+        }
+        if(res != ESP_OK){
+            break;
+        }
     }
+    return res;
 }
 
 static esp_err_t capture_handler(httpd_req_t *req) {
@@ -952,14 +954,14 @@ void setup() {
   config.pin_sccb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  // Safe defaults: GRAYSCALE fallback to prevent "JPEG unsupported" errors
-  config.pixel_format = PIXFORMAT_GRAYSCALE;
-  config.frame_size = FRAMESIZE_QVGA; // safe default
-  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  config.xclk_freq_hz = 20000000;  // RHYX M21-45 (GC2415) requires 20MHz
+  // RHYX M21-45 config: NO JPEG encoder, limited by frame buffer size
+  config.pixel_format = PIXFORMAT_RGB565;
+  config.frame_size = FRAMESIZE_240X240;  // CRITICAL: Max size for this sensor!
+  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;  // Required for stability
   config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
+  config.jpeg_quality = 12;  // For JPEG conversion in streaming
+  config.fb_count = 2;  // Essential for this sensor
 
   // 2. Try initial init with safe defaults
   esp_err_t err = esp_camera_init(&config);
@@ -969,7 +971,7 @@ void setup() {
     return;
   }
 
-  // 3. Query sensor and if it supports JPEG, re-init requesting JPEG for previews
+  // 3. Query sensor and check capabilities
   sensor_t * s = esp_camera_sensor_get();
   if (!s) {
     Serial.println("Sensor not detected after init");
@@ -978,8 +980,8 @@ void setup() {
   }
   Serial.printf("Sensor PID: 0x%x\n", s->id.PID);
 
-  // Most common JPEG-capable sensors (OV2640, OV3660). Others typically are not hardware-JPEG.
-  if (s->id.PID == OV2640_PID || s->id.PID == OV3660_PID) {
+  // RHYX M21-45 (GC2415) does NOT support hardware JPEG - uses RGB565
+  if (s->id.PID == OV2640_PID || s->id.PID == OV3660_PID || s->id.PID == OV5640_PID) {
     Serial.println("JPEG-capable sensor detected; reconfiguring for JPEG previews...");
     // Deinit and re-init with JPEG config
     esp_camera_deinit();
@@ -1003,14 +1005,15 @@ void setup() {
             dbg("[BOOT] JPEG re-init OK");
     } else {
       // if re-init fails, fall back to the already-inited grayscale session by re-initializing grayscale
-      Serial.printf("Re-init with JPEG failed (0x%x). Falling back to grayscale.\n", err);
-            dbg("[BOOT] JPEG re-init failed, fallback grayscale");
-      // Attempt to re-init grayscale
+      Serial.printf("Re-init with JPEG failed (0x%x). Falling back to RGB565.\n", err);
+            dbg("[BOOT] JPEG re-init failed, fallback RGB565");
+      // Attempt to re-init with RGB565 for RHYX M21-45
       esp_camera_deinit();
-      config.pixel_format = PIXFORMAT_GRAYSCALE;
-      config.frame_size = FRAMESIZE_QVGA;
+      config.pixel_format = PIXFORMAT_RGB565;
+      config.frame_size = FRAMESIZE_240X240;  // RHYX M21-45 max resolution
       config.fb_location = CAMERA_FB_IN_PSRAM;
-      config.fb_count = 1;
+      config.fb_count = 2;
+      config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
       err = esp_camera_init(&config);
       if (err != ESP_OK) {
         Serial.printf("Fallback re-init failed with error 0x%x\n", err);
@@ -1019,9 +1022,9 @@ void setup() {
       useJPEG = false;
     }
   } else {
-    Serial.println("Sensor is not JPEG-capable; using GRAYSCALE fallback.");
+    Serial.println("Sensor is not JPEG-capable (RHYX M21-45/GC2415); using RGB565.");
     useJPEG = false;
-        dbg("[BOOT] Sensor not JPEG-capable");
+        dbg("[BOOT] RHYX M21-45 detected, using RGB565");
   }
 
   // Final sensor pointer after (re-)init
@@ -1031,13 +1034,8 @@ void setup() {
     return;
   }
 
-  // Sensor tuning
-  s->set_brightness(s, 1);
-  s->set_contrast(s, 1);
-  s->set_saturation(s, 0);
-  s->set_whitebal(s, 1);
-  s->set_gain_ctrl(s, 1);
-  s->set_exposure_ctrl(s, 1);
+  // RHYX M21-45 minimal sensor tuning - keep it simple for stability
+  // This sensor is different from OV series and doesn't support all settings
 
   // 4. Hardware stability pins (common recommended pins)
   pinMode(2, INPUT_PULLUP);
@@ -1078,6 +1076,7 @@ void setup() {
 
   // 7. Connect WiFi
   WiFi.begin(ssid, password);
+  WiFi.setSleep(false);  // CRITICAL: Disable WiFi sleep for fast streaming!
   Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
