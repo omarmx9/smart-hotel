@@ -43,17 +43,17 @@ Smart Hotel is a full-stack IoT solution for modern hotel management. The system
 
 ```mermaid
 flowchart TB
-    subgraph HOTEL_ROOMS["🏨 Hotel Rooms"]
+    subgraph HOTEL_ROOMS["Hotel Rooms"]
         ESP32_SENSORS["ESP32 Sensors<br/>Temp/Humidity/Light/Gas"]
         ESP32_ACTUATORS["ESP32 Actuators<br/>Heater/Lights"]
     end
 
-    subgraph HOTEL_LOBBY["🚪 Hotel Lobby"]
+    subgraph HOTEL_LOBBY["Hotel Lobby"]
         KIOSK["Kiosk Terminal<br/>:8002"]
         CAMERA["Camera<br/>Passport Scanning"]
     end
 
-    subgraph CLOUD["☁️ Cloud Infrastructure (Docker Compose)"]
+    subgraph CLOUD["Cloud Infrastructure - Docker Compose"]
         subgraph DATA_PIPELINE["Data Pipeline"]
             MOSQUITTO["Mosquitto<br/>MQTT Broker<br/>:1883"]
             TELEGRAF["Telegraf<br/>Data Bridge"]
@@ -73,7 +73,7 @@ flowchart TB
         end
     end
 
-    subgraph BACK_OFFICE["💼 Back Office"]
+    subgraph BACK_OFFICE["Back Office"]
         STAFF_PC["Staff PC"]
         MANAGER_TABLET["Manager Tablet"]
     end

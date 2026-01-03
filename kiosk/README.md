@@ -62,7 +62,7 @@ The kiosk follows a **microservice architecture** where passport processing is h
 
 ```mermaid
 flowchart TB
-    subgraph KIOSK["🖥️ Smart Hotel Kiosk (Django)"]
+    subgraph KIOSK["Smart Hotel Kiosk - Django"]
         subgraph FRONTEND["Frontend Layer"]
             TEMPLATES["Templates<br/>(Jinja2)"]
             STATIC["Static Files<br/>CSS/JS/i18n"]
@@ -79,7 +79,7 @@ flowchart TB
         end
     end
     
-    subgraph MRZ_BACKEND["🔍 MRZ Backend (Flask Microservice)"]
+    subgraph MRZ_BACKEND["MRZ Backend - Flask Microservice"]
         CAPTURE["Layer 1<br/>Capture"]
         READJUST["Layer 2<br/>Readjustment"]
         EXTRACT["Layer 3<br/>MRZ Extract"]
@@ -90,9 +90,9 @@ flowchart TB
         EXTRACT --> FILL
     end
     
-    subgraph GUEST["🧳 Guest"]
-        CAMERA["📷 Camera"]
-        PASSPORT["🛂 Passport"]
+    subgraph GUEST["Guest"]
+        CAMERA["Camera"]
+        PASSPORT["Passport"]
     end
 
     GUEST --> TEMPLATES
@@ -117,17 +117,17 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    A["🧳 Guest"] -->|Camera Capture| B["📤 Upload<br/>to Kiosk"]
+    A["Guest"] -->|Camera Capture| B["Upload<br/>to Kiosk"]
     B --> C["MRZ API<br/>Client"]
     C --> D{"Service<br/>Available?"}
-    D -->|Yes| E["🔍 MRZ<br/>Service"]
-    D -->|No| F["📋 Local<br/>Parser"]
-    E --> G["📄 Extracted<br/>Data JSON"]
+    D -->|Yes| E["MRZ<br/>Service"]
+    D -->|No| F["Local<br/>Parser"]
+    E --> G["Extracted<br/>Data JSON"]
     F --> G
-    G --> H["✏️ Form<br/>Pre-population"]
-    H --> I["✅ Verification"]
-    I --> J["📝 Document<br/>Generation"]
-    J --> K["🔑 Access<br/>Setup"]
+    G --> H["Form<br/>Pre-population"]
+    H --> I["Verification"]
+    I --> J["Document<br/>Generation"]
+    J --> K["Access<br/>Setup"]
 ```
 
 ## Guest Journey

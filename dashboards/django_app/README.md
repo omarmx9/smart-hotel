@@ -58,7 +58,7 @@ The dashboard follows a **real-time event-driven architecture** where sensor dat
 
 ```mermaid
 flowchart TB
-    subgraph DASHBOARD["🖥️ Smart Hotel Dashboard (Django + Daphne ASGI)"]
+    subgraph DASHBOARD["Smart Hotel Dashboard - Django + Daphne ASGI"]
         subgraph HANDLERS["Request Handlers"]
             VIEWS["Views &<br/>REST API"]
             CONSUMERS["WebSocket<br/>Consumers"]
@@ -72,16 +72,16 @@ flowchart TB
         end
     end
     
-    subgraph DATA_STORES["💾 Data Stores"]
+    subgraph DATA_STORES["Data Stores"]
         POSTGRES["PostgreSQL<br/>Users/Rooms"]
         INFLUXDB["InfluxDB<br/>Sensor History"]
         TELEGRAM["Telegram<br/>Bot API"]
     end
     
     subgraph EXTERNAL["External"]
-        BROWSERS["🌐 Browsers<br/>(Staff UI)"]
+        BROWSERS["Browsers<br/>Staff UI"]
         MOSQUITTO["Mosquitto<br/>Broker"]
-        ESP32["🔌 ESP32<br/>Devices"]
+        ESP32["ESP32<br/>Devices"]
     end
 
     VIEWS --> TEMPLATES
@@ -90,7 +90,7 @@ flowchart TB
     
     CHANNELS <-->|WebSocket| BROWSERS
     MQTT_CLIENT <-->|MQTT| MOSQUITTO
-    MOSQUITTO <--> ESP32
+    MOSQUITTO <-->|MQTT| ESP32
     
     VIEWS --> POSTGRES
     VIEWS --> INFLUXDB
@@ -114,26 +114,26 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    A["🔌 ESP32<br/>Device"] -->|MQTT Publish| B["Mosquitto<br/>Broker"]
+    A["ESP32<br/>Device"] -->|MQTT Publish| B["Mosquitto<br/>Broker"]
     B --> C["Dashboard<br/>MQTT Client"]
     C --> D["Update<br/>Room Model"]
     C --> E["Broadcast<br/>WebSocket"]
     D --> F["PostgreSQL<br/>Save"]
     E --> G["Browser<br/>Consumers"]
     G --> H["JavaScript<br/>Handler"]
-    H --> I["🖥️ DOM Update<br/>(Real-time)"]
+    H --> I["DOM Update<br/>Real-time"]
 ```
 
 #### Control Command Flow
 
 ```mermaid
 flowchart LR
-    A["🌐 Browser UI"] -->|HTTP POST| B["Django View<br/>(SetTargetView)"]
+    A["Browser UI"] -->|HTTP POST| B["Django View<br/>SetTargetView"]
     B -->|Validate & Save| C["Room Model<br/>Update"]
     C --> D["MQTT Client<br/>Publish"]
     D --> E["Mosquitto<br/>Broker"]
-    E --> F["🔌 ESP32<br/>Device"]
-    F --> G["⚡ Hardware<br/>Action"]
+    E --> F["ESP32<br/>Device"]
+    F --> G["Hardware<br/>Action"]
 ```
 
 ## Quick Start

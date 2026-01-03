@@ -38,12 +38,12 @@ The Smart Hotel cloud infrastructure provides all backend services required to r
 ```mermaid
 flowchart TB
     subgraph EXTERNAL["External Connections"]
-        ESP32["🔌 ESP32 Devices<br/>MQTT :1883"]
-        STAFF["👨‍💼 Staff Browser<br/>HTTP :8001"]
-        GUESTS["🧳 Guest Kiosk<br/>HTTP :8002"]
+        ESP32["ESP32 Devices<br/>MQTT :1883"]
+        STAFF["Staff Browser<br/>HTTP :8001"]
+        GUESTS["Guest Kiosk<br/>HTTP :8002"]
     end
 
-    subgraph DOCKER["🐳 Docker Network"]
+    subgraph DOCKER["Docker Network"]
         subgraph DATA_LAYER["Data Layer"]
             MOSQUITTO["Mosquitto<br/>MQTT Broker<br/>:1883 / :9001 WS"]
             TELEGRAF["Telegraf<br/>Data Bridge"]
@@ -85,23 +85,23 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    A["🔌 ESP32<br/>Sensor"] -->|MQTT Publish| B["Mosquitto<br/>Broker"]
+    A["ESP32<br/>Sensor"] -->|MQTT Publish| B["Mosquitto<br/>Broker"]
     B --> C["Telegraf<br/>Agent"]
     C -->|Write| D["InfluxDB<br/>Bucket"]
     D --> E["Grafana<br/>Panel"]
     D --> F["Dashboard<br/>Django"]
-    E --> G["📊 Staff View"]
-    F --> H["🖥️ Real-time UI"]
+    E --> G["Staff View"]
+    F --> H["Real-time UI"]
 ```
 
 #### Control Command Flow
 
 ```mermaid
 flowchart LR
-    A["👨‍💼 Staff<br/>Dashboard"] -->|HTTP POST| B["Django<br/>View"]
+    A["Staff<br/>Dashboard"] -->|HTTP POST| B["Django<br/>View"]
     B -->|MQTT Publish| C["Mosquitto<br/>Broker"]
-    C -->|Subscribe| D["🔌 ESP32<br/>Device"]
-    D -->|Execute| E["⚡ Heater<br/>ON/OFF"]
+    C -->|Subscribe| D["ESP32<br/>Device"]
+    D -->|Execute| E["Heater<br/>ON/OFF"]
 ```
 
 ## Services
