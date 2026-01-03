@@ -41,80 +41,59 @@ Smart Hotel is a full-stack IoT solution for modern hotel management. The system
 
 ## System Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              SMART HOTEL SYSTEM                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph HOTEL_ROOMS["🏨 Hotel Rooms"]
+        ESP32_SENSORS["ESP32 Sensors<br/>Temp/Humidity/Light/Gas"]
+        ESP32_ACTUATORS["ESP32 Actuators<br/>Heater/Lights"]
+    end
 
-┌─────────────────────┐                                    ┌─────────────────────┐
-│    HOTEL ROOMS      │                                    │    HOTEL LOBBY      │
-│                     │                                    │                     │
-│  ┌───────────────┐  │                                    │  ┌───────────────┐  │
-│  │    ESP32      │  │                                    │  │   KIOSK       │  │
-│  │   Sensors     │──┼────── MQTT ──────┐                 │  │   Terminal    │  │
-│  │  (Temp/Hum/   │  │                  │                 │  │               │  │
-│  │   Light/Gas)  │  │                  │                 │  └───────────────┘  │
-│  └───────────────┘  │                  │                 │         │           │
-│                     │                  │                 │         │ HTTP      │
-│  ┌───────────────┐  │                  │                 │         ▼           │
-│  │    ESP32      │  │                  │                 │  ┌───────────────┐  │
-│  │  Actuators    │◀┼────── MQTT ──────┤                 │  │   CAMERA      │  │
-│  │  (Heater/     │  │                  │                 │  │  (Passport)   │  │
-│  │   Lights)     │  │                  │                 │  └───────────────┘  │
-│  └───────────────┘  │                  │                 │                     │
-└─────────────────────┘                  │                 └─────────────────────┘
-                                         │
-                    ┌────────────────────┴────────────────────┐
-                    │                                         │
-                    ▼                                         ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              CLOUD INFRASTRUCTURE                               │
-│                            (Docker Compose Stack)                               │
-│                                                                                 │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐       │
-│  │  Mosquitto  │──▶│   Telegraf  │──▶│  InfluxDB   │◀──│   Grafana   │       │
-│  │   (MQTT)    │    │  (Bridge)   │    │ (Metrics)   │    │  (Charts)   │       │
-│  │   :1883     │    │             │    │   :8086     │    │   :3000     │       │
-│  └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘       │
-│        │                                   ▲                                    │
-│        │                                   │                                    │
-│        ▼                                   │                                    │
-│  ┌─────────────┐                     ┌──────┴──────┐                            │
-│  │  Dashboard  │───────────────────▶│  PostgreSQL │                            │
-│  │  (Django)   │                     │  (Users/    │                            │
-│  │   :8001     │                     │   Rooms)    │                            │
-│  └─────────────┘                     └─────────────┘                            │
-│        │                                                                        │
-│        │ Telegram                                                               │
-│        ▼                                                                        │
-│  ┌─────────────┐                                                                │
-│  │  Telegram   │                                                                │
-│  │   Bot API   │                                                                │
-│  └─────────────┘                                                                │
-│                                                                                 │
-│  ┌───────────────────────────────────────────────────────────┐                  │
-│  │                    KIOSK NETWORK                          │                  │
-│  │                                                           │                  │
-│  │   ┌─────────────┐               ┌─────────────┐           │                  │
-│  │   │   Kiosk     │─────────────▶│ MRZ Backend │           │                  │
-│  │   │  (Django)   │               │   (Flask)   │           │                  │
-│  │   │   :8002     │               │  (Passport) │           │                  │
-│  │   └─────────────┘               └─────────────┘           │                  │
-│  │                                                           │                  │
-│  └───────────────────────────────────────────────────────────┘                  │
-│                                                                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
+    subgraph HOTEL_LOBBY["🚪 Hotel Lobby"]
+        KIOSK["Kiosk Terminal<br/>:8002"]
+        CAMERA["Camera<br/>Passport Scanning"]
+    end
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              BACK OFFICE                                        │
-│                                                                                 │
-│  ┌───────────────┐                                          ┌───────────────┐   │
-│  │   STAFF PC    │                                          │   MANAGER     │   │
-│  │               │────────────── HTTP :8001 ──────────────▶│   TABLET      │   │
-│  │  (Dashboard)  │                                          │  (Dashboard)  │   │
-│  └───────────────┘                                          └───────────────┘   │
-│                                                                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
+    subgraph CLOUD["☁️ Cloud Infrastructure (Docker Compose)"]
+        subgraph DATA_PIPELINE["Data Pipeline"]
+            MOSQUITTO["Mosquitto<br/>MQTT Broker<br/>:1883"]
+            TELEGRAF["Telegraf<br/>Data Bridge"]
+            INFLUXDB["InfluxDB<br/>Time-Series DB<br/>:8086"]
+            GRAFANA["Grafana<br/>Visualization<br/>:3000"]
+        end
+        
+        subgraph APPLICATIONS["Applications"]
+            DASHBOARD["Dashboard<br/>Django/Daphne<br/>:8001"]
+            POSTGRES["PostgreSQL<br/>Users/Rooms"]
+            TELEGRAM["Telegram<br/>Bot API"]
+        end
+        
+        subgraph KIOSK_NETWORK["Kiosk Network"]
+            KIOSK_APP["Kiosk App<br/>Django<br/>:8002"]
+            MRZ_BACKEND["MRZ Backend<br/>Flask<br/>Passport OCR"]
+        end
+    end
+
+    subgraph BACK_OFFICE["💼 Back Office"]
+        STAFF_PC["Staff PC"]
+        MANAGER_TABLET["Manager Tablet"]
+    end
+
+    ESP32_SENSORS -->|MQTT| MOSQUITTO
+    MOSQUITTO -->|MQTT| ESP32_ACTUATORS
+    MOSQUITTO --> TELEGRAF
+    TELEGRAF --> INFLUXDB
+    INFLUXDB --> GRAFANA
+    MOSQUITTO --> DASHBOARD
+    DASHBOARD --> POSTGRES
+    DASHBOARD --> TELEGRAM
+    DASHBOARD --> MOSQUITTO
+    INFLUXDB --> DASHBOARD
+    
+    KIOSK --> CAMERA
+    KIOSK_APP --> MRZ_BACKEND
+    
+    STAFF_PC -->|HTTP :8001| DASHBOARD
+    MANAGER_TABLET -->|HTTP :8001| DASHBOARD
 ```
 
 ### Data Flow Summary

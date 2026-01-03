@@ -60,41 +60,47 @@ Built with Django and modern web technologies, the kiosk provides a touch-friend
 
 The kiosk follows a **microservice architecture** where passport processing is handled by a separate MRZ backend service. This separation allows independent scaling and deployment.
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           SMART HOTEL KIOSK                             │
-│                        (Django Web Application)                         │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-        ┌───────────────────────────┼───────────────────────────┐
-        ▼                           ▼                           ▼
-┌───────────────┐           ┌───────────────┐           ┌───────────────┐
-│   Frontend    │           │    Views &    │           │   Services    │
-│   Templates   │◀─────────▶│   Controllers │◀─────────▶│  Integration  │
-│   (Jinja2)    │           │   (Django)    │           │               │
-└───────────────┘           └───────────────┘           └───────────────┘
-        │                           │                           │
-        ▼                           ▼                           ▼
-┌───────────────┐           ┌───────────────┐           ┌───────────────┐
-│  Static Files │           │   Emulator    │           │   MRZ API     │
-│  CSS/JS/i18n  │           │   (SQLite)    │           │   Client      │
-└───────────────┘           └───────────────┘           └───────────────┘
-                                                                │
-                                                                ▼
-                                                ┌───────────────────────────┐
-                                                │     MRZ BACKEND SERVICE   │
-                                                │     (Flask Microservice)  │
-                                                │                           │
-                                                │  ┌─────────┐ ┌─────────┐  │
-                                                │  │ Capture │→│ Readjust│  │
-                                                │  └─────────┘ └─────────┘  │
-                                                │       │                   │
-                                                │       ▼                   │
-                                                │  ┌─────────┐ ┌─────────┐  │
-                                                │  │  Fill   │←│   MRZ   │  │
-                                                │  │  Docs   │ │ Extract │  │
-                                                │  └─────────┘ └─────────┘  │
-                                                └───────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph KIOSK["🖥️ Smart Hotel Kiosk (Django)"]
+        subgraph FRONTEND["Frontend Layer"]
+            TEMPLATES["Templates<br/>(Jinja2)"]
+            STATIC["Static Files<br/>CSS/JS/i18n"]
+        end
+        
+        subgraph BACKEND["Backend Layer"]
+            VIEWS["Views &<br/>Controllers"]
+            EMULATOR["Emulator<br/>(SQLite)"]
+        end
+        
+        subgraph SERVICES["Services Layer"]
+            MRZ_CLIENT["MRZ API<br/>Client"]
+            DOC_FILLER["Document<br/>Filler"]
+        end
+    end
+    
+    subgraph MRZ_BACKEND["🔍 MRZ Backend (Flask Microservice)"]
+        CAPTURE["Layer 1<br/>Capture"]
+        READJUST["Layer 2<br/>Readjustment"]
+        EXTRACT["Layer 3<br/>MRZ Extract"]
+        FILL["Layer 4<br/>Document Fill"]
+        
+        CAPTURE --> READJUST
+        READJUST --> EXTRACT
+        EXTRACT --> FILL
+    end
+    
+    subgraph GUEST["🧳 Guest"]
+        CAMERA["📷 Camera"]
+        PASSPORT["🛂 Passport"]
+    end
+
+    GUEST --> TEMPLATES
+    TEMPLATES <--> VIEWS
+    VIEWS --> EMULATOR
+    VIEWS --> MRZ_CLIENT
+    MRZ_CLIENT --> MRZ_BACKEND
+    VIEWS --> DOC_FILLER
 ```
 
 ### Component Responsibilities
@@ -109,25 +115,19 @@ The kiosk follows a **microservice architecture** where passport processing is h
 
 ### Data Flow
 
-```
-Guest → [Camera Capture] → [Upload to Kiosk]
-                                  │
-                                  ▼
-                         [MRZ API Client]
-                                  │
-                    ┌─────────────┴─────────────┐
-                    ▼                           ▼
-           [MRZ Service]               [Local Parser (Fallback)]
-                    │                           │
-                    └─────────────┬─────────────┘
-                                  ▼
-                        [Extracted Data JSON]
-                                  │
-                                  ▼
-                    [Form Pre-population & Verification]
-                                  │
-                                  ▼
-                    [Document Generation & Access Setup]
+```mermaid
+flowchart LR
+    A["🧳 Guest"] -->|Camera Capture| B["📤 Upload<br/>to Kiosk"]
+    B --> C["MRZ API<br/>Client"]
+    C --> D{"Service<br/>Available?"}
+    D -->|Yes| E["🔍 MRZ<br/>Service"]
+    D -->|No| F["📋 Local<br/>Parser"]
+    E --> G["📄 Extracted<br/>Data JSON"]
+    F --> G
+    G --> H["✏️ Form<br/>Pre-population"]
+    H --> I["✅ Verification"]
+    I --> J["📝 Document<br/>Generation"]
+    J --> K["🔑 Access<br/>Setup"]
 ```
 
 ## Guest Journey
