@@ -8,7 +8,7 @@ typedef struct
     uint8_t resolution;
 } SensorH_t;
 
-void SensorH_Init(SensorH_t *config);
+void SensorH_Init( SensorH_t *config);
 uint32_t SensorH_ReadValue(uint8_t channel);
 
 #endif

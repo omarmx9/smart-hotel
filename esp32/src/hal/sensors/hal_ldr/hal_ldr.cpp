@@ -1,7 +1,7 @@
 #include <Arduino.h>
-#include "../../App_cfg.h"
-#include "../Hal/SensorH/SensorH.h"
-#include "LDR_1.h"
+#include "../../../app_cfg.h"
+#include "../SensorH/SensorH.h"
+#include "hal_ldr.h"
 
 #if LDR_1_DEBUG == STD_ON
 #define DEBUG_PRINTLN(var) Serial.println(var)
@@ -12,7 +12,7 @@
 #endif
 
 // Sensor configuration
-static const SensorH_t config = {LDR_PIN, ADC_RESOLUTION};
+static  SensorH_t config = {LDR_PIN, ADC_RESOLUTION};
 // Sensor data
 static uint16_t rawLdrValue;
 static uint16_t lightPercentage;

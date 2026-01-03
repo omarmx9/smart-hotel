@@ -1,5 +1,5 @@
-#ifndef LDR_1_H
-#define LDR_1_H
+#ifndef HAL_LDR_H
+#define HAL_LDR_H
 
 void LDR_1_init(void);
 void LDR_1_main(void);

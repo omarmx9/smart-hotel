@@ -1,5 +1,5 @@
-#ifndef MQ5_1_H
-#define MQ5_1_H
+#ifndef HAL_MQ5_H
+#define HAL_MQ5_H
 
 void MQ5_1_init(void);
 void MQ5_1_main(void);

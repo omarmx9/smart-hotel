@@ -1,7 +1,7 @@
 #include <Arduino.h>
-#include "../../App_cfg.h"
-#include "../Hal/SensorH/SensorH.h"
-#include "MQ5_1.h"
+#include "../../../app_cfg.h"
+#include "../SensorH/SensorH.h"
+#include "hal_mq5.h"
 
 #if MQ5_1_DEBUG == STD_ON
 #define DEBUG_PRINTLN(var) Serial.println(var)
@@ -12,7 +12,7 @@
 #endif
 
 // Sensor object
-static const SensorH_t config = {MQ5_PIN, ADC_RESOLUTION};
+static  SensorH_t config = {MQ5_PIN, ADC_RESOLUTION};
 
 static uint16_t MQ5_value;
 static uint16_t outputValue;

@@ -8,7 +8,7 @@
 #define DEBUG_PRINTLN(var)
 #endif
 
-void SensorH_Init(SensorH_t *config)
+void SensorH_Init( SensorH_t  *config)
 {
 #if SENSORH_ENABLED == STD_ON
 

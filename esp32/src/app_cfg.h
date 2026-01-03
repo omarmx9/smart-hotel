@@ -147,11 +147,15 @@
 
 #define ADC_MIN_RAW 0
 #define ADC_MAX_RAW 4095
+
 #define MQ5_MIN_MAPPED 0
 #define MQ5_MAX_MAPPED 255
+
+#define MQ5_MIN_RAW  0
+#define MQ5_MAX_RAW  4095
+
 #define ADC_RESOLUTION 12
 #define LDR_SAMPLE_COUNT 5
-#define voltage  3.3
 
 /* =========================
  * WiFi Configuration
