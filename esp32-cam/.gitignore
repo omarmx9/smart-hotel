@@ -1,7 +1,7 @@
 dataset/*
 guides/
 trained_models/*
-ai/*
+
 .vscode/ 
 ESP_Capture_dataset.zip
 README_MODULAR.md
