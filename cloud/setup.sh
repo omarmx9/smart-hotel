@@ -1,0 +1,885 @@
+#!/usr/bin/env bash
+# ============================================================================
+# Smart Hotel - Interactive Setup Script
+# ============================================================================
+# This script guides you through the first-time setup of the Smart Hotel
+# cloud infrastructure. It configures:
+#   - Environment variables (.env file)
+#   - MQTT authentication and optional TLS
+#   - Authentik identity provider bootstrap
+#   - InfluxDB initialization
+#
+# Usage:
+#   ./setup.sh              # Interactive setup
+#   ./setup.sh --defaults   # Use defaults (non-interactive, no MQTT auth/TLS)
+#   ./setup.sh --help       # Show help
+# ============================================================================
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/.env"
+MOSQUITTO_CONF="${SCRIPT_DIR}/config/mosquitto/mosquitto.conf"
+MOSQUITTO_PASSWD_FILE="${SCRIPT_DIR}/config/mosquitto/passwd"
+TLS_DIR="${SCRIPT_DIR}/config/mosquitto/certs"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Print functions
+info() { echo -e "${BLUE}ℹ${NC} $1"; }
+success() { echo -e "${GREEN}✓${NC} $1"; }
+warn() { echo -e "${YELLOW}⚠${NC} $1"; }
+error() { echo -e "${RED}✗${NC} $1"; }
+header() { echo -e "\n${BOLD}${CYAN}═══ $1 ═══${NC}\n"; }
+
+# Generate a random string
+generate_secret() {
+    local length=${1:-32}
+    openssl rand -base64 "$length" 2>/dev/null | tr -d '/+=' | head -c "$length"
+}
+
+# Generate a hex string
+generate_hex() {
+    local length=${1:-32}
+    openssl rand -hex "$length" 2>/dev/null
+}
+
+# Check dependencies
+check_dependencies() {
+    local missing=()
+    
+    if ! command -v openssl &> /dev/null; then
+        missing+=("openssl")
+    fi
+    
+    if ! command -v docker &> /dev/null; then
+        missing+=("docker")
+    fi
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        error "Missing required dependencies: ${missing[*]}"
+        echo ""
+        echo "Install with:"
+        echo "  Ubuntu/Debian: sudo apt install ${missing[*]}"
+        echo "  macOS: brew install ${missing[*]}"
+        exit 1
+    fi
+}
+
+# ============================================================================
+# Port Conflict Detection and Resolution
+# ============================================================================
+
+# Default ports used by Smart Hotel
+declare -A DEFAULT_PORTS=(
+    ["GRAFANA_PORT"]="3000"
+    ["DASHBOARD_PORT"]="8001"
+    ["KIOSK_PORT"]="8002"
+    ["AUTHENTIK_PORT"]="9000"
+    ["AUTHENTIK_PORT_HTTPS"]="9443"
+    ["INFLUX_PORT"]="8086"
+    ["MQTT_PORT"]="1883"
+    ["MQTT_WS_PORT"]="9001"
+    ["MQTT_TLS_PORT"]="8883"
+    ["NODERED_PORT"]="1880"
+)
+
+# Port descriptions for user display
+declare -A PORT_DESCRIPTIONS=(
+    ["GRAFANA_PORT"]="Grafana Dashboard"
+    ["DASHBOARD_PORT"]="Staff Dashboard"
+    ["KIOSK_PORT"]="Guest Kiosk"
+    ["AUTHENTIK_PORT"]="Authentik (HTTP)"
+    ["AUTHENTIK_PORT_HTTPS"]="Authentik (HTTPS)"
+    ["INFLUX_PORT"]="InfluxDB"
+    ["MQTT_PORT"]="MQTT Broker"
+    ["MQTT_WS_PORT"]="MQTT WebSocket"
+    ["MQTT_TLS_PORT"]="MQTT TLS"
+    ["NODERED_PORT"]="Node-RED"
+)
+
+# Store remapped ports
+declare -A REMAPPED_PORTS
+
+# Check if a port is in use
+is_port_in_use() {
+    local port=$1
+    if command -v ss &> /dev/null; then
+        ss -tuln 2>/dev/null | grep -q ":${port} " && return 0
+    elif command -v netstat &> /dev/null; then
+        netstat -tuln 2>/dev/null | grep -q ":${port} " && return 0
+    elif command -v lsof &> /dev/null; then
+        lsof -i ":${port}" &>/dev/null && return 0
+    fi
+    return 1
+}
+
+# Get process using a port
+get_port_process() {
+    local port=$1
+    if command -v ss &> /dev/null; then
+        ss -tulnp 2>/dev/null | grep ":${port} " | sed 's/.*users:(("\([^"]*\)".*/\1/' | head -1
+    elif command -v lsof &> /dev/null; then
+        lsof -i ":${port}" 2>/dev/null | awk 'NR==2 {print $1}' | head -1
+    else
+        echo "unknown"
+    fi
+}
+
+# Find next available port
+find_available_port() {
+    local start_port=$1
+    local port=$start_port
+    local max_tries=100
+    
+    while [[ $max_tries -gt 0 ]]; do
+        if ! is_port_in_use "$port"; then
+            echo "$port"
+            return 0
+        fi
+        ((port++))
+        ((max_tries--))
+    done
+    
+    # Fallback
+    echo "$start_port"
+    return 1
+}
+
+# Check all ports for conflicts
+check_port_conflicts() {
+    header "Checking Port Availability"
+    
+    local conflicts_found=false
+    local port_name port process
+    
+    echo "Checking required ports for conflicts..."
+    echo ""
+    
+    for port_name in "${!DEFAULT_PORTS[@]}"; do
+        port="${REMAPPED_PORTS[$port_name]:-${DEFAULT_PORTS[$port_name]}}"
+        
+        if is_port_in_use "$port"; then
+            process=$(get_port_process "$port")
+            warn "Port $port (${PORT_DESCRIPTIONS[$port_name]}) is in use by: $process"
+            conflicts_found=true
+        else
+            success "Port $port (${PORT_DESCRIPTIONS[$port_name]}) is available"
+        fi
+    done
+    
+    echo ""
+    
+    if [[ "$conflicts_found" == "true" ]]; then
+        return 1
+    else
+        success "All ports are available!"
+        return 0
+    fi
+}
+
+# Resolve port conflicts interactively
+resolve_port_conflicts() {
+    header "Resolving Port Conflicts"
+    
+    local port_name port new_port process suggestion
+    
+    for port_name in "${!DEFAULT_PORTS[@]}"; do
+        port="${REMAPPED_PORTS[$port_name]:-${DEFAULT_PORTS[$port_name]}}"
+        
+        if is_port_in_use "$port"; then
+            process=$(get_port_process "$port")
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            warn "Port $port (${PORT_DESCRIPTIONS[$port_name]}) is in use"
+            echo "  Process: $process"
+            echo ""
+            
+            # Find a suggestion
+            suggestion=$(find_available_port "$((port + 1))")
+            
+            echo "Options:"
+            echo "  1) Remap to different port (suggested: $suggestion)"
+            echo "  2) Skip this service (disable port binding)"
+            echo "  3) Keep as-is (will fail if port is still in use at startup)"
+            echo ""
+            
+            read -r -p "Choose option [1/2/3] (default: 1): " choice
+            choice=${choice:-1}
+            
+            case "$choice" in
+                1)
+                    new_port=$(ask_input "Enter new port" "$suggestion")
+                    
+                    # Check if the new port is also in use
+                    while is_port_in_use "$new_port"; do
+                        warn "Port $new_port is also in use!"
+                        suggestion=$(find_available_port "$((new_port + 1))")
+                        new_port=$(ask_input "Enter different port" "$suggestion")
+                    done
+                    
+                    REMAPPED_PORTS[$port_name]="$new_port"
+                    success "Remapped ${PORT_DESCRIPTIONS[$port_name]} to port $new_port"
+                    ;;
+                2)
+                    REMAPPED_PORTS[$port_name]=""
+                    warn "Disabled port binding for ${PORT_DESCRIPTIONS[$port_name]}"
+                    ;;
+                3)
+                    info "Keeping port $port (may fail at startup)"
+                    REMAPPED_PORTS[$port_name]="$port"
+                    ;;
+            esac
+        fi
+    done
+    
+    # Copy over any defaults that weren't conflicting
+    for port_name in "${!DEFAULT_PORTS[@]}"; do
+        if [[ -z "${REMAPPED_PORTS[$port_name]+x}" ]]; then
+            REMAPPED_PORTS[$port_name]="${DEFAULT_PORTS[$port_name]}"
+        fi
+    done
+}
+
+# Get the configured port (or default)
+get_port() {
+    local port_name=$1
+    echo "${REMAPPED_PORTS[$port_name]:-${DEFAULT_PORTS[$port_name]}}"
+}
+
+# Show help
+show_help() {
+    cat << EOF
+Smart Hotel - Interactive Setup Script
+
+Usage: $0 [OPTIONS]
+
+Options:
+  --defaults    Use default configuration (non-interactive)
+  --reset       Reset configuration (removes .env, regenerates secrets)
+  --help        Show this help message
+
+This script will:
+  1. Generate secure secrets for all services
+  2. Configure MQTT authentication (optional)
+  3. Configure MQTT TLS encryption (optional)
+  4. Set up Authentik identity provider
+  5. Configure InfluxDB initialization
+  6. Prepare all services for first launch
+
+After running this script, start the services with:
+  docker compose up -d
+
+EOF
+}
+
+# Prompt for yes/no
+ask_yes_no() {
+    local prompt="$1"
+    local default="${2:-n}"
+    local response
+    
+    if [[ "$default" == "y" ]]; then
+        prompt="$prompt [Y/n]: "
+    else
+        prompt="$prompt [y/N]: "
+    fi
+    
+    read -r -p "$prompt" response
+    response=${response:-$default}
+    
+    [[ "$response" =~ ^[Yy]$ ]]
+}
+
+# Prompt for input with default
+ask_input() {
+    local prompt="$1"
+    local default="$2"
+    local response
+    
+    read -r -p "$prompt [$default]: " response
+    echo "${response:-$default}"
+}
+
+# Configure MQTT authentication
+configure_mqtt_auth() {
+    header "MQTT Authentication"
+    
+    echo "MQTT authentication protects your message broker from unauthorized access."
+    echo "This is recommended for production environments."
+    echo ""
+    
+    if ask_yes_no "Enable MQTT authentication?" "y"; then
+        MQTT_AUTH_ENABLED="true"
+        
+        # Get username
+        MQTT_USER=$(ask_input "MQTT username" "smarthotel")
+        
+        # Get password or generate
+        echo ""
+        if ask_yes_no "Generate random MQTT password?" "y"; then
+            MQTT_PASSWORD=$(generate_secret 24)
+            success "Generated MQTT password"
+        else
+            read -r -s -p "Enter MQTT password: " MQTT_PASSWORD
+            echo ""
+        fi
+        
+        # Create password file
+        info "Creating MQTT password file..."
+        mkdir -p "$(dirname "$MOSQUITTO_PASSWD_FILE")"
+        
+        # Use mosquitto_passwd from docker if available
+        if docker run --rm eclipse-mosquitto:latest mosquitto_passwd --help &>/dev/null 2>&1; then
+            echo "$MQTT_PASSWORD" | docker run --rm -i \
+                -v "$(dirname "$MOSQUITTO_PASSWD_FILE"):/mosquitto/config" \
+                eclipse-mosquitto:latest \
+                mosquitto_passwd -b -c /mosquitto/config/passwd "$MQTT_USER" /dev/stdin 2>/dev/null || \
+            # Fallback: create file directly (less secure but works)
+            echo "${MQTT_USER}:$(openssl passwd -6 "$MQTT_PASSWORD")" > "$MOSQUITTO_PASSWD_FILE"
+        else
+            # Create simple password file format
+            echo "${MQTT_USER}:${MQTT_PASSWORD}" > "$MOSQUITTO_PASSWD_FILE"
+            warn "Could not use mosquitto_passwd, created plain text file (less secure)"
+        fi
+        
+        success "MQTT authentication configured"
+    else
+        MQTT_AUTH_ENABLED="false"
+        MQTT_USER=""
+        MQTT_PASSWORD=""
+        info "MQTT authentication disabled (anonymous access)"
+    fi
+}
+
+# Configure MQTT TLS
+configure_mqtt_tls() {
+    header "MQTT TLS Encryption"
+    
+    echo "TLS encryption secures MQTT communication between devices and the broker."
+    echo "This requires SSL certificates (you can use self-signed for testing)."
+    echo ""
+    
+    if ask_yes_no "Enable MQTT TLS?" "n"; then
+        MQTT_TLS_ENABLED="true"
+        
+        mkdir -p "$TLS_DIR"
+        
+        # Check for existing certificates
+        if [[ -f "$TLS_DIR/ca.crt" && -f "$TLS_DIR/server.crt" && -f "$TLS_DIR/server.key" ]]; then
+            if ask_yes_no "Existing certificates found. Use them?" "y"; then
+                success "Using existing TLS certificates"
+                return
+            fi
+        fi
+        
+        if ask_yes_no "Generate self-signed certificates?" "y"; then
+            info "Generating CA certificate..."
+            openssl genrsa -out "$TLS_DIR/ca.key" 2048 2>/dev/null
+            openssl req -new -x509 -days 3650 -key "$TLS_DIR/ca.key" \
+                -out "$TLS_DIR/ca.crt" \
+                -subj "/CN=Smart Hotel MQTT CA/O=Smart Hotel/C=US" 2>/dev/null
+            
+            info "Generating server certificate..."
+            openssl genrsa -out "$TLS_DIR/server.key" 2048 2>/dev/null
+            openssl req -new -key "$TLS_DIR/server.key" \
+                -out "$TLS_DIR/server.csr" \
+                -subj "/CN=mosquitto/O=Smart Hotel/C=US" 2>/dev/null
+            openssl x509 -req -days 3650 \
+                -in "$TLS_DIR/server.csr" \
+                -CA "$TLS_DIR/ca.crt" \
+                -CAkey "$TLS_DIR/ca.key" \
+                -CAcreateserial \
+                -out "$TLS_DIR/server.crt" 2>/dev/null
+            
+            # Set permissions
+            chmod 600 "$TLS_DIR"/*.key
+            chmod 644 "$TLS_DIR"/*.crt
+            
+            rm -f "$TLS_DIR/server.csr" "$TLS_DIR/ca.srl"
+            
+            success "Generated self-signed TLS certificates"
+            warn "For production, replace with certificates from a trusted CA"
+        else
+            info "Please place your certificates in: $TLS_DIR"
+            echo "  Required files: ca.crt, server.crt, server.key"
+            MQTT_TLS_ENABLED="false"
+        fi
+    else
+        MQTT_TLS_ENABLED="false"
+        info "MQTT TLS disabled (unencrypted communication)"
+    fi
+}
+
+# Update mosquitto.conf based on configuration
+update_mosquitto_config() {
+    header "Updating Mosquitto Configuration"
+    
+    # Backup original
+    if [[ -f "$MOSQUITTO_CONF" && ! -f "${MOSQUITTO_CONF}.original" ]]; then
+        cp "$MOSQUITTO_CONF" "${MOSQUITTO_CONF}.original"
+    fi
+    
+    cat > "$MOSQUITTO_CONF" << 'EOF'
+# Mosquitto MQTT Broker Configuration
+# ============================================================================
+# Auto-generated by setup.sh - Do not edit manually
+# Run ./setup.sh to reconfigure
+
+# Persistence settings
+persistence true
+persistence_location /mosquitto/data/
+
+# Logging
+log_dest file /mosquitto/log/mosquitto.log
+log_type all
+connection_messages true
+
+EOF
+
+    # Add authentication config
+    if [[ "$MQTT_AUTH_ENABLED" == "true" ]]; then
+        cat >> "$MOSQUITTO_CONF" << 'EOF'
+# ============================================================================
+# Authentication
+# ============================================================================
+allow_anonymous false
+password_file /mosquitto/config/passwd
+
+EOF
+    else
+        cat >> "$MOSQUITTO_CONF" << 'EOF'
+# ============================================================================
+# Authentication (disabled)
+# ============================================================================
+allow_anonymous true
+
+EOF
+    fi
+
+    # Add listener config based on TLS
+    if [[ "$MQTT_TLS_ENABLED" == "true" ]]; then
+        cat >> "$MOSQUITTO_CONF" << 'EOF'
+# ============================================================================
+# TLS Listener (secure)
+# ============================================================================
+listener 8883
+cafile /mosquitto/config/certs/ca.crt
+certfile /mosquitto/config/certs/server.crt
+keyfile /mosquitto/config/certs/server.key
+tls_version tlsv1.2
+
+# Non-TLS listener for internal Docker network only
+listener 1883 127.0.0.1
+
+# WebSocket listener with TLS
+listener 9001
+protocol websockets
+cafile /mosquitto/config/certs/ca.crt
+certfile /mosquitto/config/certs/server.crt
+keyfile /mosquitto/config/certs/server.key
+tls_version tlsv1.2
+
+EOF
+    else
+        cat >> "$MOSQUITTO_CONF" << 'EOF'
+# ============================================================================
+# Listeners
+# ============================================================================
+# Default TCP listener
+listener 1883
+
+# WebSocket listener
+listener 9001
+protocol websockets
+
+EOF
+    fi
+
+    success "Mosquitto configuration updated"
+}
+
+# Configure external URL
+configure_urls() {
+    header "Service URLs"
+    
+    echo "Configure the external URLs for accessing services."
+    echo "Use your server's IP or domain name."
+    echo ""
+    
+    # Detect default host
+    DEFAULT_HOST="localhost"
+    if command -v hostname &> /dev/null; then
+        DETECTED_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+        if [[ -n "$DETECTED_IP" ]]; then
+            DEFAULT_HOST="$DETECTED_IP"
+        fi
+    fi
+    
+    EXTERNAL_HOST=$(ask_input "External hostname/IP" "$DEFAULT_HOST")
+    
+    AUTHENTIK_EXTERNAL_URL="http://${EXTERNAL_HOST}:9000"
+    GRAFANA_ROOT_URL="http://${EXTERNAL_HOST}:3000"
+    DJANGO_ALLOWED_HOSTS="${EXTERNAL_HOST},localhost,127.0.0.1"
+}
+
+# Generate all secrets
+generate_all_secrets() {
+    header "Generating Secrets"
+    
+    info "Generating secure random secrets..."
+    
+    POSTGRES_PASSWORD=$(generate_secret 32)
+    INFLUX_ADMIN_PASSWORD=$(generate_secret 32)
+    INFLUX_TOKEN=$(generate_hex 32)
+    DJANGO_SECRET_KEY=$(generate_secret 64)
+    GRAFANA_ADMIN_PASSWORD=$(generate_secret 24)
+    AUTHENTIK_SECRET_KEY=$(generate_secret 64)
+    AUTHENTIK_POSTGRES_PASSWORD=$(generate_secret 32)
+    AUTHENTIK_BOOTSTRAP_TOKEN=$(generate_hex 32)
+    OIDC_CLIENT_SECRET=$(generate_secret 48)
+    NODERED_CREDENTIAL_SECRET=$(generate_hex 32)
+    KIOSK_SECRET_KEY=$(generate_secret 64)
+    KIOSK_API_TOKEN=$(generate_hex 32)
+    
+    success "Generated all secrets"
+}
+
+# Write .env file
+write_env_file() {
+    header "Writing Configuration"
+    
+    cat > "$ENV_FILE" << EOF
+# ============================================================================
+# Smart Hotel Cloud Infrastructure - Environment Configuration
+# ============================================================================
+# Generated on: $(date -Iseconds)
+# Generated by: setup.sh (interactive setup)
+#
+# IMPORTANT: Never commit this file to version control!
+# ============================================================================
+
+# ============================================================================
+# TIMEZONE
+# ============================================================================
+TIMEZONE=UTC
+
+# ============================================================================
+# SESSION SETTINGS (7 days for hotel guests)
+# ============================================================================
+SESSION_COOKIE_AGE=604800
+OIDC_TOKEN_EXPIRY=900
+
+# ============================================================================
+# POSTGRESQL - Main Application Database
+# ============================================================================
+POSTGRES_DB=smarthotel
+POSTGRES_USER=smarthotel
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+
+# ============================================================================
+# INFLUXDB - Time-Series Database
+# ============================================================================
+INFLUX_PORT=$(get_port INFLUX_PORT)
+INFLUX_ADMIN_USER=admin
+INFLUX_ADMIN_PASSWORD=${INFLUX_ADMIN_PASSWORD}
+INFLUX_ORG=smarthotel
+INFLUX_BUCKET=sensors
+INFLUX_RETENTION=0
+INFLUX_TOKEN=${INFLUX_TOKEN}
+
+# ============================================================================
+# MQTT - Mosquitto Broker
+# ============================================================================
+MQTT_PORT=$(get_port MQTT_PORT)
+MQTT_WS_PORT=$(get_port MQTT_WS_PORT)
+MQTT_TLS_PORT=$(get_port MQTT_TLS_PORT)
+MQTT_AUTH_ENABLED=${MQTT_AUTH_ENABLED:-false}
+MQTT_TLS_ENABLED=${MQTT_TLS_ENABLED:-false}
+MQTT_USER=${MQTT_USER:-}
+MQTT_PASSWORD=${MQTT_PASSWORD:-}
+
+# ============================================================================
+# DJANGO DASHBOARD
+# ============================================================================
+DASHBOARD_PORT=$(get_port DASHBOARD_PORT)
+DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+DJANGO_DEBUG=False
+DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+
+# ============================================================================
+# GRAFANA
+# ============================================================================
+GRAFANA_PORT=$(get_port GRAFANA_PORT)
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+GRAFANA_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
+GRAFANA_OAUTH_ENABLED=true
+GRAFANA_OAUTH_CLIENT_ID=grafana
+GRAFANA_OAUTH_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+
+# ============================================================================
+# AUTHENTIK - Identity Provider
+# ============================================================================
+AUTHENTIK_TAG=2024.10
+AUTHENTIK_PORT=$(get_port AUTHENTIK_PORT)
+AUTHENTIK_PORT_HTTPS=$(get_port AUTHENTIK_PORT_HTTPS)
+AUTHENTIK_EXTERNAL_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}
+AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
+AUTHENTIK_POSTGRES_PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
+AUTHENTIK_BOOTSTRAP_PASSWORD=changeme
+AUTHENTIK_BOOTSTRAP_TOKEN=${AUTHENTIK_BOOTSTRAP_TOKEN}
+AUTHENTIK_BOOTSTRAP_EMAIL=admin@smarthotel.local
+
+# ============================================================================
+# OIDC - OpenID Connect (Django <-> Authentik)
+# ============================================================================
+OIDC_CLIENT_ID=smart-hotel
+OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+
+# ============================================================================
+# KIOSK - Guest Registration Terminal
+# ============================================================================
+KIOSK_PORT=$(get_port KIOSK_PORT)
+KIOSK_SECRET_KEY=${KIOSK_SECRET_KEY}
+KIOSK_DEBUG=0
+KIOSK_ALLOWED_HOSTS=*
+KIOSK_API_TOKEN=${KIOSK_API_TOKEN}
+
+# ============================================================================
+# NODE-RED - Notification Gateway (Headless)
+# ============================================================================
+NODERED_PORT=$(get_port NODERED_PORT)
+NODERED_CREDENTIAL_SECRET=${NODERED_CREDENTIAL_SECRET}
+
+# ============================================================================
+# TWILIO - SMS Integration (via Node-RED)
+# ============================================================================
+# Get these from https://console.twilio.com/
+# Leave empty to disable SMS functionality
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
+
+# ============================================================================
+# TELEGRAM - Bot Notifications (Optional)
+# ============================================================================
+# Create a bot with @BotFather: https://t.me/botfather
+# Get chat ID: https://api.telegram.org/bot<TOKEN>/getUpdates
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+
+# ============================================================================
+# SMTP - Email Configuration (Optional, for Authentik)
+# ============================================================================
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_USE_TLS=true
+SMTP_FROM=noreply@example.com
+
+EOF
+
+    success ".env file created"
+}
+
+# Print summary
+print_summary() {
+    header "Setup Complete!"
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo -e "${GREEN}Configuration Summary:${NC}"
+    echo ""
+    echo "  MQTT Authentication: $([ "$MQTT_AUTH_ENABLED" == "true" ] && echo "Enabled (user: $MQTT_USER)" || echo "Disabled")"
+    echo "  MQTT TLS:            $([ "$MQTT_TLS_ENABLED" == "true" ] && echo "Enabled (port $(get_port MQTT_TLS_PORT))" || echo "Disabled")"
+    echo "  External URL:        ${AUTHENTIK_EXTERNAL_URL}"
+    echo ""
+    
+    # Show remapped ports if any
+    local has_remaps=false
+    for port_name in "${!REMAPPED_PORTS[@]}"; do
+        if [[ "${REMAPPED_PORTS[$port_name]}" != "${DEFAULT_PORTS[$port_name]}" ]]; then
+            has_remaps=true
+            break
+        fi
+    done
+    
+    if [[ "$has_remaps" == "true" ]]; then
+        echo -e "${YELLOW}Port Remapping:${NC}"
+        for port_name in "${!REMAPPED_PORTS[@]}"; do
+            if [[ "${REMAPPED_PORTS[$port_name]}" != "${DEFAULT_PORTS[$port_name]}" ]]; then
+                if [[ -z "${REMAPPED_PORTS[$port_name]}" ]]; then
+                    echo "  ${PORT_DESCRIPTIONS[$port_name]}: DISABLED"
+                else
+                    echo "  ${PORT_DESCRIPTIONS[$port_name]}: ${DEFAULT_PORTS[$port_name]} → ${REMAPPED_PORTS[$port_name]}"
+                fi
+            fi
+        done
+        echo ""
+    fi
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo -e "${BOLD}Service Access:${NC}"
+    echo ""
+    echo "  Authentik:     http://${EXTERNAL_HOST:-localhost}:$(get_port AUTHENTIK_PORT)"
+    echo "                 Initial setup: http://${EXTERNAL_HOST:-localhost}:$(get_port AUTHENTIK_PORT)/if/flow/initial-setup/"
+    echo "  Dashboard:     http://${EXTERNAL_HOST:-localhost}:$(get_port DASHBOARD_PORT)"
+    echo "  Grafana:       http://${EXTERNAL_HOST:-localhost}:$(get_port GRAFANA_PORT)"
+    echo "  Kiosk:         http://${EXTERNAL_HOST:-localhost}:$(get_port KIOSK_PORT)"
+    echo "  Node-RED:      http://${EXTERNAL_HOST:-localhost}:$(get_port NODERED_PORT)"
+    echo "  InfluxDB:      http://${EXTERNAL_HOST:-localhost}:$(get_port INFLUX_PORT)"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    if [[ "$MQTT_AUTH_ENABLED" == "true" ]]; then
+        echo -e "${YELLOW}MQTT Credentials (save these!):${NC}"
+        echo "  Username: $MQTT_USER"
+        echo "  Password: $MQTT_PASSWORD"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+    fi
+    
+    echo -e "${BOLD}Next Steps:${NC}"
+    echo ""
+    echo "  1. Start services:    ${CYAN}docker compose up -d${NC}"
+    echo "  2. Wait for startup:  ${CYAN}docker compose logs -f${NC}"
+    echo "  3. Configure Twilio/Telegram in .env if needed"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    success "Ready to launch! Run: docker compose up -d"
+}
+
+# Non-interactive defaults mode
+run_defaults() {
+    info "Running with defaults (non-interactive mode)..."
+    
+    MQTT_AUTH_ENABLED="false"
+    MQTT_TLS_ENABLED="false"
+    MQTT_USER=""
+    MQTT_PASSWORD=""
+    EXTERNAL_HOST="localhost"
+    AUTHENTIK_EXTERNAL_URL="http://localhost:9000"
+    GRAFANA_ROOT_URL="http://localhost:3000"
+    DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
+    
+    # Check for port conflicts in defaults mode
+    if ! check_port_conflicts; then
+        warn "Port conflicts detected in defaults mode!"
+        warn "Using default ports anyway - you may need to resolve conflicts manually."
+    fi
+    
+    # Initialize remapped ports with defaults
+    for port_name in "${!DEFAULT_PORTS[@]}"; do
+        REMAPPED_PORTS[$port_name]="${DEFAULT_PORTS[$port_name]}"
+    done
+    
+    generate_all_secrets
+    update_mosquitto_config
+    write_env_file
+    print_summary
+}
+
+# Reset configuration
+reset_config() {
+    warn "This will remove your current configuration!"
+    
+    if ask_yes_no "Are you sure you want to reset?" "n"; then
+        rm -f "$ENV_FILE"
+        rm -f "$MOSQUITTO_PASSWD_FILE"
+        rm -rf "$TLS_DIR"
+        
+        if [[ -f "${MOSQUITTO_CONF}.original" ]]; then
+            mv "${MOSQUITTO_CONF}.original" "$MOSQUITTO_CONF"
+        fi
+        
+        success "Configuration reset complete"
+        info "Run ./setup.sh to reconfigure"
+    else
+        info "Reset cancelled"
+    fi
+}
+
+# Interactive setup
+run_interactive() {
+    # Check if already configured
+    if [[ -f "$ENV_FILE" ]]; then
+        warn "Existing configuration found!"
+        echo ""
+        if ! ask_yes_no "Reconfigure? (existing .env will be backed up)" "n"; then
+            info "Setup cancelled"
+            exit 0
+        fi
+        # Backup existing
+        cp "$ENV_FILE" "${ENV_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+        info "Backed up existing .env"
+    fi
+    
+    # Check for port conflicts first
+    if ! check_port_conflicts; then
+        echo ""
+        if ask_yes_no "Would you like to resolve port conflicts interactively?" "y"; then
+            resolve_port_conflicts
+        else
+            warn "Continuing with default ports - conflicts may cause startup failures"
+            for port_name in "${!DEFAULT_PORTS[@]}"; do
+                REMAPPED_PORTS[$port_name]="${DEFAULT_PORTS[$port_name]}"
+            done
+        fi
+    else
+        # No conflicts - initialize with defaults
+        for port_name in "${!DEFAULT_PORTS[@]}"; do
+            REMAPPED_PORTS[$port_name]="${DEFAULT_PORTS[$port_name]}"
+        done
+    fi
+    
+    configure_urls
+    configure_mqtt_auth
+    configure_mqtt_tls
+    generate_all_secrets
+    update_mosquitto_config
+    write_env_file
+    print_summary
+}
+
+# Main entry point
+main() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║         Smart Hotel - Interactive Setup Wizard                  ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    check_dependencies
+    
+    case "${1:-}" in
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        --defaults)
+            run_defaults
+            ;;
+        --reset)
+            reset_config
+            ;;
+        *)
+            run_interactive
+            ;;
+    esac
+}
+
+main "$@"

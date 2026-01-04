@@ -1,0 +1,121 @@
+# ============================================================================
+# Authentik Blueprint - Smart Hotel OAuth2 Provider
+# ============================================================================
+# This blueprint creates the OAuth2/OIDC provider and application for the
+# Smart Hotel dashboard integration. It's automatically loaded on startup.
+#
+# Environment variables used:
+#   - OIDC_CLIENT_ID (default: smart-hotel)
+#   - OIDC_CLIENT_SECRET (required)
+#   - AUTHENTIK_EXTERNAL_URL (for redirect URIs)
+# ============================================================================
+
+version: 1
+metadata:
+  name: Smart Hotel OAuth2 Provider
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+
+context:
+  client_id: !Env [OIDC_CLIENT_ID, smart-hotel]
+  client_secret: !Env [OIDC_CLIENT_SECRET, ""]
+  external_url: !Env [AUTHENTIK_EXTERNAL_URL, "http://localhost:9000"]
+
+entries:
+  # ============================================================================
+  # Certificate/Key Pair for signing tokens
+  # ============================================================================
+  - model: authentik_crypto.certificatekeypair
+    id: smart-hotel-cert
+    identifiers:
+      name: smart-hotel-signing-key
+    attrs:
+      name: smart-hotel-signing-key
+      # Self-signed cert will be auto-generated
+
+  # ============================================================================
+  # OAuth2 Provider for Smart Hotel Dashboard
+  # ============================================================================
+  - model: authentik_providers_oauth2.oauth2provider
+    id: smart-hotel-provider
+    identifiers:
+      name: smart-hotel-provider
+    attrs:
+      name: smart-hotel-provider
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      client_type: confidential
+      client_id: !Context client_id
+      client_secret: !Context client_secret
+      redirect_uris: |
+        http://localhost:8001/oidc/callback/
+        http://localhost:8001/oidc/logout/callback/
+        !Format ["%s/oidc/callback/", !Context external_url]
+        !Format ["%s:8001/oidc/callback/", !Context external_url]
+      access_code_validity: minutes=1
+      access_token_validity: hours=1
+      refresh_token_validity: days=7
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+      sub_mode: user_id
+
+  # ============================================================================
+  # OAuth2 Provider for Grafana
+  # ============================================================================
+  - model: authentik_providers_oauth2.oauth2provider
+    id: grafana-provider
+    identifiers:
+      name: grafana-provider
+    attrs:
+      name: grafana-provider
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      client_type: confidential
+      client_id: grafana
+      client_secret: !Context client_secret
+      redirect_uris: |
+        http://localhost:3000/login/generic_oauth
+        !Format ["%s/login/generic_oauth", !Context external_url]
+        !Format ["%s:3000/login/generic_oauth", !Context external_url]
+      access_code_validity: minutes=1
+      access_token_validity: hours=1
+      refresh_token_validity: days=7
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+      sub_mode: user_id
+
+  # ============================================================================
+  # Smart Hotel Dashboard Application
+  # ============================================================================
+  - model: authentik_core.application
+    id: smart-hotel-app
+    identifiers:
+      slug: smart-hotel
+    attrs:
+      name: Smart Hotel Dashboard
+      slug: smart-hotel
+      provider: !KeyOf smart-hotel-provider
+      meta_launch_url: !Format ["%s:8001/", !Context external_url]
+      meta_description: Smart Hotel Staff Dashboard
+      meta_publisher: Smart Hotel
+      policy_engine_mode: any
+
+  # ============================================================================
+  # Grafana Application
+  # ============================================================================
+  - model: authentik_core.application
+    id: grafana-app
+    identifiers:
+      slug: grafana
+    attrs:
+      name: Grafana
+      slug: grafana
+      provider: !KeyOf grafana-provider
+      meta_launch_url: !Format ["%s:3000/", !Context external_url]
+      meta_description: Smart Hotel Metrics Dashboard
+      meta_publisher: Smart Hotel
+      policy_engine_mode: any

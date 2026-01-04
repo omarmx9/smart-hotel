@@ -158,11 +158,8 @@ flowchart TB
 git clone https://github.com/yourusername/smart-hotel.git
 cd smart-hotel/cloud
 
-# Generate secure environment configuration
-./generate-env.sh
-
-# Review and customize .env (add Twilio/Telegram credentials)
-nano .env
+# Run the interactive setup wizard
+./setup.sh
 
 # Start all services
 docker compose up --build -d
@@ -171,11 +168,20 @@ docker compose up --build -d
 docker compose ps
 ```
 
+The setup wizard will:
+- Detect and resolve port conflicts (remap to available ports)
+- Configure external URLs for your server
+- Set up optional MQTT authentication and TLS
+- Generate all required secrets automatically
+
 ### Initial Setup
 
-1. **Authentik Setup**: Visit http://localhost:9000/if/flow/initial-setup/
-2. **Create OAuth2 Provider**: Admin → Applications → Providers → Create `smart-hotel`
-3. **Update OIDC Secret**: Copy client secret to `.env` and restart dashboard
+After starting, all core services are pre-configured:
+- **Authentik**: Auto-provisioned with OAuth2 providers and groups
+- **InfluxDB**: Pre-configured with sensor buckets and retention policies
+- **Grafana**: Connected to InfluxDB with default dashboards
+
+Default admin credentials are in your `.env` file.
 
 ### Access Points
 

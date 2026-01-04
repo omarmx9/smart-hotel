@@ -1,0 +1,178 @@
+# ============================================================================
+# Authentik Blueprint - Guest Enrollment Flow
+# ============================================================================
+# This blueprint creates a custom enrollment flow for hotel guests.
+# Guests can be enrolled via the kiosk or through a QR code.
+# ============================================================================
+
+version: 1
+metadata:
+  name: Smart Hotel Guest Enrollment Flow
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+
+entries:
+  # ============================================================================
+  # Guest Enrollment Flow
+  # ============================================================================
+  - model: authentik_flows.flow
+    id: guest-enrollment-flow
+    identifiers:
+      slug: guest-enrollment
+    attrs:
+      name: Guest Enrollment
+      title: Welcome to Smart Hotel
+      slug: guest-enrollment
+      designation: enrollment
+      authentication: require_unauthenticated
+      policy_engine_mode: any
+
+  # ============================================================================
+  # Prompt Stage - Guest Information
+  # ============================================================================
+  - model: authentik_stages_prompt.prompt
+    id: prompt-guest-name
+    identifiers:
+      name: guest-name
+      field_key: name
+    attrs:
+      name: guest-name
+      field_key: name
+      label: Full Name
+      type: text
+      required: true
+      placeholder: "Enter your full name"
+      order: 0
+
+  - model: authentik_stages_prompt.prompt
+    id: prompt-guest-email
+    identifiers:
+      name: guest-email
+      field_key: email
+    attrs:
+      name: guest-email
+      field_key: email
+      label: Email Address
+      type: email
+      required: true
+      placeholder: "your.email@example.com"
+      order: 1
+
+  - model: authentik_stages_prompt.prompt
+    id: prompt-room-number
+    identifiers:
+      name: guest-room
+      field_key: attributes.room_number
+    attrs:
+      name: guest-room
+      field_key: attributes.room_number
+      label: Room Number
+      type: text
+      required: true
+      placeholder: "e.g., 101"
+      order: 2
+
+  - model: authentik_stages_prompt.prompt
+    id: prompt-checkout-date
+    identifiers:
+      name: guest-checkout
+      field_key: attributes.checkout_date
+    attrs:
+      name: guest-checkout
+      field_key: attributes.checkout_date
+      label: Checkout Date
+      type: text
+      required: true
+      placeholder: "YYYY-MM-DD"
+      order: 3
+
+  - model: authentik_stages_prompt.promptstage
+    id: guest-info-stage
+    identifiers:
+      name: guest-info-prompt
+    attrs:
+      name: guest-info-prompt
+      fields:
+        - !KeyOf prompt-guest-name
+        - !KeyOf prompt-guest-email
+        - !KeyOf prompt-room-number
+        - !KeyOf prompt-checkout-date
+
+  # ============================================================================
+  # User Write Stage - Create Guest Account
+  # ============================================================================
+  - model: authentik_stages_user_write.userwritestage
+    id: guest-write-stage
+    identifiers:
+      name: guest-user-write
+    attrs:
+      name: guest-user-write
+      create_users_as_inactive: false
+      user_creation_mode: always_create
+      create_users_group: !Find [authentik_core.group, [name, Hotel Guests]]
+
+  # ============================================================================
+  # Password Stage - Set Guest Password
+  # ============================================================================
+  - model: authentik_stages_password.passwordstage
+    id: guest-password-stage
+    identifiers:
+      name: guest-password
+    attrs:
+      name: guest-password
+      backends:
+        - authentik.core.auth.InbuiltBackend
+
+  # ============================================================================
+  # Login Stage - Auto Login After Enrollment
+  # ============================================================================
+  - model: authentik_stages_user_login.userloginstage
+    id: guest-login-stage
+    identifiers:
+      name: guest-login
+    attrs:
+      name: guest-login
+      session_duration: days=7
+
+  # ============================================================================
+  # Flow Stage Bindings
+  # ============================================================================
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf guest-enrollment-flow
+      stage: !KeyOf guest-info-stage
+      order: 10
+    attrs:
+      target: !KeyOf guest-enrollment-flow
+      stage: !KeyOf guest-info-stage
+      order: 10
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf guest-enrollment-flow
+      stage: !KeyOf guest-password-stage
+      order: 20
+    attrs:
+      target: !KeyOf guest-enrollment-flow
+      stage: !KeyOf guest-password-stage
+      order: 20
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf guest-enrollment-flow
+      stage: !KeyOf guest-write-stage
+      order: 30
+    attrs:
+      target: !KeyOf guest-enrollment-flow
+      stage: !KeyOf guest-write-stage
+      order: 30
+
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf guest-enrollment-flow
+      stage: !KeyOf guest-login-stage
+      order: 40
+    attrs:
+      target: !KeyOf guest-enrollment-flow
+      stage: !KeyOf guest-login-stage
+      order: 40

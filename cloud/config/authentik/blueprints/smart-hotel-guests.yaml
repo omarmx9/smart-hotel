@@ -1,0 +1,78 @@
+# ============================================================================
+# Authentik Blueprint - Guest Group and Kiosk Service Account
+# ============================================================================
+# This blueprint creates:
+#   - Guest group for hotel guests
+#   - Kiosk service account for programmatic guest account creation
+#   - API token for the kiosk to create guest accounts
+# ============================================================================
+
+version: 1
+metadata:
+  name: Smart Hotel Guests and Kiosk
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+
+context:
+  kiosk_api_token: !Env [KIOSK_API_TOKEN, ""]
+
+entries:
+  # ============================================================================
+  # Guest Group - Hotel guests with limited access
+  # ============================================================================
+  - model: authentik_core.group
+    id: hotel-guests
+    identifiers:
+      name: Hotel Guests
+    attrs:
+      name: Hotel Guests
+      is_superuser: false
+      attributes:
+        description: "Hotel guests with room access"
+        default_room_access: true
+
+  # ============================================================================
+  # Staff Group - Hotel staff with dashboard access
+  # ============================================================================
+  - model: authentik_core.group
+    id: hotel-staff
+    identifiers:
+      name: Hotel Staff
+    attrs:
+      name: Hotel Staff
+      is_superuser: false
+      attributes:
+        description: "Hotel staff with dashboard access"
+        dashboard_access: true
+
+  # ============================================================================
+  # Kiosk Service User - For programmatic guest creation
+  # ============================================================================
+  - model: authentik_core.user
+    id: kiosk-service
+    identifiers:
+      username: kiosk-service
+    attrs:
+      username: kiosk-service
+      name: Kiosk Service Account
+      path: "serviceaccounts/smart-hotel"
+      type: service_account
+      is_active: true
+      attributes:
+        service_type: kiosk
+        can_create_guests: true
+
+  # ============================================================================
+  # API Token for Kiosk Service
+  # ============================================================================
+  - model: authentik_core.token
+    id: kiosk-api-token
+    identifiers:
+      identifier: kiosk-api-token
+    attrs:
+      identifier: kiosk-api-token
+      user: !KeyOf kiosk-service
+      intent: api
+      description: "API token for kiosk guest account creation"
+      expiring: false
+      key: !Context kiosk_api_token

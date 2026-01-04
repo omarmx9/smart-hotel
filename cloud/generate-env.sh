@@ -95,9 +95,11 @@ generate_env() {
     local GRAFANA_ADMIN_PASSWORD=$(generate_secret 24)
     local AUTHENTIK_SECRET_KEY=$(generate_secret 64)
     local AUTHENTIK_POSTGRES_PASSWORD=$(generate_secret 32)
+    local AUTHENTIK_BOOTSTRAP_TOKEN=$(generate_hex 32)
     local OIDC_CLIENT_SECRET=$(generate_secret 48)
     local NODERED_CREDENTIAL_SECRET=$(generate_hex 32)
     local KIOSK_SECRET_KEY=$(generate_secret 64)
+    local KIOSK_API_TOKEN=$(generate_hex 32)
 
     # Create .env file
     cat > "$ENV_FILE" << EOF
@@ -160,9 +162,9 @@ GRAFANA_PORT=3000
 GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
 GRAFANA_ROOT_URL=http://localhost:3000
-GRAFANA_OAUTH_ENABLED=false
+GRAFANA_OAUTH_ENABLED=true
 GRAFANA_OAUTH_CLIENT_ID=grafana
-GRAFANA_OAUTH_CLIENT_SECRET=
+GRAFANA_OAUTH_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
 
 # ============================================================================
 # AUTHENTIK - Identity Provider
@@ -173,12 +175,24 @@ AUTHENTIK_PORT_HTTPS=9443
 AUTHENTIK_EXTERNAL_URL=http://localhost:9000
 AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
 AUTHENTIK_POSTGRES_PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
+AUTHENTIK_BOOTSTRAP_PASSWORD=changeme
+AUTHENTIK_BOOTSTRAP_TOKEN=${AUTHENTIK_BOOTSTRAP_TOKEN}
+AUTHENTIK_BOOTSTRAP_EMAIL=admin@smarthotel.local
 
 # ============================================================================
 # OIDC - OpenID Connect (Django <-> Authentik)
 # ============================================================================
 OIDC_CLIENT_ID=smart-hotel
 OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+
+# ============================================================================
+# KIOSK - Guest Registration Terminal
+# ============================================================================
+KIOSK_PORT=8002
+KIOSK_SECRET_KEY=${KIOSK_SECRET_KEY}
+KIOSK_DEBUG=0
+KIOSK_ALLOWED_HOSTS=*
+KIOSK_API_TOKEN=${KIOSK_API_TOKEN}
 
 # ============================================================================
 # NODE-RED - SMS Gateway (Headless)
@@ -212,14 +226,6 @@ SMTP_USER=
 SMTP_PASSWORD=
 SMTP_USE_TLS=true
 SMTP_FROM=noreply@example.com
-
-# ============================================================================
-# KIOSK APPLICATION
-# ============================================================================
-KIOSK_PORT=8002
-KIOSK_SECRET_KEY=${KIOSK_SECRET_KEY}
-KIOSK_DEBUG=0
-KIOSK_ALLOWED_HOSTS=*
 EOF
 
     success ".env file generated successfully!"
@@ -233,10 +239,10 @@ EOF
     echo "  • InfluxDB admin password and token"
     echo "  • Django secret key"
     echo "  • Grafana admin password"
-    echo "  • Authentik secret key and database password"
+    echo "  • Authentik secret key, database password, and bootstrap token"
     echo "  • OIDC client secret"
     echo "  • Node-RED credential secret"
-    echo "  • Kiosk secret key"
+    echo "  • Kiosk secret key and API token"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""

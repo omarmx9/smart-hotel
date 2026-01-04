@@ -949,3 +949,168 @@ def save_faces(request, reservation_id):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+# ============================================================================
+# GUEST ACCOUNT API (Authentik Integration)
+# ============================================================================
+
+@csrf_exempt
+def create_guest_account_api(request):
+    """
+    Create a guest account in Authentik.
+    
+    POST /api/guest/create/
+    
+    Request body (JSON):
+        {
+            "first_name": "John",
+            "last_name": "Doe",
+            "email": "john.doe@email.com",
+            "room_number": "101",
+            "checkout_date": "2026-01-10",
+            "passport_number": "AB123456",  # optional
+            "phone": "+1234567890"          # optional
+        }
+    
+    Response:
+        {
+            "success": true,
+            "username": "guest_101_john",
+            "password": "temp_password_123",
+            "room_number": "101",
+            "checkout_date": "2026-01-10T12:00:00"
+        }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST only'}, status=400)
+    
+    try:
+        from .authentik_client import get_authentik_client, AuthentikAPIError
+        
+        client = get_authentik_client()
+        
+        if not client.is_configured():
+            return JsonResponse({
+                'success': False,
+                'error': 'Authentik integration not configured'
+            }, status=503)
+        
+        # Parse request body
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        
+        # Validate required fields
+        required_fields = ['first_name', 'last_name', 'email', 'room_number', 'checkout_date']
+        for field in required_fields:
+            if not data.get(field):
+                return JsonResponse({'error': f'Missing required field: {field}'}, status=400)
+        
+        # Parse checkout date
+        checkout_str = data['checkout_date']
+        try:
+            if 'T' in checkout_str:
+                checkout_date = datetime.datetime.fromisoformat(checkout_str.replace('Z', '+00:00'))
+            else:
+                checkout_date = datetime.datetime.strptime(checkout_str, '%Y-%m-%d')
+                # Default checkout time is noon
+                checkout_date = checkout_date.replace(hour=12, minute=0)
+        except ValueError:
+            return JsonResponse({'error': 'Invalid checkout_date format. Use YYYY-MM-DD'}, status=400)
+        
+        # Create the guest account
+        result = client.create_guest_account(
+            first_name=data['first_name'],
+            last_name=data['last_name'],
+            email=data['email'],
+            room_number=data['room_number'],
+            checkout_date=checkout_date,
+            passport_number=data.get('passport_number'),
+            phone=data.get('phone')
+        )
+        
+        return JsonResponse({
+            'success': True,
+            **result
+        })
+        
+    except AuthentikAPIError as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Internal error: {str(e)}'
+        }, status=500)
+
+
+@csrf_exempt
+def deactivate_guest_account_api(request):
+    """
+    Deactivate a guest account on checkout.
+    
+    POST /api/guest/deactivate/
+    
+    Request body (JSON):
+        {
+            "username": "guest_101_john"
+        }
+    
+    Response:
+        {
+            "success": true,
+            "message": "Account deactivated"
+        }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST only'}, status=400)
+    
+    try:
+        from .authentik_client import get_authentik_client, AuthentikAPIError
+        
+        client = get_authentik_client()
+        
+        if not client.is_configured():
+            return JsonResponse({
+                'success': False,
+                'error': 'Authentik integration not configured'
+            }, status=503)
+        
+        # Parse request body
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        
+        username = data.get('username')
+        if not username:
+            return JsonResponse({'error': 'Missing required field: username'}, status=400)
+        
+        # Deactivate the account
+        success = client.deactivate_guest(username)
+        
+        if success:
+            return JsonResponse({
+                'success': True,
+                'message': 'Account deactivated'
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Failed to deactivate account'
+            }, status=500)
+        
+    except AuthentikAPIError as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Internal error: {str(e)}'
+        }, status=500)

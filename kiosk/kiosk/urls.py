@@ -35,6 +35,10 @@ urlpatterns = [
     # API endpoints
     path('api/save-passport-data/', views.save_passport_extraction, name='save_passport_extraction'),
     
+    # Guest Account API (Authentik integration)
+    path('api/guest/create/', views.create_guest_account_api, name='create_guest_account'),
+    path('api/guest/deactivate/', views.deactivate_guest_account_api, name='deactivate_guest_account'),
+    
     # MRZ Backend API proxy endpoints (browser camera sends images to these)
     path('api/mrz/detect/', views.mrz_detect, name='mrz_detect'),
     path('api/mrz/extract/', views.mrz_extract, name='mrz_extract'),

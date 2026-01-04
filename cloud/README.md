@@ -163,7 +163,7 @@ flowchart LR
 - Docker Engine 20.10+
 - Docker Compose 2.0+
 - 4GB+ available RAM
-- Ports 3000, 8001, 8002, 9000, 8086, 1883 available
+- OpenSSL (for secret generation)
 
 ### Production Deployment
 
@@ -172,11 +172,8 @@ flowchart LR
 git clone https://github.com/yourusername/smart-hotel.git
 cd smart-hotel/cloud
 
-# Generate secure environment configuration
-./generate-env.sh
-
-# Review and customize .env (especially external services)
-nano .env
+# Run the interactive setup wizard
+./setup.sh
 
 # Start all services
 docker compose up --build -d
@@ -188,23 +185,45 @@ docker compose ps
 docker compose logs -f
 ```
 
-### Post-Deployment Setup
+### Setup Wizard Options
 
-1. **Authentik Initial Setup:**
-   ```bash
-   # Access Authentik at http://localhost:9000/if/flow/initial-setup/
-   # Create your admin account
-   ```
+The `./setup.sh` script provides an interactive wizard to configure:
 
-2. **Create OAuth2 Provider:**
-   - Go to Authentik Admin → Applications → Providers
-   - Create OAuth2/OIDC Provider named `smart-hotel`
-   - Copy the Client Secret to `.env` as `OIDC_CLIENT_SECRET`
-   - Restart dashboard: `docker compose restart dashboard`
+| Feature | Description |
+|---------|-------------|
+| **Port Conflict Detection** | Automatically scans for port conflicts and offers remapping |
+| **MQTT Authentication** | Optional username/password authentication for MQTT broker |
+| **MQTT TLS** | Optional TLS encryption with self-signed or custom certificates |
+| **External URL** | Configure domain for production deployment |
 
-3. **Configure Groups:**
-   - Create groups: `smart-hotel-admins`, `smart-hotel-monitors`, `smart-hotel-guests`
-   - Assign users to appropriate groups
+#### Port Conflict Resolution
+
+The setup wizard automatically detects if any required ports are in use and offers three options:
+
+1. **Remap** - Use a different port (e.g., 9443 → 9444)
+2. **Disable** - Skip the port binding for that service
+3. **Keep** - Use the default port anyway (may fail at startup)
+
+Remapped ports are automatically saved to `.env` and displayed in the summary.
+
+All core services (Authentik, InfluxDB, Grafana) are **pre-configured automatically** via:
+- Authentik blueprints (auto-provision OAuth2 providers, groups, and guest enrollment)
+- InfluxDB initialization scripts (create buckets, retention policies, and Telegraf configs)
+- Grafana provisioning (datasources and default dashboards)
+
+### Updating the Stack
+
+Use the update script for safe updates with automatic backups:
+
+```bash
+./update.sh
+```
+
+The update script will:
+1. Create backups of PostgreSQL and InfluxDB databases
+2. Pull latest Docker images
+3. Run database migrations
+4. Perform health checks
 
 ### Development Mode
 
@@ -235,15 +254,44 @@ docker compose down -v
 
 ### Service Endpoints
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Authentik | http://localhost:9000 | Created during setup |
-| Grafana | http://localhost:3000 | From `.env` |
+All ports are configurable via `.env` - the setup wizard can remap ports if conflicts are detected.
+
+| Service | Default URL | Credentials |
+|---------|-------------|-------------|
+| Authentik | http://localhost:9000 | `akadmin` / from `AUTHENTIK_BOOTSTRAP_PASSWORD` |
+| Authentik HTTPS | https://localhost:9443 | Same as above |
+| Grafana | http://localhost:3000 | From `.env` (or via Authentik SSO) |
 | InfluxDB | http://localhost:8086 | From `.env` |
 | Dashboard | http://localhost:8001 | Via Authentik SSO |
 | Kiosk | http://localhost:8002 | (no auth for guests) |
 | Node-RED | http://localhost:1880/api/health | Headless (no UI) |
-| Mosquitto | mqtt://localhost:1883 | (no auth by default) |
+| Mosquitto | mqtt://localhost:1883 | Optional auth via setup.sh |
+| Mosquitto TLS | mqtts://localhost:8883 | Optional, configure via setup.sh |
+| Mosquitto WS | ws://localhost:9001 | WebSocket for browser clients |
+
+### MQTT Security (Optional)
+
+The setup wizard can configure MQTT security:
+
+#### Password Authentication
+
+```bash
+# Configured via setup.sh or manually:
+docker exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd mqtt_user
+```
+
+When enabled, all MQTT clients (ESP32 devices, Telegraf, Dashboard) must authenticate.
+
+#### TLS Encryption
+
+```bash
+# Generate self-signed certificates (done automatically by setup.sh):
+openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+  -keyout config/mosquitto/certs/server.key \
+  -out config/mosquitto/certs/server.crt
+```
+
+TLS port 8883 is enabled when certificates are present.
 
 ### Environment Variables
 
@@ -259,8 +307,10 @@ See `.env.example` for complete documentation of all variables.
 | **InfluxDB** | `INFLUX_*` | Time-series database |
 | **Authentik** | `AUTHENTIK_*`, `OIDC_*` | Identity provider |
 | **Grafana** | `GRAFANA_*` | Visualization dashboard |
+| **MQTT** | `MQTT_*` | Optional auth and TLS settings |
 | **Node-RED** | `NODERED_*`, `TWILIO_*` | SMS gateway |
 | **Telegram** | `TELEGRAM_*` | Bot notifications |
+| **Kiosk** | `KIOSK_*` | Guest registration terminal |
 | **Sessions** | `SESSION_COOKIE_AGE` | 7 days default for guests |
 
 #### External Services (Manual Configuration)
@@ -278,16 +328,22 @@ cloud/
 ├── .env                     # Environment variables (generate with ./generate-env.sh)
 ├── .env.example             # Template with documentation
 ├── generate-env.sh          # Script to generate secure .env
+├── setup.sh                 # Interactive setup wizard (MQTT, TLS, etc.)
+├── update.sh                # Safe update script with backups
 ├── docker-compose.yml       # Main compose file
 ├── docker-compose-dev.yml   # Development overrides
 └── config/
+    ├── authentik/
+    │   └── blueprints/      # Auto-provision OAuth2, groups, flows
     ├── grafana/
     │   └── provisioning/    # Grafana datasources and dashboards
     ├── influxdb/
     │   ├── config.yml       # InfluxDB configuration
-    │   └── init-telegraf.sh # Telegraf user initialization
+    │   └── init-telegraf.sh # Bucket creation and Telegraf setup
     ├── mosquitto/
-    │   └── mosquitto.conf   # MQTT broker settings
+    │   ├── mosquitto.conf   # MQTT broker settings
+    │   ├── passwd           # Password file (if auth enabled)
+    │   └── certs/           # TLS certificates (if TLS enabled)
     ├── nodered/
     │   ├── settings.js      # Node-RED headless config
     │   └── flows.json       # Notification gateway flows
@@ -297,77 +353,76 @@ cloud/
 
 ## Authentik Setup
 
-Authentik provides centralized identity management for the Smart Hotel system.
+Authentik provides centralized identity management for the Smart Hotel system. **Most configuration is automatic** via blueprints.
 
-### Initial Configuration
+### Pre-Configured Components
 
-After starting the stack, complete the initial setup:
+The following are created automatically on first startup:
+
+| Component | Description |
+|-----------|-------------|
+| **OAuth2 Provider** (`smart-hotel`) | OIDC provider for Dashboard authentication |
+| **OAuth2 Provider** (`grafana`) | OIDC provider for Grafana SSO |
+| **Application** (`Smart Hotel`) | Main application with both providers |
+| **Group** (`Hotel Staff`) | Admin/staff access group |
+| **Group** (`Hotel Guests`) | Guest access group with limited permissions |
+| **Service Account** (`kiosk-service`) | API token for kiosk guest account creation |
+| **Guest Enrollment Flow** | Self-service guest registration flow |
+
+### Default Admin Credentials
+
+The initial admin account is created automatically:
+
+| Setting | Value | Source |
+|---------|-------|--------|
+| Username | `akadmin` | Authentik default |
+| Password | `changeme` | `AUTHENTIK_BOOTSTRAP_PASSWORD` in `.env` |
+| Email | `admin@smarthotel.local` | `AUTHENTIK_BOOTSTRAP_EMAIL` in `.env` |
+
+**⚠️ Important:** Change the admin password after first login!
 
 ```bash
-# Access Authentik setup wizard
-open http://localhost:9000/if/flow/initial-setup/
+# Access Authentik admin at:
+open http://localhost:9000/if/admin/
 ```
 
-Create your admin account with a strong password.
+### Creating Staff Users
 
-### Create OAuth2/OIDC Provider
+1. Go to **Directory** → **Users** → **Create**
+2. Fill in user details
+3. Go to **Groups** tab → Add to `Hotel Staff`
+4. User can now log in at http://localhost:8001
+
+### Guest Account API
+
+The kiosk application can create temporary guest accounts via API:
+
+```bash
+# Create a guest account
+curl -X POST http://localhost:8002/api/guest/create/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "first_name": "John",
+    "last_name": "Doe",
+    "room_number": "101",
+    "checkout_date": "2026-01-15"
+  }'
+
+# Deactivate a guest account
+curl -X POST http://localhost:8002/api/guest/deactivate/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "guest_john_doe_20260108"}'
+```
+
+### Manual Configuration (Optional)
+
+If you need to customize the OAuth2 settings:
 
 1. Go to **Admin Interface** → **Applications** → **Providers**
-2. Click **Create** → **OAuth2/OpenID Provider**
-3. Configure:
-
-| Setting | Value |
-|---------|-------|
-| Name | `smart-hotel` |
-| Authorization flow | `default-provider-authorization-explicit-consent` |
-| Client type | `Confidential` |
-| Client ID | `smart-hotel` |
-| Redirect URIs | `http://localhost:8001/accounts/oidc/callback/` |
-
-4. Copy the generated **Client Secret** and update `.env`:
-   ```bash
-   OIDC_CLIENT_SECRET=<paste-secret-here>
+2. Edit `smart-hotel` provider
+3. Adjust Redirect URIs for your domain:
    ```
-
-5. Restart the dashboard:
-   ```bash
-   docker compose restart dashboard
-   ```
-
-### Create Application
-
-1. Go to **Admin Interface** → **Applications** → **Applications**
-2. Click **Create** and fill in:
-   - Name: `Smart Hotel`
-   - Slug: `smart-hotel`
-   - Provider: Select `smart-hotel`
-
-### Configure Groups
-
-Create groups for role-based access control:
-
-| Group Name | Django Role | Permissions |
-|------------|-------------|-------------|
-| `smart-hotel-admins` | Admin | Full access, user management |
-| `smart-hotel-monitors` | Monitor | View all rooms, notification center |
-| `smart-hotel-guests` | Guest | View/control assigned room only |
-
-### User Management
-
-**Staff Users:**
-1. Create user in Authentik Directory → Users
-2. Add to `smart-hotel-admins` or `smart-hotel-monitors` group
-3. User can now log in at http://localhost:8001
-
-**Guest Users:**
-1. Create user with temporary credentials
-2. Add to `smart-hotel-guests` group
-3. Set custom attributes:
-   ```json
-   {
-     "room_number": "101",
-     "expires_at": "2026-01-10T12:00:00Z"
-   }
+   https://yourdomain.com/accounts/oidc/callback/
    ```
 
 ### Session Configuration

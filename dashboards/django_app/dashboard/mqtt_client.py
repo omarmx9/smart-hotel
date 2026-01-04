@@ -39,7 +39,9 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe("/hotel/+/telemetry/fan_speed")
         
         # Subscribe to ESP32-CAM face recognition events
-        # Topic structure: hotel/kiosk/<device_id>/face/<event>
+        # Topic structure: hotel/kiosk/<room_id>/FaceRecognition/Authentication
+        client.subscribe("hotel/kiosk/+/FaceRecognition/Authentication")
+        # Legacy topic structure (backward compatibility)
         client.subscribe("hotel/kiosk/+/face/recognized")
         client.subscribe("hotel/kiosk/+/face/unknown")
         client.subscribe("hotel/kiosk/+/status")
@@ -63,7 +65,19 @@ def on_message(client, userdata, msg):
     try:
         topic_parts = msg.topic.split('/')
         
-        # Handle ESP32-CAM face recognition events
+        # Handle ESP32-CAM face recognition topic
+        # Topic structure: hotel/kiosk/<room_id>/FaceRecognition/Authentication
+        # After split: ['hotel', 'kiosk', '<room_id>', 'FaceRecognition', 'Authentication']
+        if (len(topic_parts) >= 5 and 
+            topic_parts[0] == 'hotel' and 
+            topic_parts[1] == 'kiosk' and
+            topic_parts[3] == 'FaceRecognition' and 
+            topic_parts[4] == 'Authentication'):
+            room_id = topic_parts[2]
+            handle_face_recognition_auth(room_id, msg.payload.decode())
+            return
+        
+        # Handle legacy ESP32-CAM face recognition events
         # Topic structure: hotel/kiosk/<device_id>/face/<event>
         if len(topic_parts) >= 4 and topic_parts[0] == 'hotel' and topic_parts[1] == 'kiosk':
             device_id = topic_parts[2]
@@ -131,9 +145,56 @@ def on_message(client, userdata, msg):
 
 # ==================== ESP32-CAM FACE RECOGNITION HANDLERS ====================
 
+def handle_face_recognition_auth(room_id, payload):
+    """
+    Handle face recognition authentication events from ESP32-CAM devices.
+    
+    Topic: hotel/kiosk/<room_id>/FaceRecognition/Authentication
+    
+    Payload format:
+        {
+            "name": "person_name",
+            "confidence": 0.95,
+            "result": "success" | "unknown" | "denied",
+            "timestamp": 1234567890
+        }
+    """
+    try:
+        data = json.loads(payload)
+        name = data.get('name', 'Unknown')
+        confidence = data.get('confidence', 0)
+        result = data.get('result', 'unknown')
+        
+        logger.info(f"[FaceRecog] Room {room_id}: {name} - {result} ({confidence*100:.1f}%)")
+        
+        # Store recognition event
+        store_face_recognition_event(room_id, name, confidence, result)
+        
+        # Handle different results
+        if result == 'success':
+            # Guest authenticated successfully - could trigger room unlock
+            logger.info(f"[FaceRecog] Guest '{name}' authenticated for room {room_id}")
+        elif result == 'denied':
+            # Access denied - possible security event
+            logger.warning(f"[FaceRecog] Access denied for '{name}' at room {room_id}")
+            publish_notification(
+                f"🚨 Access denied at Room {room_id} for '{name}'",
+                notification_type='alert',
+                priority='high'
+            )
+        elif result == 'unknown':
+            # Unknown face detected
+            logger.debug(f"[FaceRecog] Unknown face at room {room_id}")
+            
+    except json.JSONDecodeError as e:
+        logger.error(f"[FaceRecog] Invalid JSON payload: {e}")
+    except Exception as e:
+        logger.error(f"[FaceRecog] Error handling authentication event: {e}")
+
+
 def handle_espcam_face_event(device_id, event_type, payload):
     """
-    Handle face recognition events from ESP32-CAM devices.
+    Handle legacy face recognition events from ESP32-CAM devices.
     
     Events:
         - recognized: A known face was detected with high confidence
@@ -323,11 +384,6 @@ def get_latest_recognition(device_id):
     except Exception as e:
         logger.error(f"[ESP32-CAM] Error getting recognition: {e}")
         return None
-            
-            logger.debug(f"[MQTT] {room_number}/{sensor_type}: {payload}")
-            
-    except Exception as e:
-        logger.error(f"[MQTT] Error processing message: {e}")
 
 
 def start_mqtt_client():

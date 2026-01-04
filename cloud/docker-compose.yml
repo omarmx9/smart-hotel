@@ -166,8 +166,11 @@ services:
     ports:
       - "${MQTT_PORT:-1883}:1883"
       - "${MQTT_WS_PORT:-9001}:9001"
+      - "${MQTT_TLS_PORT:-8883}:8883"
     volumes:
       - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./config/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./config/mosquitto/certs:/mosquitto/config/certs:ro
       - mosquitto-data:/mosquitto/data:rw
       - mosquitto-logs:/mosquitto/log:rw
     restart: unless-stopped
@@ -222,6 +225,15 @@ services:
       - AUTHENTIK_POSTGRESQL__USER=authentik
       - AUTHENTIK_POSTGRESQL__NAME=authentik
       - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
+      # Bootstrap configuration (first-time setup)
+      - AUTHENTIK_BOOTSTRAP_PASSWORD=${AUTHENTIK_BOOTSTRAP_PASSWORD:-changeme}
+      - AUTHENTIK_BOOTSTRAP_TOKEN=${AUTHENTIK_BOOTSTRAP_TOKEN:-}
+      - AUTHENTIK_BOOTSTRAP_EMAIL=${AUTHENTIK_BOOTSTRAP_EMAIL:-admin@smarthotel.local}
+      # OAuth2 client configuration for blueprints
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-smart-hotel}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - KIOSK_API_TOKEN=${KIOSK_API_TOKEN:-}
+      - AUTHENTIK_EXTERNAL_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}
       # Email settings (optional)
       - AUTHENTIK_EMAIL__HOST=${SMTP_HOST:-}
       - AUTHENTIK_EMAIL__PORT=${SMTP_PORT:-587}
@@ -237,6 +249,7 @@ services:
     volumes:
       - authentik-media:/media
       - authentik-templates:/templates
+      - ./config/authentik/blueprints:/blueprints/custom:ro
     depends_on:
       - authentik-db
       - authentik-redis
@@ -255,12 +268,18 @@ services:
       - AUTHENTIK_POSTGRESQL__USER=authentik
       - AUTHENTIK_POSTGRESQL__NAME=authentik
       - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
+      # OAuth2 client configuration for blueprints
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-smart-hotel}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - KIOSK_API_TOKEN=${KIOSK_API_TOKEN:-}
+      - AUTHENTIK_EXTERNAL_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}
     user: root
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - authentik-media:/media
       - authentik-certs:/certs
       - authentik-templates:/templates
+      - ./config/authentik/blueprints:/blueprints/custom:ro
     depends_on:
       - authentik-db
       - authentik-redis
@@ -324,6 +343,9 @@ services:
       ALLOWED_HOSTS: '${KIOSK_ALLOWED_HOSTS:-*}'
       # MRZ backend service connection
       MRZ_SERVICE_URL: 'http://mrz-backend:5000'
+      # Authentik integration for guest account creation
+      AUTHENTIK_URL: 'http://authentik-server:9000'
+      KIOSK_API_TOKEN: '${KIOSK_API_TOKEN:-}'
     volumes:
       # Persist SQLite database across container restarts
       - kiosk_data:/app/data
@@ -331,9 +353,11 @@ services:
       - kiosk_media:/app/media
     depends_on:
       - mrz-backend
+      - authentik-server
     restart: unless-stopped
     networks:
       - kiosk-network
+      - default
 
   # MRZ Backend Microservice (Flask) - API only, no camera hardware
   # Note: Test frontend is only exposed in docker-compose-dev.yml
