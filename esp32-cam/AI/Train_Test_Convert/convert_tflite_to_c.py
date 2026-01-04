@@ -124,6 +124,14 @@ inline const char* get_class_label(int index) {{
     print(f"  Classes ({num_classes}): {', '.join(labels[str(i)] for i in range(num_classes))}")
     return output_header_path
 
+def get_converted_model_path(model_path):
+    """
+    Returns a path like 'converted_model/<parent_folder_of_model>'
+    """
+    model_dir = os.path.dirname(os.path.abspath(model_path))
+    folder_name = os.path.basename(model_dir)
+    return os.path.join('converted_model', folder_name)
+
 def main():
     """Main converter"""
     

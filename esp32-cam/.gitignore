@@ -1,4 +1,4 @@
-AI/dataset*
+AI/dataset/*
 guides/
 AI/trained_models/*
 
