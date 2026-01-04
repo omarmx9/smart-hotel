@@ -181,7 +181,15 @@ After starting, all core services are pre-configured:
 - **InfluxDB**: Pre-configured with sensor buckets and retention policies
 - **Grafana**: Connected to InfluxDB with default dashboards
 
-Default admin credentials are in your `.env` file.
+### Default Credentials
+
+| Service | Username | Password |
+|---------|----------|----------|
+| **Authentik Admin** | `akadmin` | `SmartHotel2026!` |
+| **Grafana** | Via Authentik SSO | - |
+| **InfluxDB** | `admin` | See `.env` |
+
+> **📌 Security:** Change the Authentik admin password in production!
 
 ### Access Points
 

@@ -200,6 +200,28 @@ register_telegraf() {
     tags = "_/_/_/room_id/_/_"
 
 # ============================================================================
+# MQTT Consumer - RFID Access Card Programming
+# ============================================================================
+# Topic: hotel/kiosk/rfid/program - Kiosk publishes tokens for card programming
+# Topic: hotel/kiosk/access/events - Access method selection events
+[[inputs.mqtt_consumer]]
+  servers = ["tcp://mosquitto:1883"]
+  topics = [
+    "hotel/kiosk/rfid/program",
+    "hotel/kiosk/access/events"
+  ]
+  qos = 1
+  connection_timeout = "30s"
+  client_id = "telegraf-smart-hotel-rfid"
+  data_format = "json"
+  json_string_fields = ["action", "token", "room_number", "reason", "event"]
+  
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "hotel/kiosk/rfid/+"
+    measurement = "_/_/_/action_type"
+    tags = "_/_/_/action_type"
+
+# ============================================================================
 # MQTT Consumer - System Alerts
 # ============================================================================
 [[inputs.mqtt_consumer]]

@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}New Card Issued - Smart Hotel{% endblock %}
+
+{% block content %}
+<div class="report-success-page">
+    <div class="card p-4 p-md-5">
+        <div class="success-header mb-4">
+            <div class="icon-box icon-box-lg icon-success">
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                </svg>
+            </div>
+            <h1 data-i18n="new_card_issued">New Keycard Issued</h1>
+            <p class="text-muted" data-i18n="new_card_desc">Your old keycard has been deactivated. Please collect your new keycard.</p>
+        </div>
+
+        <div class="info-summary mb-4">
+            <div class="row g-3">
+                <div class="col-6 col-md-3">
+                    <div class="info-card">
+                        <small data-i18n="reservation">Reservation</small>
+                        <strong>{{ reservation.reservation_number|default:"N/A" }}</strong>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="info-card">
+                        <small data-i18n="room">Room</small>
+                        <strong>{{ room_number }}</strong>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="info-card">
+                        <small data-i18n="reason">Reason</small>
+                        <strong>{{ reason|title }}</strong>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="info-card">
+                        <small data-i18n="status">Status</small>
+                        <strong class="text-success">Active</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-info mb-4 d-flex align-items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v1h14V4a1 1 0 0 0-1-1H2zm13 4H1v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7z"/>
+                <path d="M2 10a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-1z"/>
+            </svg>
+            <span data-i18n="collect_card_instruction">Please collect your new keycard from the front desk or card dispenser.</span>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap justify-content-center">
+            <a href="{% url 'kiosk:finalize' reservation.id %}" class="btn btn-primary btn-lg">
+                <span data-i18n="done">Done</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="margin-left: 8px;">
+                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                </svg>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

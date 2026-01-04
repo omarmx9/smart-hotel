@@ -128,25 +128,49 @@ def verify_info(request):
         last_name = data.get('last_name', [''])[0]
         passport = data.get('passport_number', [''])[0]
         dob = parse_date(data.get('date_of_birth', [''])[0])
-        access_method = data.get('access_method', ['keycard'])[0]
+        
+        # Handle multiselect access methods (access_keycard, access_face)
+        access_methods = []
+        if data.get('access_keycard', [''])[0]:
+            access_methods.append('keycard')
+        if data.get('access_face', [''])[0]:
+            access_methods.append('face')
+        
+        # Fallback to legacy single access_method field
+        if not access_methods:
+            legacy_method = data.get('access_method', ['keycard'])[0]
+            if legacy_method:
+                access_methods = [m.strip() for m in legacy_method.split(',') if m.strip()]
+        
+        # Default to keycard if nothing selected
+        if not access_methods:
+            access_methods = ['keycard']
 
         guest = db.get_or_create_guest(first_name, last_name, passport, dob)
         request.session['guest_id'] = guest['id']
-        request.session['access_method'] = access_method
+        request.session['access_method'] = ','.join(access_methods)
+        request.session['pending_access_methods'] = access_methods
 
-        # try find reservation by reservation_number or guest
+        # Try find reservation by reservation_number or guest
         res_number = data.get('reservation_number', [''])[0]
+        reservation = None
+        
         if res_number:
-            res = db.get_reservation_by_number(res_number)
-            if res:
-                return redirect('kiosk:finalize', reservation_id=res['id'])
+            reservation = db.get_reservation_by_number(res_number)
 
-        # try to find by guest
-        res_qs = db.get_reservations_by_guest(guest)
-        if res_qs:
-            return redirect('kiosk:finalize', reservation_id=res_qs[0]['id'])
+        if not reservation:
+            # Try to find by guest
+            res_qs = db.get_reservations_by_guest(guest)
+            if res_qs:
+                reservation = res_qs[0]
 
-        return redirect('kiosk:reservation_entry')
+        if reservation:
+            # Reservation found - store it and go to document signing
+            request.session['reservation_id'] = reservation['id']
+            return redirect('kiosk:document_signing')
+
+        # No reservation found - go to walk-in page
+        return redirect('kiosk:walkin')
 
     # GET
     return JsonResponse({'error': 'POST only'}, status=400)
@@ -336,69 +360,239 @@ def registration_preview(request):
 
 
 def document_signing(request):
-    # Document signing page: if user has a reservation, proceed to choose access after signing.
+    """
+    Document signing page - LINEAR FLOW (no loops).
+    
+    Flow:
+    1. Guest signs document digitally (canvas signature)
+    2. Assign room and apply access methods
+    3. Go to face enrollment OR finalize (never back)
+    
+    If no reservation/guest: redirect to start (reset flow)
+    """
     guest_id = request.session.get('guest_id')
+    reservation_id = request.session.get('reservation_id')
+    
+    # GUARD: No guest = start over (don't loop)
+    if not guest_id:
+        return redirect('kiosk:start')
+    
+    # Try to get reservation from session or by guest lookup
     reservation = None
-    if guest_id:
-        res_qs = db.get_reservations_by_guest(int(guest_id))
-        if res_qs:
-            reservation = res_qs[-1]
+    if reservation_id:
+        reservation = db.get_reservation(int(reservation_id))
+    else:
+        guest = db.get_guest(int(guest_id))
+        if guest:
+            res_qs = db.get_reservations_by_guest(guest)
+            if res_qs:
+                reservation = res_qs[-1]
+                request.session['reservation_id'] = reservation['id']
+
+    # GUARD: No reservation = this shouldn't happen in normal flow
+    # Instead of looping back, redirect to start
+    if not reservation:
+        return redirect('kiosk:start')
 
     if request.method == 'POST':
-        # User signed the document
-        if reservation:
-            return redirect('kiosk:choose_access', reservation_id=reservation['id'])
-        # no reservation yet -> go to reservation entry
-        return redirect('kiosk:reservation_entry')
+        # Save digital signature if provided
+        signature_data = request.POST.get('signature_data', '')
+        if signature_data and signature_data.startswith('data:image/png;base64,'):
+            try:
+                # Save signature to file
+                sig_dir = os.path.join(settings.BASE_DIR, 'media', 'signatures')
+                os.makedirs(sig_dir, exist_ok=True)
+                sig_filename = f"signature_{reservation['id']}_{int(time.time())}.png"
+                sig_path = os.path.join(sig_dir, sig_filename)
+                
+                # Decode and save
+                sig_bytes = base64.b64decode(signature_data.split(',')[1])
+                with open(sig_path, 'wb') as f:
+                    f.write(sig_bytes)
+                
+                # Store path in session for later use
+                request.session['signature_path'] = sig_path
+                request.session['signature_filename'] = sig_filename
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to save signature: {e}")
+        
+        # Get access methods (pre-selected during passport scan)
+        access_methods = request.session.get('pending_access_methods', ['keycard'])
+        if not access_methods:
+            access_methods = ['keycard']
+        
+        # Apply access methods
+        request.session['access_method'] = ','.join(access_methods)
+        
+        # Assign room
+        room_number = str(100 + (reservation['id'] % 50))
+        room_payload = {'room_number': room_number, 'access_methods': access_methods}
+        
+        # If keycard selected, generate and publish RFID token
+        if 'keycard' in access_methods:
+            try:
+                from .mqtt_client import publish_rfid_token, generate_rfid_token
+                token = generate_rfid_token()
+                result = publish_rfid_token(
+                    guest_id=reservation.get('guest_id'),
+                    reservation_id=reservation['id'],
+                    room_number=room_number,
+                    token=token,
+                    checkin=reservation.get('checkin'),
+                    checkout=reservation.get('checkout')
+                )
+                request.session['rfid_token'] = token
+                room_payload['rfid_token'] = token
+                room_payload['rfid_published'] = result.get('published', False)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"RFID token publish error: {e}")
+        
+        request.session['room_payload'] = room_payload
+        request.session.pop('pending_access_methods', None)
+        
+        # FORWARD ONLY: face enrollment OR finalize
+        if 'face' in access_methods:
+            return redirect('kiosk:enroll_face', reservation_id=reservation['id'])
+        return redirect('kiosk:finalize', reservation_id=reservation['id'])
 
     return render(request, 'kiosk/document_sign.html', {'reservation': reservation})
 
 
 def choose_access(request, reservation_id):
+    """
+    Access method selection - LINEAR FLOW (no loops).
+    
+    This is a FALLBACK page only used if access methods weren't selected during passport scan.
+    Flow: choose_access → enroll_face OR finalize
+    Never redirects back to earlier steps.
+    """
     reservation = db.get_reservation(reservation_id)
     if not reservation:
-        raise Http404('reservation not found')
+        # GUARD: Invalid reservation = start over
+        return redirect('kiosk:start')
+    
     if request.method == 'POST':
-        # allow multiple access methods (checkboxes). require at least one
+        # Allow multiple access methods (checkboxes). Default to keycard if none selected.
         methods = []
         if request.POST.get('access_keycard'):
             methods.append('keycard')
         if request.POST.get('access_face'):
             methods.append('face')
+        
+        # Default to keycard if nothing selected (prevent validation loop)
         if not methods:
-            return render(request, 'kiosk/choose_access.html', {'reservation': reservation, 'error': 'Choose at least one access method.'})
+            methods = ['keycard']
 
         request.session['access_method'] = ','.join(methods)
-        # Mock sending room number + access methods to room API (demo only)
-        # Emulate a room number assignment (simple deterministic mapping)
+        request.session.pop('pending_access_methods', None)
+        
+        # Assign room
         room_number = str(100 + (reservation['id'] % 50))
         room_payload = {'room_number': room_number, 'access_methods': methods}
         request.session['room_payload'] = room_payload
 
-        # If face chosen, go to enrollment first; otherwise finalize
+        # If keycard selected, generate and publish RFID token
+        if 'keycard' in methods:
+            try:
+                from .mqtt_client import publish_rfid_token, generate_rfid_token
+                token = generate_rfid_token()
+                result = publish_rfid_token(
+                    guest_id=reservation.get('guest_id'),
+                    reservation_id=reservation['id'],
+                    room_number=room_number,
+                    token=token,
+                    checkin=reservation.get('checkin'),
+                    checkout=reservation.get('checkout')
+                )
+                request.session['rfid_token'] = token
+                room_payload['rfid_token'] = token
+                room_payload['rfid_published'] = result.get('published', False)
+                request.session['room_payload'] = room_payload
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"RFID token publish error: {e}")
+
+        # FORWARD ONLY: face enrollment OR finalize
         if 'face' in methods:
             return redirect('kiosk:enroll_face', reservation_id=reservation['id'])
         return redirect('kiosk:finalize', reservation_id=reservation['id'])
 
-    return render(request, 'kiosk/choose_access.html', {'reservation': reservation})
+    return render(request, 'kiosk/choose_access.html', {
+        'reservation': reservation,
+        'preselected_keycard': 'keycard' in preselected,
+        'preselected_face': 'face' in preselected
+    })
+
+
+def walkin(request):
+    """
+    Walk-in guest page - LINEAR FLOW (no loops).
+    
+    Shown when no reservation is found after passport verification.
+    Guest can choose to create a new reservation.
+    
+    Flow: walkin → reservation_entry → document_signing → finalize
+    If no guest: redirect to start (don't loop)
+    """
+    guest_id = request.session.get('guest_id')
+    
+    # GUARD: No guest = start over (don't loop)
+    if not guest_id:
+        return redirect('kiosk:start')
+    
+    guest = db.get_guest(int(guest_id))
+    if not guest:
+        return redirect('kiosk:start')
+    
+    return render(request, 'kiosk/walkin.html', {'guest': guest})
 
 
 def reservation_entry(request):
+    """
+    Create reservation for walk-in guest - LINEAR FLOW (no loops).
+    
+    Flow: reservation_entry → document_signing → finalize
+    Never redirects back to walkin or verify_info.
+    If no guest: redirect to start (don't loop)
+    """
     guest_id = request.session.get('guest_id')
-    guest = db.get_guest(int(guest_id)) if guest_id else None
+    
+    # GUARD: No guest = start over (don't loop)
+    if not guest_id:
+        return redirect('kiosk:start')
+    
+    guest = db.get_guest(int(guest_id))
     if not guest:
-        raise Http404('guest')
+        return redirect('kiosk:start')
+    
     if request.method == 'POST':
-        resnum = request.POST.get('reservation_number')
+        resnum = request.POST.get('reservation_number', '').strip()
         room_count = int(request.POST.get('room_count') or 1)
         people_count = int(request.POST.get('people_count') or request.POST.get('room_count') or 1)
-        # checkin/checkout values are hidden from user in preview; fall back to today/tomorrow
         checkin = parse_date(request.POST.get('checkin') or '') or timezone.now().date()
         checkout = parse_date(request.POST.get('checkout') or '') or (timezone.now().date() + datetime.timedelta(days=1))
+        
+        # Auto-generate reservation number if not provided
+        if not resnum:
+            import secrets
+            resnum = f"RES-{timezone.now().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}"
+        
         res = db.create_reservation(resnum, guest, checkin, checkout, room_count=room_count, people_count=people_count)
-        return redirect('kiosk:finalize', reservation_id=res['id'])
+        
+        # Store reservation and ALWAYS go forward to document signing
+        request.session['reservation_id'] = res['id']
+        return redirect('kiosk:document_signing')
 
-    return render(request, 'kiosk/reservation_entry.html', {'guest': guest})
+    # Auto-generate suggested reservation number
+    import secrets
+    suggested_resnum = f"RES-{timezone.now().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}"
+    
+    return render(request, 'kiosk/reservation_entry.html', {
+        'guest': guest,
+        'suggested_resnum': suggested_resnum
+    })
 
 
 def enroll_face(request, reservation_id):
@@ -444,10 +638,16 @@ def finalize(request, reservation_id):
     if not reservation:
         raise Http404('reservation')
     access_method = request.session.get('access_method', 'keycard')
-    room_number = None
     room_payload = request.session.get('room_payload') or {}
-    room_number = room_payload.get('room_number') or reservation.get('room_number')
-    return render(request, 'kiosk/finalize.html', {'reservation': reservation, 'access_method': access_method, 'room_number': room_number})
+    room_number = room_payload.get('room_number') or reservation.get('room_number') or str(100 + (reservation_id % 50))
+    rfid_token = room_payload.get('rfid_token')
+    
+    return render(request, 'kiosk/finalize.html', {
+        'reservation': reservation, 
+        'access_method': access_method, 
+        'room_number': room_number,
+        'rfid_token': rfid_token
+    })
 
 
 def submit_keycards(request, reservation_id):
@@ -462,6 +662,98 @@ def submit_keycards(request, reservation_id):
     db.finalize_payment(reservation, amount=reservation.get('amount_due', 0) or 0)
 
     return redirect('kiosk:finalize', reservation_id=reservation['id'])
+
+
+def report_stolen_card(request, reservation_id):
+    """
+    Report a stolen or lost keycard and issue a new one.
+    Revokes the old RFID token and generates a new one.
+    """
+    reservation = db.get_reservation(reservation_id)
+    if not reservation:
+        raise Http404('reservation')
+    
+    room_payload = request.session.get('room_payload') or {}
+    room_number = room_payload.get('room_number') or str(100 + (reservation_id % 50))
+    old_token = room_payload.get('rfid_token')
+    
+    if request.method == 'POST':
+        reason = request.POST.get('reason', 'stolen')
+        
+        try:
+            from .mqtt_client import revoke_rfid_token, publish_rfid_token, generate_rfid_token
+            
+            # Revoke old token if exists
+            if old_token:
+                revoke_rfid_token(old_token, room_number, reason=reason)
+            
+            # Generate and publish new token
+            new_token = generate_rfid_token()
+            result = publish_rfid_token(
+                guest_id=reservation.get('guest_id'),
+                reservation_id=reservation['id'],
+                room_number=room_number,
+                token=new_token,
+                checkin=reservation.get('checkin'),
+                checkout=reservation.get('checkout')
+            )
+            
+            # Update session with new token
+            room_payload['rfid_token'] = new_token
+            room_payload['rfid_published'] = result.get('published', False)
+            request.session['room_payload'] = room_payload
+            
+            return render(request, 'kiosk/report_card_success.html', {
+                'reservation': reservation,
+                'room_number': room_number,
+                'new_token': new_token,
+                'reason': reason
+            })
+            
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Card report error: {e}")
+            return render(request, 'kiosk/report_card.html', {
+                'reservation': reservation,
+                'room_number': room_number,
+                'error': str(e)
+            })
+    
+    return render(request, 'kiosk/report_card.html', {
+        'reservation': reservation,
+        'room_number': room_number
+    })
+
+
+@csrf_exempt
+def revoke_rfid_card_api(request):
+    """
+    API endpoint to revoke an RFID card token.
+    Used by staff dashboard or security systems.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST only'}, status=400)
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+        token = data.get('token')
+        room_number = data.get('room_number')
+        reason = data.get('reason', 'revoked')
+        
+        if not token or not room_number:
+            return JsonResponse({'error': 'token and room_number required'}, status=400)
+        
+        from .mqtt_client import revoke_rfid_token
+        result = revoke_rfid_token(token, room_number, reason=reason)
+        
+        return JsonResponse({
+            'success': result.get('success', False),
+            'message': 'Token revoked' if result.get('success') else 'Revocation failed',
+            'error': result.get('error')
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 # ============================================================================
@@ -548,41 +840,59 @@ def dw_registration_card(request):
 
 def dw_sign_document(request):
     """
-    Document signing page with options for digital or physical signature.
+    Document signing page - LINEAR FLOW (no loops).
     
     Shows the DW R.C. document preview and allows:
     - Digital signature via canvas
     - Print for physical signature
+    
+    Flow: dw_sign_document → document_signing → finalize
+    Never redirects back to dw_registration_card.
     """
     registration_data = request.session.get('dw_registration_data', {})
     document_preview = request.session.get('dw_document_preview', '')
     signature_method = registration_data.get('signature_method', 'physical')
     
+    # GUARD: No registration data = start over (don't loop back)
     if not registration_data:
-        # No data - redirect back to registration
-        return redirect('kiosk:dw_registration_card')
+        return redirect('kiosk:start')
     
     # Get reservation if exists
     reservation = None
     guest_id = request.session.get('guest_id')
     if guest_id:
-        res_qs = db.get_reservations_by_guest(int(guest_id))
-        if res_qs:
-            reservation = res_qs[-1]
+        guest = db.get_guest(int(guest_id))
+        if guest:
+            res_qs = db.get_reservations_by_guest(guest)
+            if res_qs:
+                reservation = res_qs[-1]
+                request.session['reservation_id'] = reservation['id']
     
     if request.method == 'POST':
         # Handle signature submission
         signature_data = request.POST.get('signature_data', '')
-        
-        # Update document with signature
+        # Save digital signature as file if provided
+        if signature_data and signature_data.startswith('data:image/png;base64,'):
+            try:
+                sig_dir = os.path.join(settings.BASE_DIR, 'media', 'signatures')
+                os.makedirs(sig_dir, exist_ok=True)
+                sig_filename = f"dw_signature_{guest_id or 'unknown'}_{int(time.time())}.png"
+                sig_path = os.path.join(sig_dir, sig_filename)
+                sig_bytes = base64.b64decode(signature_data.split(',')[1])
+                with open(sig_path, 'wb') as f:
+                    f.write(sig_bytes)
+                registration_data['signature_file'] = sig_filename
+                request.session['dw_signature_path'] = sig_path
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to save DW signature: {e}")
+        # Update document with signature (base64 or file ref)
         if signature_data:
             registration_data['signature_data'] = signature_data
             request.session['dw_registration_data'] = registration_data
-            
             # Regenerate preview with signature
             result = fill_registration_card(registration_data)
             request.session['dw_document_preview'] = result.get('html_preview', '')
-        
         # Create guest if not exists
         if not guest_id:
             first = registration_data.get('name', '')
@@ -591,13 +901,12 @@ def dw_sign_document(request):
             dob = registration_data.get('date_of_birth', '')
             guest = db.create_guest(first, last, passport, dob)
             request.session['guest_id'] = guest['id']
-        
+            guest_id = guest['id']
         # Store completed registration
         request.session['registration_complete'] = True
-        
-        # Continue to reservation entry or finalize
+        # FORWARD ONLY: document_signing (which will handle finalize)
         if reservation:
-            return redirect('kiosk:choose_access', reservation_id=reservation['id'])
+            return redirect('kiosk:document_signing')
         return redirect('kiosk:reservation_entry')
     
     return render(request, 'kiosk/dw_sign_document.html', {

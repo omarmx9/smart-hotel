@@ -23,7 +23,8 @@ urlpatterns = [
     path('document/', views.documentation, name='documentation'),
     path('document/sign/', views.document_signing, name='document_signing'),
     
-    # Reservation and access
+    # Walk-in and Reservation
+    path('walkin/', views.walkin, name='walkin'),
     path('reservation/', views.reservation_entry, name='reservation_entry'),
     path('choose-access/<int:reservation_id>/', views.choose_access, name='choose_access'),
     path('enroll-face/<int:reservation_id>/', views.enroll_face, name='enroll_face'),
@@ -31,6 +32,7 @@ urlpatterns = [
     path('save-faces/<int:reservation_id>/', views.save_faces, name='save_faces'),  # Save captured faces
     path('final/<int:reservation_id>/', views.finalize, name='finalize'),
     path('submit-keycards/<int:reservation_id>/', views.submit_keycards, name='submit_keycards'),
+    path('report-card/<int:reservation_id>/', views.report_stolen_card, name='report_stolen_card'),  # Report stolen/lost card
     
     # API endpoints
     path('api/save-passport-data/', views.save_passport_extraction, name='save_passport_extraction'),
@@ -38,6 +40,9 @@ urlpatterns = [
     # Guest Account API (Authentik integration)
     path('api/guest/create/', views.create_guest_account_api, name='create_guest_account'),
     path('api/guest/deactivate/', views.deactivate_guest_account_api, name='deactivate_guest_account'),
+    
+    # RFID Card Management API
+    path('api/rfid/revoke/', views.revoke_rfid_card_api, name='revoke_rfid_card'),
     
     # MRZ Backend API proxy endpoints (browser camera sends images to these)
     path('api/mrz/detect/', views.mrz_detect, name='mrz_detect'),

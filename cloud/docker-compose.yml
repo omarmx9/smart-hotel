@@ -145,8 +145,10 @@ services:
     image: docker.io/telegraf:alpine
     container_name: telegraf
     depends_on:
-      - influxdb
-      - mosquitto
+      influxdb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
     volumes:
       - ./config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
     environment:
@@ -154,6 +156,8 @@ services:
       - INFLUX_TOKEN=${INFLUX_TOKEN}
       - INFLUX_ORG=${INFLUX_ORG:-smarthotel}
       - INFLUX_BUCKET=${INFLUX_BUCKET:-sensors}
+      - MQTT_USER=${MQTT_USER:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
     restart: unless-stopped
     cap_add:
       - CAP_NET_RAW
@@ -346,6 +350,12 @@ services:
       # Authentik integration for guest account creation
       AUTHENTIK_URL: 'http://authentik-server:9000'
       KIOSK_API_TOKEN: '${KIOSK_API_TOKEN:-}'
+      # MQTT configuration for RFID access card programming
+      MQTT_HOST: 'mosquitto'
+      MQTT_PORT: '1883'
+      MQTT_USER: '${MQTT_USER:-}'
+      MQTT_PASSWORD: '${MQTT_PASSWORD:-}'
+      MQTT_ENABLED: 'true'
     volumes:
       # Persist SQLite database across container restarts
       - kiosk_data:/app/data
@@ -354,6 +364,7 @@ services:
     depends_on:
       - mrz-backend
       - authentik-server
+      - mosquitto
     restart: unless-stopped
     networks:
       - kiosk-network

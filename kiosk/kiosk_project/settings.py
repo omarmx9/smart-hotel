@@ -90,4 +90,12 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Use signed cookie sessions so the app does not require DB-backed sessions
 SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
 
+# Session cookie settings for kiosk reliability
+SESSION_COOKIE_NAME = 'kiosk_session'
+SESSION_COOKIE_AGE = 3600  # 1 hour for kiosk sessions
+SESSION_COOKIE_SECURE = False  # Set True in production with HTTPS
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_SAVE_EVERY_REQUEST = True  # Refresh session on every request
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

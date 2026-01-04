@@ -126,11 +126,41 @@ flowchart LR
     F --> G
     G --> H["Form<br/>Pre-population"]
     H --> I["Verification"]
-    I --> J["Document<br/>Generation"]
-    J --> K["Access<br/>Setup"]
+    I --> J["Document<br/>Signing"]
+    J --> K["Finalize"]
 ```
 
 ## Guest Journey
+
+The kiosk follows a **strictly linear flow** - guests always progress forward, never looping back:
+
+```mermaid
+flowchart TD
+    START[/"🏨 Advertisement Screen"/] --> LANG["🌍 Language Selection"]
+    LANG --> CHECKIN["📋 Check-in Start"]
+    CHECKIN --> PASSPORT["📷 Passport Scan<br/>+ Access Method Selection"]
+    PASSPORT --> VERIFY["✅ Verify Info"]
+    
+    VERIFY --> FOUND{"Reservation<br/>Found?"}
+    
+    FOUND -->|Yes| SIGN["✍️ Document Signing"]
+    FOUND -->|No| WALKIN["🚶 Walk-in Flow"]
+    WALKIN --> CREATE["📝 Create Reservation<br/>Dates & Room Preferences"]
+    CREATE --> SIGN
+    
+    SIGN --> ACCESS{"Access<br/>Method?"}
+    
+    ACCESS -->|Keycard Only| FINALIZE["🎉 Finalization<br/>Room & Keycard Details"]
+    ACCESS -->|Face ID| ENROLL["👤 Face Enrollment"]
+    ACCESS -->|Both| ENROLL
+    
+    ENROLL --> FINALIZE
+    
+    style START fill:#4CAF50,color:#fff
+    style FINALIZE fill:#2196F3,color:#fff
+    style SIGN fill:#FF9800,color:#fff
+    style VERIFY fill:#9C27B0,color:#fff
+```
 
 ### Step 1: Advertisement & Language Selection
 Guest approaches the kiosk and sees a welcome screen. They select their preferred language from 5 options: English, German, Polish, Ukrainian, or Russian.
@@ -144,31 +174,35 @@ The kiosk activates the camera for passport scanning:
 - Green overlay indicates document detection
 - Guest holds passport steady and presses **Capture** when positioned correctly
 - System extracts MRZ data from the captured frame; alternatively the guest may choose **Enter Manually** to type their passport details
+- **Access method selection** (Keycard, Face ID, or both) happens during this step
 
 ### Step 4: Information Verification
 Extracted passport data is displayed for verification:
 - First name, last name, date of birth
 - Passport number and nationality
 - Guest can edit any incorrect fields
-- Reservation number entry (optional)
+- System looks up reservation by passport details
 
-### Step 5: DW Registration Card
-Guest fills out the required registration form:
-- Address and contact information
-- Travel purpose and companions
-- Digital signature capture
-- PDF generation for records
+### Step 5: Walk-in or Reservation Found
+- **Reservation Found**: Proceeds directly to document signing
+- **Walk-in (No Reservation)**: Guest creates a new reservation with dates and room preferences
 
-### Step 6: Access Method Selection
-Guest chooses how to access their room:
-- **Keycard**: Traditional key encoding
-- **Facial Recognition**: Camera enrollment for biometric access
+### Step 6: Document Signing
+Guest signs the registration document:
+- Digital signature via touch canvas
+- Room is automatically assigned
+- RFID keycard token is generated (if keycard selected)
 
-### Step 7: Finalization
+### Step 7: Face Enrollment (Optional)
+If guest selected Face ID access:
+- Camera captures face images
+- Images are enrolled for room access
+
+### Step 8: Finalization
 Check-in completes with:
-- Keycard dispensing (if selected)
-- Room number and directions
+- Room number and keycard details displayed
 - Welcome information
+- Option to report lost/stolen card
 
 ## Quick Start
 

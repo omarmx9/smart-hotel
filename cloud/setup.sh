@@ -262,20 +262,23 @@ Smart Hotel - Interactive Setup Script
 Usage: $0 [OPTIONS]
 
 Options:
-  --defaults    Use default configuration (non-interactive)
+  --auto        Fully automatic setup: configure, build, and start all services
+  --defaults    Use default configuration (non-interactive, doesn't start services)
   --reset       Reset configuration (removes .env, regenerates secrets)
   --help        Show this help message
 
 This script will:
   1. Generate secure secrets for all services
-  2. Configure MQTT authentication (optional)
-  3. Configure MQTT TLS encryption (optional)
+  2. Configure MQTT authentication (optional in interactive mode)
+  3. Configure MQTT TLS encryption (optional in interactive mode)
   4. Set up Authentik identity provider
   5. Configure InfluxDB initialization
   6. Prepare all services for first launch
 
-After running this script, start the services with:
-  docker compose up -d
+Examples:
+  ./setup.sh              # Interactive setup
+  ./setup.sh --auto       # Automatic setup + build + start
+  ./setup.sh --defaults   # Just generate config (no start)
 
 EOF
 }
@@ -793,6 +796,154 @@ run_defaults() {
     print_summary
 }
 
+# Fully automatic setup - configure, build, and start
+run_auto() {
+    info "Running fully automatic setup..."
+    echo ""
+    
+    MQTT_AUTH_ENABLED="false"
+    MQTT_TLS_ENABLED="false"
+    MQTT_USER=""
+    MQTT_PASSWORD=""
+    
+    # Detect external host
+    EXTERNAL_HOST="localhost"
+    if command -v hostname &> /dev/null; then
+        DETECTED_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+        if [[ -n "$DETECTED_IP" ]]; then
+            EXTERNAL_HOST="$DETECTED_IP"
+        fi
+    fi
+    
+    AUTHENTIK_EXTERNAL_URL="http://${EXTERNAL_HOST}:9000"
+    GRAFANA_ROOT_URL="http://${EXTERNAL_HOST}:3000"
+    DJANGO_ALLOWED_HOSTS="${EXTERNAL_HOST},localhost,127.0.0.1"
+    
+    # Auto-resolve port conflicts with tracking of already-allocated ports
+    header "Checking Port Availability"
+    declare -A ALLOCATED_PORTS  # Track ports we've already allocated
+    
+    for port_name in "${!DEFAULT_PORTS[@]}"; do
+        local port="${DEFAULT_PORTS[$port_name]}"
+        local new_port="$port"
+        
+        # Check if port is in use OR already allocated in this run
+        while is_port_in_use "$new_port" || [[ -n "${ALLOCATED_PORTS[$new_port]}" ]]; do
+            ((new_port++))
+            if [[ $new_port -gt $((port + 100)) ]]; then
+                error "Could not find available port for ${PORT_DESCRIPTIONS[$port_name]}"
+                exit 1
+            fi
+        done
+        
+        if [[ "$new_port" != "$port" ]]; then
+            warn "Port $port (${PORT_DESCRIPTIONS[$port_name]}) unavailable, remapping to $new_port"
+        else
+            success "Port $port (${PORT_DESCRIPTIONS[$port_name]}) is available"
+        fi
+        
+        REMAPPED_PORTS[$port_name]="$new_port"
+        ALLOCATED_PORTS[$new_port]="$port_name"
+    done
+    success "Port allocation complete"
+    
+    generate_all_secrets
+    update_mosquitto_config
+    write_env_file
+    
+    # Build and start the stack
+    header "Building and Starting Services"
+    
+    info "Building containers (this may take a few minutes)..."
+    if docker compose build --quiet; then
+        success "Build complete"
+    else
+        error "Build failed! Check docker compose logs for details."
+        exit 1
+    fi
+    
+    info "Starting services..."
+    if docker compose up -d; then
+        success "Services started"
+    else
+        error "Failed to start services!"
+        exit 1
+    fi
+    
+    # Wait for services to be healthy
+    header "Waiting for Services"
+    info "Waiting for services to become healthy..."
+    
+    local max_wait=120
+    local waited=0
+    local all_healthy=false
+    
+    while [[ $waited -lt $max_wait ]]; do
+        local unhealthy=$(docker compose ps --format json 2>/dev/null | grep -c '"Health":"starting"' || echo "0")
+        if [[ "$unhealthy" == "0" ]]; then
+            all_healthy=true
+            break
+        fi
+        echo -n "."
+        sleep 5
+        ((waited+=5))
+    done
+    echo ""
+    
+    if [[ "$all_healthy" == "true" ]]; then
+        success "All services are healthy!"
+    else
+        warn "Some services may still be starting. Check with: docker compose ps"
+    fi
+    
+    # Configure InfluxDB buckets
+    header "Configuring InfluxDB"
+    info "Creating InfluxDB buckets..."
+    
+    # Wait a bit for InfluxDB to be fully ready
+    sleep 5
+    
+    docker compose exec -T influxdb sh -c '
+        INFLUX_ORG="smarthotel"
+        
+        # Create additional buckets
+        influx bucket create --name "face_events" --org "$INFLUX_ORG" --retention 604800s 2>/dev/null || true
+        influx bucket create --name "system" --org "$INFLUX_ORG" --retention 2592000s 2>/dev/null || true
+        influx bucket create --name "alerts" --org "$INFLUX_ORG" --retention 7776000s 2>/dev/null || true
+    ' 2>/dev/null && success "InfluxDB buckets configured" || warn "Some InfluxDB buckets may already exist"
+    
+    # Apply Authentik blueprints
+    header "Configuring Authentik"
+    info "Waiting for Authentik to be ready..."
+    
+    local authentik_ready=false
+    local authentik_wait=0
+    while [[ $authentik_wait -lt 60 ]]; do
+        if docker compose exec -T authentik-server ak healthcheck 2>/dev/null; then
+            authentik_ready=true
+            break
+        fi
+        sleep 5
+        ((authentik_wait+=5))
+    done
+    
+    if [[ "$authentik_ready" == "true" ]]; then
+        info "Applying OAuth2 blueprints..."
+        if docker compose exec -T authentik-server ak apply_blueprint custom/smart-hotel-oauth2.yaml 2>/dev/null | grep -q "invalid"; then
+            warn "OAuth2 blueprint may have issues - check Authentik admin"
+        else
+            success "Authentik OAuth2 configured"
+        fi
+    else
+        warn "Authentik not ready - blueprints will be applied on next restart"
+    fi
+    
+    print_summary
+    
+    echo ""
+    success "Stack is running! Access services at the URLs above."
+}
+
 # Reset configuration
 reset_config() {
     warn "This will remove your current configuration!"
@@ -869,6 +1020,9 @@ main() {
         --help|-h)
             show_help
             exit 0
+            ;;
+        --auto)
+            run_auto
             ;;
         --defaults)
             run_defaults

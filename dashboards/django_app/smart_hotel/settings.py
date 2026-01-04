@@ -205,8 +205,8 @@ OIDC_OP_LOGOUT_URL_METHOD = 'accounts.oidc_logout.get_logout_url'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
-# Use OIDC login as default
-LOGIN_URL = '/accounts/oidc/authenticate/'
+# Use OIDC login as default (now at root /oidc/)
+LOGIN_URL = '/oidc/authenticate/'
 
 # Session settings for OIDC
 OIDC_RENEW_ID_TOKEN_EXPIRY_SECONDS = int(os.environ.get('OIDC_RENEW_ID_TOKEN_EXPIRY_SECONDS', 900))  # Default: 15 minutes

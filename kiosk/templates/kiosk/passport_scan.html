@@ -124,27 +124,29 @@
                 </div>
             </div>
 
+            <input type="hidden" name="access_keycard" id="manual_access_keycard" value="1">
+            <input type="hidden" name="access_face" id="manual_access_face" value="">
             <div class="mb-4">
-                <label class="form-label fw-bold" data-i18n="access_method">Access Method</label>
+                <label class="form-label fw-bold" data-i18n="access_method">Access Method <small class="text-muted">(select one or both)</small></label>
                 <div class="row g-2">
                     <div class="col-6">
-                        <label class="access-option w-100 selected" for="manual_access_keycard">
-                            <input class="form-check-input d-none" type="radio" name="access_method" value="keycard" id="manual_access_keycard" checked>
+                        <button type="button" class="access-btn w-100" id="manualKeycardBtn" aria-pressed="true" onclick="toggleVerifyAccess(this, 'manual_access_keycard')">
+                            <span class="badge"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg> Selected</span>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v1h14V4a1 1 0 0 0-1-1H2zm13 4H1v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7z"/>
                                 <path d="M2 10a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-1z"/>
                             </svg>
                             <span data-i18n="keycard">Keycard</span>
-                        </label>
+                        </button>
                     </div>
                     <div class="col-6">
-                        <label class="access-option w-100" for="manual_access_face">
-                            <input class="form-check-input d-none" type="radio" name="access_method" value="face" id="manual_access_face">
+                        <button type="button" class="access-btn w-100" id="manualFaceBtn" aria-pressed="false" onclick="toggleVerifyAccess(this, 'manual_access_face')">
+                            <span class="badge"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg> Selected</span>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
                             </svg>
                             <span data-i18n="face_id">Face ID</span>
-                        </label>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -188,29 +190,30 @@
             <input type="hidden" name="passport_number" id="inputPassportNumber">
             <input type="hidden" name="date_of_birth" id="inputDateOfBirth">
             <input type="hidden" name="nationality" id="inputNationality">
-            <input type="hidden" name="access_method" value="keycard">
+            <input type="hidden" name="access_keycard" id="verify_access_keycard" value="1">
+            <input type="hidden" name="access_face" id="verify_access_face" value="">
 
             <div class="mb-4">
-                <label class="form-label fw-bold" data-i18n="access_method">Access Method</label>
+                <label class="form-label fw-bold" data-i18n="access_method">Access Method <small class="text-muted">(select one or both)</small></label>
                 <div class="row g-2">
                     <div class="col-6">
-                        <label class="access-option w-100 selected" for="access_keycard">
-                            <input class="form-check-input d-none" type="radio" name="access_method" value="keycard" id="access_keycard" checked>
+                        <button type="button" class="access-btn w-100" id="verifyKeycardBtn" aria-pressed="true" onclick="toggleVerifyAccess(this, 'verify_access_keycard')">
+                            <span class="badge"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg> Selected</span>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v1h14V4a1 1 0 0 0-1-1H2zm13 4H1v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7z"/>
                                 <path d="M2 10a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-1z"/>
                             </svg>
                             <span data-i18n="keycard">Keycard</span>
-                        </label>
+                        </button>
                     </div>
                     <div class="col-6">
-                        <label class="access-option w-100" for="access_face">
-                            <input class="form-check-input d-none" type="radio" name="access_method" value="face" id="access_face">
+                        <button type="button" class="access-btn w-100" id="verifyFaceBtn" aria-pressed="false" onclick="toggleVerifyAccess(this, 'verify_access_face')">
+                            <span class="badge"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg> Selected</span>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
                             </svg>
                             <span data-i18n="face_id">Face ID</span>
-                        </label>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -322,7 +325,7 @@ async function performCapture() {
             const imageData = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
             
             // Send to extraction endpoint
-            const response = await fetch(MRZ_SERVICE_URL + '/extract', {
+            const response = await fetch(MRZ_SERVICE_URL + '/extract/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -448,15 +451,35 @@ function stopCamera() {
     }
 }
 
-// Access method toggle
-document.querySelectorAll('input[name="access_method"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-        // Find the parent form to scope the selection
-        const form = e.target.closest('form') || document;
-        form.querySelectorAll('.access-option').forEach(opt => opt.classList.remove('selected'));
-        e.target.closest('.access-option').classList.add('selected');
-    });
-});
+// Multiselect access method toggle
+function toggleVerifyAccess(btn, inputId) {
+    var isPressed = btn.getAttribute('aria-pressed') === 'true';
+    var newState = !isPressed;
+    
+    btn.setAttribute('aria-pressed', String(newState));
+    document.getElementById(inputId).value = newState ? '1' : '';
+}
+
+// Form validation: require at least one access method
+document.getElementById('verifyForm').onsubmit = function(e) {
+    var keycard = document.getElementById('verify_access_keycard').value;
+    var face = document.getElementById('verify_access_face').value;
+    if (!keycard && !face) {
+        e.preventDefault();
+        alert('Please choose at least one access method.');
+        return false;
+    }
+};
+
+document.getElementById('manualEntryForm').onsubmit = function(e) {
+    var keycard = document.getElementById('manual_access_keycard').value;
+    var face = document.getElementById('manual_access_face').value;
+    if (!keycard && !face) {
+        e.preventDefault();
+        alert('Please choose at least one access method.');
+        return false;
+    }
+};
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', stopCamera);

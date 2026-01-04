@@ -2,6 +2,7 @@ Django
 Pillow
 whitenoise
 requests
+paho-mqtt
 # MRZ extraction and document generation
 fastmrz
 opencv-python-headless

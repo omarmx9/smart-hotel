@@ -1,12 +1,10 @@
-from django.urls import path, include
+from django.urls import path
 from . import views
 
 app_name = 'accounts'
 
 urlpatterns = [
-    # OIDC authentication endpoints (handled by mozilla-django-oidc)
-    path('oidc/', include('mozilla_django_oidc.urls')),
-    
+    # OIDC authentication is now at root /oidc/ for mozilla_django_oidc compatibility
     # Legacy login page - redirects to OIDC
     path('login/', views.LoginView.as_view(), name='login'),
     path('logout/', views.LogoutView.as_view(), name='logout'),

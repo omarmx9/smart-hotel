@@ -376,14 +376,18 @@ The initial admin account is created automatically:
 | Setting | Value | Source |
 |---------|-------|--------|
 | Username | `akadmin` | Authentik default |
-| Password | `changeme` | `AUTHENTIK_BOOTSTRAP_PASSWORD` in `.env` |
+| Password | `SmartHotel2026!` | `AUTHENTIK_BOOTSTRAP_PASSWORD` in `.env` |
 | Email | `admin@smarthotel.local` | `AUTHENTIK_BOOTSTRAP_EMAIL` in `.env` |
 
-**⚠️ Important:** Change the admin password after first login!
+> **📌 Production Reminder:** Change the admin password after first login for security!
 
 ```bash
 # Access Authentik admin at:
 open http://localhost:9000/if/admin/
+
+# Login with:
+# Username: akadmin
+# Password: SmartHotel2026!
 ```
 
 ### Creating Staff Users
