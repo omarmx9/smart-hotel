@@ -1,13 +1,16 @@
 // Auto-generated class labels
 // Generated from: class_labels.json
+// Number of classes: 5
+//
+// Copy this to your ESP32 project to keep labels in sync with training
 
 #ifndef CLASS_LABELS_H
 #define CLASS_LABELS_H
 
-#include <array>
-#include <string_view>
+#define NUM_CLASSES 5
 
-constexpr std::array<std::string_view, 5> CLASS_LABELS = {
+// Class labels array - order matches model output indices
+static const char* kLabels[NUM_CLASSES] = {
     "maha",
     "mokhtar",
     "omar",
@@ -15,12 +18,10 @@ constexpr std::array<std::string_view, 5> CLASS_LABELS = {
     "tarek"
 };
 
-constexpr size_t NUM_CLASSES = 5;
-
-// Function to get label from index
-constexpr std::string_view get_class_label(int index) {
+// Helper function to get label from index
+inline const char* get_class_label(int index) {
     if (index >= 0 && index < NUM_CLASSES) {
-        return CLASS_LABELS[index];
+        return kLabels[index];
     }
     return "Unknown";
 }

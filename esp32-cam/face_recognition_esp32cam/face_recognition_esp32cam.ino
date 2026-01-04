@@ -3,7 +3,7 @@
  * Uses TensorFlow Lite Micro for on-device inference
  * 
  * Hardware: ESP32-CAM (AI-Thinker)
- * Model: MobileNetV2 (96x96 input, 4 classes, quantized uint8)
+ * Model: MobileNetV2 (96x96 input, 5 classes, quantized uint8)
  * 
  * Arduino IDE Setup:
  *   1. Board: "AI Thinker ESP32-CAM"
@@ -34,10 +34,10 @@
 #define MODEL_INPUT_WIDTH   96
 #define MODEL_INPUT_HEIGHT  96
 #define MODEL_INPUT_CHANNELS 3
-#define NUM_CLASSES         4
+#define NUM_CLASSES         5
 
 // Confidence threshold for recognition
-#define CONFIDENCE_THRESHOLD 0.4f
+#define CONFIDENCE_THRESHOLD 0.995f
 
 // ==================== CLASS LABELS ====================
 
