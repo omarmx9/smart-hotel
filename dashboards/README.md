@@ -57,6 +57,7 @@ The Smart Hotel Dashboard is the central management interface for hotel staff. I
 - Auto-expire accounts based on custom attributes
 - Send credentials via unified notification system (Telegram → SMS fallback)
 - Track active guest sessions synced from Authentik
+- See [cloud/README.md#authentik-setup](../../cloud/README.md#authentik-setup) for identity provider security
 
 ### Notification Center (Admin/Monitor)
 - Real-time service status (Telegram, SMS configuration)
@@ -204,37 +205,71 @@ daphne -b 0.0.0.0 -p 8000 smart_hotel.asgi:application
 
 ## MQTT Topics
 
-### Sensor Topics (Subscribe)
 
-The dashboard subscribes to these topics to receive sensor data:
+### Overview
 
+The dashboard uses MQTT for real-time communication with ESP32 devices and the notification gateway. It subscribes to room telemetry topics and publishes control, notification, and alert messages. All topics use simple string or JSON payloads as described below.
+
+#### Topic Conventions
+- `<room_no>`: Room identifier (e.g., 101)
+- `+`: MQTT single-level wildcard
+
+### Subscribed Topics (Dashboard as Subscriber)
+
+| Topic Pattern                              | Description                        | Payload Type |
+|--------------------------------------------|------------------------------------|-------------|
+| /hotel/+/telemetry/temperature             | Room temperature updates           | float (as string) |
+| /hotel/+/telemetry/humidity                | Room humidity updates              | float (as string) |
+| /hotel/+/telemetry/luminosity              | Room luminosity updates            | int (as string) |
+| /hotel/+/telemetry/gas                     | Room gas sensor updates            | int (as string) |
+| /hotel/+/telemetry/heating                 | Heating status                     | 'true'/'false' |
+| /hotel/+/telemetry/climate_mode            | Climate mode                       | 'auto'/'manual'/'off' |
+| /hotel/+/telemetry/fan_speed               | Fan speed                          | 'low'/'medium'/'high' |
+
+### Published Topics (Dashboard as Publisher)
+
+| Topic Pattern                              | Description                        | Payload Example |
+|--------------------------------------------|------------------------------------|----------------|
+| /hotel/<room_no>/control/target_temperature| Set target temperature             | "22.5" |
+| /hotel/<room_no>/control/climate_mode      | Set climate mode                   | "auto" |
+| /hotel/<room_no>/control/fan_speed         | Set fan speed                      | "medium" |
+| /hotel/<room_no>/control/luminosity        | Set luminosity level               | "80" |
+| /hotel/<room_no>/control/light_mode        | Set light mode                     | "manual" |
+| hotel/notifications/send                   | Send notification (to Node-RED)    | JSON (see below) |
+| hotel/alerts/<alert_type>                  | Publish system alert               | JSON (see below) |
+
+### Example Payloads
+
+**Telemetry (subscribe):**
 ```
-hotel/room/{room_number}/temperature    # Current temperature (°C)
-hotel/room/{room_number}/humidity       # Relative humidity (%)
-hotel/room/{room_number}/luminosity     # Light level (lux)
-hotel/room/{room_number}/gas            # Gas sensor reading
-hotel/room/{room_number}/heating        # Heating status (ON/OFF)
+"22.5"  # temperature (float as string)
+"true"  # heating status
+"auto"  # climate_mode
 ```
 
-### Control Topics (Publish)
-
-The dashboard publishes to these topics to control devices:
-
+**Control (publish):**
 ```
-hotel/room/{room_number}/target         # Target temperature setpoint
-hotel/room/{room_number}/light          # Light brightness (0-100)
-hotel/room/{room_number}/light_mode     # Light mode (auto/manual)
+"23"  # target_temperature
+"manual"  # light_mode
 ```
 
-### Message Format
-
-All MQTT messages use JSON payloads:
-
+**Notification (publish to hotel/notifications/send):**
 ```json
 {
-  "value": 22.5,
-  "timestamp": "2024-01-15T10:30:00Z",
-  "unit": "celsius"
+  "type": "guest_credentials",
+  "message": "Welcome! WiFi: HotelGuest, Password: abc123",
+  "recipient": { "phone": "+1234567890", "chat_id": 123456789 },
+  "priority": "normal",
+  "metadata": {}
+}
+```
+
+**Alert (publish to hotel/alerts/<alert_type>):**
+```json
+{
+  "room": "101",
+  "level": "high",
+  "message": "Gas detected!"
 }
 ```
 

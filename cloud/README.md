@@ -40,29 +40,29 @@ The Smart Hotel cloud infrastructure provides all backend services required to r
 ```mermaid
 flowchart TB
     subgraph EXTERNAL["External Connections"]
-        ESP32["ESP32 Devices<br/>MQTT :1883"]
-        STAFF["Staff Browser<br/>HTTP :8001"]
-        GUESTS["Guest Kiosk<br/>HTTP :8002"]
+        ESP32["ESP32 Devices<br/>MQTT"]
+        STAFF["Staff Browser<br/>HTTP"]
+        GUESTS["Guest Kiosk<br/>HTTP"]
     end
 
     subgraph DOCKER["Docker Network"]
         subgraph AUTH_LAYER["Authentication Layer"]
-            AUTHENTIK["Authentik<br/>Identity Provider<br/>:9000"]
+            AUTHENTIK["Authentik<br/>Identity Provider"]
             AUTH_DB["Authentik DB<br/>PostgreSQL"]
             AUTH_REDIS["Redis<br/>Session Store"]
         end
 
         subgraph DATA_LAYER["Data Layer"]
-            MOSQUITTO["Mosquitto<br/>MQTT Broker<br/>:1883 / :9001 WS"]
+            MOSQUITTO["Mosquitto<br/>MQTT Broker"]
             TELEGRAF["Telegraf<br/>Data Bridge"]
-            INFLUXDB["InfluxDB<br/>Time-Series DB<br/>:8086"]
-            GRAFANA["Grafana<br/>Visualization<br/>:3000"]
+            INFLUXDB["InfluxDB<br/>Time-Series DB"]
+            GRAFANA["Grafana<br/>Visualization"]
             POSTGRES["PostgreSQL<br/>Rooms/Reservations"]
         end
         
         subgraph APP_LAYER["Application Layer"]
-            DASHBOARD["Dashboard<br/>Django/ASGI<br/>:8001"]
-            NODERED["Node-RED<br/>Notification Gateway<br/>:1880"]
+            DASHBOARD["Dashboard<br/>Django/ASGI"]
+            NODERED["Node-RED<br/>Notification Gateway"]
         end
         
         subgraph NOTIFY["Notification Services"]
@@ -71,8 +71,8 @@ flowchart TB
         end
         
         subgraph KIOSK_NET["Kiosk Network (Isolated)"]
-            KIOSK["Kiosk App<br/>Django<br/>:8002"]
-            MRZ["MRZ Backend<br/>Flask<br/>:5000 internal"]
+            KIOSK["Kiosk App<br/>Django"]
+            MRZ["MRZ Backend<br/>Flask<br/>internal"]
         end
     end
 
@@ -121,10 +121,9 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    A["Staff<br/>Dashboard"] -->|HTTP POST| B["Django<br/>View"]
-    B -->|MQTT Publish| C["Mosquitto<br/>Broker"]
-    C -->|Subscribe| D["ESP32<br/>Device"]
-    D -->|Execute| E["Heater<br/>ON/OFF"]
+    A["Django<br/>Dashboard"] -->|MQTT Publish| B["Mosquitto<br/>Broker"]
+    B -->|Subscribe| C["ESP32<br/>Device"]
+    C -->|Execute| D["ACTIONS"]
 ```
 
 ## Services
@@ -133,11 +132,11 @@ flowchart LR
 
 | Service | Image | Port | Description |
 |---------|-------|------|-------------|
-| **InfluxDB** | `influxdb:2-alpine` | 8086 | Time-series database for sensor data |
-| **PostgreSQL** | `postgres:16-alpine` | 5432 (internal) | Relational database for rooms/reservations |
-| **Mosquitto** | `eclipse-mosquitto:latest` | 1883, 9001 | MQTT broker for IoT messaging |
-| **Telegraf** | `telegraf:alpine` | - | MQTT → InfluxDB data bridge |
-| **Grafana** | `grafana/grafana:latest` | 3000 | Metrics visualization |
+| **InfluxDB** | `influxdb:2-alpine` |  | Time-series database for sensor data |
+| **PostgreSQL** | `postgres:16-alpine` |  | Relational database for rooms/reservations |
+| **Mosquitto** | `eclipse-mosquitto:latest` |  | MQTT broker for IoT messaging |
+| **Telegraf** | `telegraf:alpine` |  | MQTT → InfluxDB data bridge |
+| **Grafana** | `grafana/grafana:latest` |  | Metrics visualization |
 
 ### Authentication & Messaging
 
@@ -493,23 +492,26 @@ The Notifications page (`/notifications/`) provides:
 
 The compose file creates two isolated networks:
 
-```
-┌─────────────────────────────────────┐
-│           default network           │
-│                                     │
-│  influxdb ← telegraf ← mosquitto    │
-│      ↓          ↑                   │
-│   grafana    dashboard              │
-│                ↓                    │
-│            postgres                 │
-└─────────────────────────────────────┘
-
-┌─────────────────────────────────────┐
-│          kiosk-network              │
-│                                     │
-│      kiosk ──→ mrz-backend          │
-│                                     │
-└─────────────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph default_network ["default network"]
+    influxdb
+    telegraf
+    mosquitto
+    grafana
+    dashboard
+    postgres
+    influxdb <--> telegraf
+    telegraf <--> mosquitto
+    grafana <--> influxdb
+    dashboard <--> influxdb
+    dashboard <--> grafana
+    dashboard <--> postgres
+  subgraph kiosk_network ["kiosk-network"]
+    kiosk
+    mrz_backend
+    kiosk --> mrz_backend
+  end
 ```
 
 ### Port Mappings
@@ -534,7 +536,6 @@ All persistent data is stored in Docker named volumes:
 |--------|---------|---------|
 | `influxdb-data` | InfluxDB | Time-series data |
 | `influxdb-config` | InfluxDB | Configuration |
-| `grafana-data` | Grafana | Dashboards, users |
 | `grafana-logs` | Grafana | Log files |
 | `mosquitto-data` | Mosquitto | Retained messages |
 | `mosquitto-logs` | Mosquitto | Broker logs |
