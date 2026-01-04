@@ -135,7 +135,7 @@ flowchart TB
 | Component | Description | Documentation |
 |-----------|-------------|---------------|
 | **Cloud Infrastructure** | Docker Compose stack with all backend services | [cloud/README.md](cloud/README.md) |
-| **Dashboard** | Django-based management interface | [dashboards/django_app/README.md](dashboards/django_app/README.md) |
+| **Dashboard** | Django-based management interface | [dashboards/README.md](dashboards/README.md) |
 | **Guest Kiosk** | Self-service check-in system | [kiosk/README.md](kiosk/README.md) |
 | **MRZ Automation** | Passport scanning and OCR | [kiosk/app/README.md](kiosk/app/README.md) |
 | **ESP32 Firmware** | Sensor and actuator code | [esp32/README.md](esp32/README.md) |
