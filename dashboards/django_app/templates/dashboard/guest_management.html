@@ -14,16 +14,66 @@
         margin-top: 8px;
     }
 
-    .management-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 24px;
+    .authentik-notice {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1.25rem 1.5rem;
+        background: rgba(253, 126, 20, 0.1);
+        border: 1px solid #fd7e14;
+        border-radius: var(--radius-md);
+        margin-bottom: 24px;
+    }
+
+    .authentik-notice svg {
+        flex-shrink: 0;
+        color: #fd7e14;
+        margin-top: 2px;
+    }
+
+    .authentik-notice strong {
+        display: block;
+        color: #fd7e14;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .authentik-notice p {
+        margin: 0 0 0.75rem 0;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+        line-height: 1.5;
+    }
+
+    .authentik-links {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .authentik-links a {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.5rem 1rem;
+        background: rgba(253, 126, 20, 0.2);
+        color: #fd7e14;
+        border-radius: var(--radius-sm);
+        font-size: 0.8rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+
+    .authentik-links a:hover {
+        background: rgba(253, 126, 20, 0.3);
     }
 
     .card {
         background-color: var(--color-bg-card);
         border-radius: var(--radius-lg);
         border: 1px solid var(--color-border);
+        margin-bottom: 24px;
     }
 
     .card-header {
@@ -38,106 +88,6 @@
 
     .card-body {
         padding: 20px;
-    }
-
-    .form-group {
-        margin-bottom: 20px;
-    }
-
-    .form-label {
-        display: block;
-        font-size: 13px;
-        font-weight: 500;
-        color: var(--color-text-secondary);
-        margin-bottom: 8px;
-    }
-
-    .form-input, .form-select {
-        width: 100%;
-        padding: 12px 16px;
-        font-size: 14px;
-        background-color: var(--color-bg-secondary);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-md);
-        color: var(--color-text-primary);
-    }
-
-    .form-input:focus, .form-select:focus {
-        outline: none;
-        border-color: var(--color-accent-blue);
-    }
-
-    .form-select {
-        appearance: none;
-        cursor: pointer;
-    }
-
-    .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 12px 24px;
-        font-size: 14px;
-        font-weight: 500;
-        border: none;
-        border-radius: var(--radius-md);
-        cursor: pointer;
-        transition: all 0.2s;
-        width: 100%;
-    }
-
-    .btn-primary {
-        background-color: var(--color-accent-blue);
-        color: white;
-    }
-
-    .btn-primary:hover { background-color: #5a95f5; }
-    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    .btn-danger {
-        background-color: transparent;
-        border: 1px solid var(--color-accent-red);
-        color: var(--color-accent-red);
-        padding: 6px 12px;
-        font-size: 12px;
-        width: auto;
-    }
-
-    .btn-danger:hover {
-        background-color: var(--color-accent-red);
-        color: white;
-    }
-
-    .credentials-box {
-        background-color: var(--color-bg-elevated);
-        border-radius: var(--radius-md);
-        padding: 20px;
-        margin-top: 20px;
-        display: none;
-    }
-
-    .credentials-box.show { display: block; }
-
-    .credential-row {
-        display: flex;
-        justify-content: space-between;
-        padding: 8px 0;
-        border-bottom: 1px solid var(--color-border);
-    }
-
-    .credential-row:last-child { border-bottom: none; }
-
-    .credential-label {
-        color: var(--color-text-muted);
-        font-size: 13px;
-    }
-
-    .credential-value {
-        font-family: monospace;
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--color-accent-cyan);
     }
 
     .guest-table {
@@ -188,19 +138,32 @@
         color: var(--color-text-muted);
     }
 
-    .telegram-status {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-top: 12px;
-        font-size: 13px;
+    .info-box {
+        background: rgba(0, 188, 212, 0.1);
+        border: 1px solid var(--color-accent-cyan);
+        border-radius: var(--radius-md);
+        padding: 1rem 1.25rem;
+        margin-bottom: 20px;
     }
 
-    .telegram-status.success { color: var(--color-accent-green); }
-    .telegram-status.failed { color: var(--color-accent-orange); }
+    .info-box h4 {
+        color: var(--color-accent-cyan);
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
 
-    @media (max-width: 992px) {
-        .management-grid { grid-template-columns: 1fr; }
+    .info-box p {
+        font-size: 0.8rem;
+        color: var(--color-text-secondary);
+        margin: 0;
+        line-height: 1.5;
+    }
+
+    .info-box code {
+        background: rgba(0, 0, 0, 0.2);
+        padding: 0.1rem 0.3rem;
+        border-radius: 3px;
+        font-size: 0.75rem;
     }
 </style>
 {% endblock %}
@@ -208,258 +171,118 @@
 {% block content %}
 <header class="page-header">
     <h1 class="header-title">Guest Management</h1>
-    <p class="page-description">Generate temporary guest accounts with room-specific access</p>
+    <p class="page-description">View and manage guest accounts synced from Authentik</p>
 </header>
 
-<div class="management-grid">
-    <!-- Generate Guest Form -->
-    <div class="card">
-        <div class="card-header">
-            <h2 class="card-title">Generate Guest Account</h2>
-        </div>
-        <div class="card-body">
-            <form id="generate-form">
-                <div class="form-group">
-                    <label class="form-label">Select Room</label>
-                    <select class="form-select" id="room-select" required>
-                        <option value="">Choose a room...</option>
-                        {% for room in rooms %}
-                        <option value="{{ room.id }}">Room {{ room.room_number }} ({{ room.get_status_display }})</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Phone Number (Optional)</label>
-                    <input type="tel" class="form-input" id="phone-number" placeholder="+1234567890">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Validity Period (Hours)</label>
-                    <select class="form-select" id="expiry-hours">
-                        <option value="24">24 hours</option>
-                        <option value="48">48 hours</option>
-                        <option value="72">72 hours</option>
-                        <option value="168">1 week</option>
-                    </select>
-                </div>
-
-                <button type="submit" class="btn btn-primary" id="generate-btn">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-                    Generate Account
-                </button>
-            </form>
-
-            <div class="credentials-box" id="credentials-box">
-                <h4 style="margin-bottom: 16px; font-size: 14px;">Generated Credentials</h4>
-                <div class="credential-row">
-                    <span class="credential-label">Room</span>
-                    <span class="credential-value" id="cred-room">--</span>
-                </div>
-                <div class="credential-row">
-                    <span class="credential-label">Username</span>
-                    <span class="credential-value" id="cred-username">--</span>
-                </div>
-                <div class="credential-row">
-                    <span class="credential-label">Password</span>
-                    <span class="credential-value" id="cred-password">--</span>
-                </div>
-                <div class="credential-row">
-                    <span class="credential-label">Expires</span>
-                    <span class="credential-value" id="cred-expires">--</span>
-                </div>
-                <div class="telegram-status" id="telegram-status"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Active Guests List -->
-    <div class="card">
-        <div class="card-header">
-            <h2 class="card-title">Active Guest Accounts</h2>
-        </div>
-        <div class="card-body">
-            <table class="guest-table" id="guests-table">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Room</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="guests-tbody">
-                    {% for guest in active_guests %}
-                    <tr data-guest-id="{{ guest.id }}">
-                        <td>{{ guest.username }}</td>
-                        <td>{{ guest.assigned_room.room_number|default:"-" }}</td>
-                        <td>
-                            <span class="status-badge {% if guest.is_expired %}expired{% else %}active{% endif %}">
-                                {% if guest.is_expired %}Expired{% else %}Active{% endif %}
-                            </span>
-                        </td>
-                        <td>
-                            <button class="btn btn-danger revoke-btn" data-id="{{ guest.id }}">Revoke</button>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="4" class="empty-message">No active guest accounts</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+<!-- Authentik Notice -->
+<div class="authentik-notice">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="16" x2="12" y2="12"/>
+        <line x1="12" y1="8" x2="12.01" y2="8"/>
+    </svg>
+    <div>
+        <strong>Guest Accounts via Authentik</strong>
+        <p>
+            Guest accounts are now managed through Authentik. Create guest users in Authentik 
+            and add them to the <code>smart-hotel-guests</code> group with room assignment attributes.
+        </p>
+        <div class="authentik-links">
+            <a href="{{ authentik_users_url }}" target="_blank" rel="noopener">Create Guest User</a>
+            <a href="{{ authentik_groups_url }}" target="_blank" rel="noopener">Manage Groups</a>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block extra_js %}
-<script>
-    let ws = null;
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+<!-- How to Create Guest Info -->
+<div class="info-box">
+    <h4>How to Create a Guest Account</h4>
+    <p>
+        1. Create a new user in Authentik<br>
+        2. Add them to the <code>smart-hotel-guests</code> group<br>
+        3. Set custom attributes: <code>room_number</code> and <code>expires_at</code><br>
+        4. Share credentials with the guest (Authentik can send via email/SMS)
+    </p>
+</div>
 
-    function connectAdminWS() {
-        ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/admin/`);
-        
-        ws.onmessage = function(e) {
-            const data = JSON.parse(e.data);
-            
-            if (data.type === 'guest_generated') {
-                handleGuestGenerated(data.result);
-            } else if (data.type === 'guest_revoked') {
-                if (data.success) {
-                    document.querySelector(`tr[data-guest-id="${data.guest_id}"]`)?.remove();
-                }
-            } else if (data.type === 'guest_list') {
-                updateGuestList(data.guests);
-            }
-        };
-        
-        ws.onclose = function() {
-            setTimeout(connectAdminWS, 3000);
-        };
-    }
+<!-- Synced Guests List -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Synced Guest Accounts</h2>
+    </div>
+    <div class="card-body">
+        <table class="guest-table" id="guests-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Room</th>
+                    <th>Expires</th>
+                    <th>Status</th>
+                    <th>Last Login</th>
+                </tr>
+            </thead>
+            <tbody id="guests-tbody">
+                {% for guest in active_guests %}
+                <tr data-guest-id="{{ guest.id }}">
+                    <td>{{ guest.username }}</td>
+                    <td>{{ guest.assigned_room.room_number|default:"-" }}</td>
+                    <td>{{ guest.expires_at|date:"M d, Y H:i"|default:"Never" }}</td>
+                    <td>
+                        <span class="status-badge {% if guest.is_expired %}expired{% else %}active{% endif %}">
+                            {% if guest.is_expired %}Expired{% else %}Active{% endif %}
+                        </span>
+                    </td>
+                    <td>{{ guest.last_login|date:"M d, Y H:i"|default:"Never" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="empty-message">
+                        No guest accounts synced yet.<br>
+                        <small>Guests will appear here after logging in via Authentik.</small>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 
-    function handleGuestGenerated(result) {
-        const btn = document.getElementById('generate-btn');
-        btn.disabled = false;
-        btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg> Generate Account';
-        
-        if (result.success) {
-            const box = document.getElementById('credentials-box');
-            box.classList.add('show');
-            
-            document.getElementById('cred-room').textContent = result.room;
-            document.getElementById('cred-username').textContent = result.username;
-            document.getElementById('cred-password').textContent = result.password;
-            document.getElementById('cred-expires').textContent = new Date(result.expires_at).toLocaleString();
-            
-            const telegramStatus = document.getElementById('telegram-status');
-            if (result.telegram_sent) {
-                telegramStatus.className = 'telegram-status success';
-                telegramStatus.textContent = 'Credentials sent via Telegram';
-            } else {
-                telegramStatus.className = 'telegram-status failed';
-                telegramStatus.textContent = 'Telegram not configured - credentials shown above';
-            }
-            
-            // Refresh guest list
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ action: 'list_guests' }));
-            }
-        } else {
-            alert('Error: ' + result.error);
-        }
-    }
-
-    function updateGuestList(guests) {
-        const tbody = document.getElementById('guests-tbody');
-        if (guests.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="empty-message">No active guest accounts</td></tr>';
-            return;
-        }
-        
-        tbody.innerHTML = guests.map(guest => `
-            <tr data-guest-id="${guest.id}">
-                <td>${guest.username}</td>
-                <td>${guest.room || '-'}</td>
-                <td>
-                    <span class="status-badge ${guest.is_expired ? 'expired' : 'active'}">
-                        ${guest.is_expired ? 'Expired' : 'Active'}
-                    </span>
-                </td>
-                <td>
-                    <button class="btn btn-danger revoke-btn" data-id="${guest.id}">Revoke</button>
-                </td>
-            </tr>
-        `).join('');
-        
-        attachRevokeHandlers();
-    }
-
-    function attachRevokeHandlers() {
-        document.querySelectorAll('.revoke-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                if (!confirm('Are you sure you want to revoke this guest account?')) return;
-                
-                const guestId = this.dataset.id;
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ action: 'revoke_guest', guest_id: guestId }));
-                }
-            });
-        });
-    }
-
-    // Form submission
-    document.getElementById('generate-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const roomId = document.getElementById('room-select').value;
-        const phoneNumber = document.getElementById('phone-number').value;
-        const expiryHours = document.getElementById('expiry-hours').value;
-        
-        if (!roomId) {
-            alert('Please select a room');
-            return;
-        }
-        
-        const btn = document.getElementById('generate-btn');
-        btn.disabled = true;
-        btn.innerHTML = 'Generating...';
-        
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                action: 'generate_guest',
-                room_id: roomId,
-                phone_number: phoneNumber,
-                expiry_hours: parseInt(expiryHours)
-            }));
-        } else {
-            // Fallback to HTTP API
-            fetch('/api/generate-guest/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: JSON.stringify({
-                    room_id: roomId,
-                    phone_number: phoneNumber,
-                    expiry_hours: parseInt(expiryHours)
-                })
-            })
-            .then(r => r.json())
-            .then(result => handleGuestGenerated({ success: true, ...result.guest, telegram_sent: result.telegram_sent }))
-            .catch(err => {
-                btn.disabled = false;
-                btn.innerHTML = 'Generate Account';
-                alert('Error: ' + err.message);
-            });
-        }
-    });
-
-    connectAdminWS();
-    attachRevokeHandlers();
-</script>
+<!-- Rooms Overview -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Available Rooms</h2>
+    </div>
+    <div class="card-body">
+        <table class="guest-table">
+            <thead>
+                <tr>
+                    <th>Room</th>
+                    <th>Floor</th>
+                    <th>Status</th>
+                    <th>Current Guest</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for room in rooms %}
+                <tr>
+                    <td><strong>{{ room.room_number }}</strong></td>
+                    <td>{{ room.floor }}</td>
+                    <td>
+                        <span class="status-badge {% if room.status == 'occupied' %}active{% else %}{% endif %}">
+                            {{ room.get_status_display }}
+                        </span>
+                    </td>
+                    <td>
+                        {% for guest in room.assigned_guests.all %}
+                            {% if not guest.is_expired %}{{ guest.username }}{% if not forloop.last %}, {% endif %}{% endif %}
+                        {% empty %}
+                            -
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endblock %}

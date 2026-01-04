@@ -3,30 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Passport Scanner</title>
+    <title>MRZ Scanner - Test Frontend</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🛂 Passport Scanner</h1>
-            <p>Advanced MRZ Recognition System</p>
+            <h1>🛂 MRZ Scanner Test</h1>
+            <p>Browser-based Camera with Auto-Capture (Test Frontend - Will be removed)</p>
         </div>
         
         <div class="main-content">
             <div class="card camera-section">
-                <h2>📸 Camera View</h2>
+                <h2>📸 Browser Camera</h2>
                 <div class="video-container">
-                    <img id="videoFeed" src="/video_feed" alt="Camera Feed">
+                    <video id="videoElement" autoplay playsinline></video>
+                    <canvas id="overlayCanvas"></canvas>
+                    <div class="detection-indicator" id="detectionIndicator">
+                        <span class="detection-dot"></span>
+                        <span class="detection-text">Searching for document...</span>
+                    </div>
                     <div class="countdown-overlay" id="countdown">3</div>
                 </div>
                 <div class="controls">
-                    <button class="btn btn-primary" id="captureBtn">
-                        Capture Passport
+                    <button class="btn btn-primary" id="startBtn">
+                        Start Camera
                     </button>
-                    <button class="btn btn-secondary" id="resetBtn" disabled>
-                        Reset
+                    <button class="btn btn-success" id="captureBtn" disabled>
+                        📸 Capture
                     </button>
+                    <button class="btn btn-secondary" id="stopBtn" disabled>
+                        Stop Camera
+                    </button>
+                </div>
+                <div class="auto-capture-info">
+                    <label>
+                        <input type="checkbox" id="autoCapture" checked>
+                        Auto-capture when document detected
+                    </label>
                 </div>
                 <div class="status-message" id="statusMessage"></div>
             </div>
@@ -37,7 +51,7 @@
                 <div class="results-placeholder" id="placeholder">
                     <div style="font-size: 4em; margin-bottom: 20px;">📄</div>
                     <p>No passport scanned yet</p>
-                    <p style="font-size: 0.9em; margin-top: 10px;">Click "Capture Passport" to begin</p>
+                    <p style="font-size: 0.9em; margin-top: 10px;">Position passport in front of camera</p>
                 </div>
                 
                 <div class="loader" id="loader">
@@ -88,6 +102,9 @@
                             <div class="info-value" id="personalNumber">-</div>
                         </div>
                     </div>
+                    <button class="btn btn-secondary" id="resetBtn" style="margin-top: 20px;">
+                        Scan Another
+                    </button>
                 </div>
             </div>
         </div>

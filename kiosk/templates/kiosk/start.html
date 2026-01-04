@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Check In - Smart Hotel{% endblock %}
+
+{% block content %}
+<div class="start-page">
+	<!-- Winter Holiday Banner -->
+	<div class="holiday-banner mb-4">
+		<div class="winter-decoration">
+			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>
+			<div>
+				<h3>Season's Greetings</h3>
+				<p>Wishing you a wonderful stay this holiday season</p>
+			</div>
+			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>
+		</div>
+	</div>
+	
+	<div class="card p-4 p-md-5">
+		<div class="scan-header">
+			<div class="icon-box icon-brand">
+				<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 24 24"><path d="M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H6zm6 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm-4 9h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2z"/></svg>
+			</div>
+			<div>
+				<h1 data-i18n="welcome">Welcome to Smart Hotel</h1>
+				<p data-i18n="scan_instruction">Please scan your passport/ID to begin check-in.</p>
+			</div>
+		</div>
+
+		<a href="{% url 'kiosk:passport_scan' %}" class="scan-action-card d-block text-decoration-none text-reset">
+			<div class="icon-box icon-box-lg icon-brand mx-auto mb-3">
+				<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="currentColor" viewBox="0 0 24 24"><path d="M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H6zm6 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm-4 9h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2z"/></svg>
+			</div>
+			<h3 class="mb-2" data-i18n="scan_passport_title">Scan Passport / ID</h3>
+			<p class="text-muted mb-4" data-i18n="scan_passport_desc">Position your passport in front of the camera. It will be captured automatically when detected.</p>
+			<div class="btn btn-primary btn-lg">
+				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 8px;"><path d="M10.5 8.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M2 4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1.172a2 2 0 0 1-1.414-.586l-.828-.828A2 2 0 0 0 9.172 2H6.828a2 2 0 0 0-1.414.586l-.828.828A2 2 0 0 1 3.172 4H2zm.5 2a.5.5 0 1 1 0-1 .5.5 0 0 1 0 1zm9 2.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0z"/></svg>
+				<span data-i18n="start_camera_scan">Start Camera Scan</span>
+				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16" style="margin-left: 8px;"><path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>
+			</div>
+		</a>
+	</div>
+</div>
+{% endblock %}

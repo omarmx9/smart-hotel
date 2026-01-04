@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block title %}Documentation - Smart Hotel{% endblock %}
+
+{% block content %}
+<div class="doc-page">
+    <div class="card p-4 p-md-5">
+        <div class="doc-header">
+            <div class="icon-box icon-brand">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" viewBox="0 0 16 16"><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zM10 4a1 1 0 0 1-1-1V1.5L13.5 5H11a1 1 0 0 1-1-1V4z"/></svg>
+            </div>
+            <div>
+                <h1 data-i18n="document_signing">Document Preview</h1>
+                <p data-i18n="scan_instruction">Verify your passport data below</p>
+            </div>
+        </div>
+        
+        <form method="post">
+        {% csrf_token %}
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold" data-i18n="first_name">First Name</label>
+                    <input name="first_name" class="form-control form-control-lg" value="{{ data.first_name }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold" data-i18n="last_name">Last Name</label>
+                    <input name="last_name" class="form-control form-control-lg" value="{{ data.last_name }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold" data-i18n="passport_number">Passport Number</label>
+                    <input name="passport_number" class="form-control form-control-lg" value="{{ data.passport_number }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold" data-i18n="dob">Date of Birth</label>
+                    <input type="date" name="date_of_birth" class="form-control form-control-lg" value="{{ data.date_of_birth }}">
+                </div>
+            </div>
+            <hr>
+            <h5 class="mt-3">Or fill a Registration Card</h5>
+            <div class="row g-3 mt-2">
+                <div class="col-md-6">
+                    <label class="form-label">Surname</label>
+                    <input name="surname" class="form-control" value="">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Name</label>
+                    <input name="name" class="form-control" value="">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Nationality</label>
+                    <input name="nationality" class="form-control" value="">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Passport No.</label>
+                    <input name="passport_number" class="form-control" value="">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Date of Birth</label>
+                    <input name="date_of_birth" class="form-control" placeholder="YYYY-MM-DD">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Profession</label>
+                    <input name="profession" class="form-control" value="">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Hometown</label>
+                    <input name="hometown" class="form-control" value="">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Country</label>
+                    <input name="country" class="form-control" value="">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Email</label>
+                    <input name="email" class="form-control" value="">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Phone</label>
+                    <input name="phone" class="form-control" value="">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Check-in</label>
+                    <input name="checkin" class="form-control" placeholder="YYYY-MM-DD">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Check-out</label>
+                    <input name="checkout" class="form-control" placeholder="YYYY-MM-DD">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">People (incl. main guest)</label>
+                    <input type="number" min="1" name="people_count" class="form-control" value="1">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Signature Method</label>
+                        <div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="signature_method" id="sig_physical" value="physical" checked>
+                            <label class="form-check-label" for="sig_physical">Physical</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="signature_method" id="sig_digital" value="digital">
+                            <label class="form-check-label" for="sig_digital">Digital</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Accompanying guests</label>
+                    <div id="accompany-container"></div>
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap align-items-center gap-3 pt-3" style="border-top: 1px solid var(--border);">
+                <button class="btn btn-primary btn-lg" name="action" value="save_passport">Save & Continue (Passport)</button>
+                <button class="btn btn-outline-primary btn-lg" name="action" value="preview_registration">Preview Registration Card</button>
+                {% if reservation %}
+                <span class="text-muted">Reservation: <strong style="color: var(--brand);">{{ reservation.reservation_number }}</strong></span>
+                {% endif %}
+            </div>
+            <script>
+                function renderAccompany() {
+                    const container = document.getElementById('accompany-container');
+                    const count = Math.max(1, parseInt(document.querySelector('input[name=people_count]').value || '1'));
+                    const accompanyCount = Math.max(0, count - 1);
+                    container.innerHTML = '';
+                    for (let i=1;i<=accompanyCount;i++){
+                        const html = `<div class="mb-2"><div class="input-group"><span class="input-group-text">#${i}</span><input name="accompany_name_${i}" class="form-control" placeholder="Name"><input name="accompany_nationality_${i}" class="form-control" placeholder="Nationality"><input name="accompany_passport_${i}" class="form-control" placeholder="Passport No."></div></div>`;
+                        container.insertAdjacentHTML('beforeend', html);
+                    }
+                }
+                document.addEventListener('DOMContentLoaded', function(){
+                    const pc = document.querySelector('input[name=people_count]');
+                    pc.addEventListener('change', renderAccompany);
+                    renderAccompany();
+                });
+            </script>
+        </form>
+    </div>
+</div>
+{% endblock %}

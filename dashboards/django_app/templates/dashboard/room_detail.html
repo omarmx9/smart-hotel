@@ -96,11 +96,12 @@
         margin-top: 8px;
     }
 
-    .temp-card { grid-column: span 4; }
-    .humidity-card { grid-column: span 4; }
-    .luminosity-card { grid-column: span 4; }
-    .gas-card { grid-column: span 6; }
-    .control-card { grid-column: span 6; }
+    .temp-card { grid-column: span 3; }
+    .humidity-card { grid-column: span 3; }
+    .luminosity-card { grid-column: span 3; }
+    .gas-card { grid-column: span 3; }
+    .climate-card { grid-column: span 6; }
+    .light-card { grid-column: span 6; }
     .chart-card { grid-column: span 12; }
 
     .alert-badge {
@@ -215,17 +216,179 @@
     }
 
     @media (max-width: 1200px) {
-        .temp-card, .humidity-card, .luminosity-card { grid-column: span 4; }
-        .gas-card, .control-card { grid-column: span 6; }
+        .temp-card, .humidity-card, .luminosity-card, .gas-card { grid-column: span 6; }
+        .climate-card, .light-card { grid-column: span 6; }
     }
 
     @media (max-width: 992px) {
-        .temp-card, .humidity-card, .luminosity-card { grid-column: span 6; }
-        .gas-card, .control-card { grid-column: span 12; }
+        .temp-card, .humidity-card, .luminosity-card, .gas-card { grid-column: span 6; }
+        .climate-card, .light-card { grid-column: span 12; }
     }
 
     @media (max-width: 768px) {
-        .temp-card, .humidity-card, .luminosity-card { grid-column: span 12; }
+        .temp-card, .humidity-card, .luminosity-card, .gas-card { grid-column: span 12; }
+    }
+
+    /* Mode toggle buttons */
+    .mode-toggle {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .mode-btn {
+        flex: 1;
+        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background-color: var(--color-bg-elevated);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .mode-btn:hover {
+        background-color: var(--color-bg-card);
+        border-color: var(--color-text-muted);
+    }
+
+    .mode-btn.active {
+        background-color: var(--color-accent-cyan);
+        border-color: var(--color-accent-cyan);
+        color: #000;
+    }
+
+    .mode-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Light control buttons */
+    .light-toggle {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+    }
+
+    .light-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 80px;
+        height: 80px;
+        border: 2px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background-color: var(--color-bg-elevated);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .light-btn svg {
+        width: 28px;
+        height: 28px;
+        margin-bottom: 6px;
+    }
+
+    .light-btn span {
+        font-size: 11px;
+        font-weight: 500;
+    }
+
+    .light-btn:hover {
+        background-color: var(--color-bg-card);
+        border-color: var(--color-text-muted);
+    }
+
+    .light-btn.active {
+        background-color: rgba(249, 171, 0, 0.15);
+        border-color: var(--color-accent-orange);
+        color: var(--color-accent-orange);
+    }
+
+    .light-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Fan speed control */
+    .fan-speed-toggle {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .fan-btn {
+        flex: 1;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background-color: var(--color-bg-elevated);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .fan-btn:hover {
+        background-color: var(--color-bg-card);
+    }
+
+    .fan-btn.active {
+        background-color: var(--color-accent-blue);
+        border-color: var(--color-accent-blue);
+        color: #fff;
+    }
+
+    .fan-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Conditional sections */
+    .control-section {
+        padding: 16px 0;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .control-section:last-child {
+        border-bottom: none;
+    }
+
+    .control-section.hidden {
+        display: none;
+    }
+
+    .control-section-label {
+        font-size: 12px;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+    }
+
+    .current-status {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background-color: var(--color-bg-elevated);
+        border-radius: var(--radius-md);
+        margin-top: 16px;
+    }
+
+    .current-status-label {
+        font-size: 13px;
+        color: var(--color-text-secondary);
+    }
+
+    .current-status-value {
+        font-weight: 600;
+        color: var(--color-accent-cyan);
     }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -291,17 +454,17 @@
         </div>
     </div>
 
-    <!-- Luminosity Card -->
+    <!-- Luminosity Sensor Card -->
     <div class="card luminosity-card">
         <div class="card-header">
             <div class="card-title">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
                 Luminosity
             </div>
         </div>
         <div class="card-body">
             <div class="metric-value">
-                <span id="luminosity">{{ room.luminosity }}</span>
+                <span id="luminosity-sensor">{{ room.luminosity }}</span>
                 <span class="metric-unit">lux</span>
             </div>
             <div class="metric-label">Light intensity</div>
@@ -337,31 +500,59 @@
         </div>
     </div>
 
-    <!-- Control Card -->
-    <div class="card control-card">
+    <!-- Climate Control Card -->
+    <div class="card climate-card">
         <div class="card-header">
             <div class="card-title">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg>
                 Climate Control
             </div>
+            <span class="alert-badge" id="hvac-status" style="{% if room.heating_status %}background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange);{% else %}background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green);{% endif %}">
+                {% if room.heating_status %}Heating{% else %}Standby{% endif %}
+            </span>
         </div>
         <div class="card-body">
             {% if can_control %}
-            <div class="control-row">
-                <span class="control-label">Target Temperature</span>
-                <input type="range" min="16" max="32" value="{{ room.target_temperature|floatformat:0 }}" class="control-slider" id="temp-slider">
-                <span class="control-value" id="target-temp">{{ room.target_temperature|floatformat:1 }}°C</span>
+            <!-- Mode Selection -->
+            <div class="control-section">
+                <div class="control-section-label">Mode</div>
+                <div class="mode-toggle">
+                    <button type="button" class="mode-btn {% if room.climate_mode == 'auto' %}active{% endif %}" data-mode="auto" id="mode-auto">Auto</button>
+                    <button type="button" class="mode-btn {% if room.climate_mode == 'manual' %}active{% endif %}" data-mode="manual" id="mode-manual">Manual</button>
+                    <button type="button" class="mode-btn {% if room.climate_mode == 'off' %}active{% endif %}" data-mode="off" id="mode-off">Off</button>
+                </div>
             </div>
-            <div class="control-row">
-                <span class="control-label">HVAC Status</span>
-                <span class="alert-badge" id="hvac-status" style="{% if room.heating_status %}background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange);{% else %}background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green);{% endif %}">
-                    {% if room.heating_status %}Heating{% else %}Standby{% endif %}
-                </span>
-                <span class="control-value" id="heating-status">{% if room.heating_status %}ON{% else %}OFF{% endif %}</span>
+
+            <!-- Target Temperature (visible only in auto mode) -->
+            <div class="control-section {% if room.climate_mode != 'auto' %}hidden{% endif %}" id="temp-control-section">
+                <div class="control-section-label">Target Temperature</div>
+                <div class="control-row" style="border-bottom: none; padding: 0;">
+                    <input type="range" min="16" max="32" value="{{ room.target_temperature|floatformat:0 }}" class="control-slider" id="temp-slider">
+                    <span class="control-value" id="target-temp">{{ room.target_temperature|floatformat:1 }}°C</span>
+                </div>
+            </div>
+
+            <!-- Fan Speed (visible only in manual mode) -->
+            <div class="control-section {% if room.climate_mode != 'manual' %}hidden{% endif %}" id="fan-control-section">
+                <div class="control-section-label">Fan Speed</div>
+                <div class="fan-speed-toggle">
+                    <button type="button" class="fan-btn {% if room.fan_speed == 'low' %}active{% endif %}" data-speed="low">Low</button>
+                    <button type="button" class="fan-btn {% if room.fan_speed == 'medium' %}active{% endif %}" data-speed="medium">Medium</button>
+                    <button type="button" class="fan-btn {% if room.fan_speed == 'high' %}active{% endif %}" data-speed="high">High</button>
+                </div>
+            </div>
+
+            <div class="current-status">
+                <span class="current-status-label">Current Temperature</span>
+                <span class="current-status-value"><span id="current-temp-display">{{ room.temperature|floatformat:1 }}</span>°C</span>
             </div>
             {% else %}
             <div class="no-control-notice">
-                <p>You have view-only access. Temperature control is disabled.</p>
+                <p>You have view-only access. Climate control is disabled.</p>
+            </div>
+            <div class="control-row">
+                <span class="control-label">Mode</span>
+                <span class="control-value">{{ room.get_climate_mode_display }}</span>
             </div>
             <div class="control-row">
                 <span class="control-label">Target Temperature</span>
@@ -370,6 +561,50 @@
             <div class="control-row">
                 <span class="control-label">HVAC Status</span>
                 <span class="control-value">{% if room.heating_status %}ON{% else %}OFF{% endif %}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Light Control Card -->
+    <div class="card light-card">
+        <div class="card-header">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+                Light Control
+            </div>
+            <span class="alert-badge" id="light-status" style="background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange);">
+                <span id="light-status-text">{{ room.luminosity_display }}</span>
+            </span>
+        </div>
+        <div class="card-body">
+            {% if can_control %}
+            <div class="control-section" style="border-bottom: none; padding-top: 8px;">
+                <div class="light-toggle">
+                    <button type="button" class="light-btn light-mode-btn {% if room.light_mode == 'auto' %}active{% endif %}" data-mode="auto" id="light-auto">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/><circle cx="12" cy="12" r="4"/><path d="M12 8a4 4 0 0 1 0 8" fill="currentColor" opacity="0.3"/></svg>
+                        <span>Auto</span>
+                    </button>
+                    <button type="button" class="light-btn light-level-btn {% if room.light_mode == 'manual' and room.luminosity == 0 %}active{% endif %}" data-level="0" id="light-0" {% if room.light_mode == 'auto' %}disabled{% endif %}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5" opacity="0.3"/><line x1="12" y1="1" x2="12" y2="3" opacity="0.3"/><line x1="12" y1="21" x2="12" y2="23" opacity="0.3"/></svg>
+                        <span>Off</span>
+                    </button>
+                    <button type="button" class="light-btn light-level-btn {% if room.light_mode == 'manual' and room.luminosity == 1 %}active{% endif %}" data-level="1" id="light-1" {% if room.light_mode == 'auto' %}disabled{% endif %}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+                        <span>1 Light</span>
+                    </button>
+                    <button type="button" class="light-btn light-level-btn {% if room.light_mode == 'manual' and room.luminosity == 2 %}active{% endif %}" data-level="2" id="light-2" {% if room.light_mode == 'auto' %}disabled{% endif %}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5" fill="currentColor"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+                        <span>2 Lights</span>
+                    </button>
+                </div>
+            </div>
+            {% else %}
+            <div class="no-control-notice">
+                <p>You have view-only access. Light control is disabled.</p>
+            </div>
+            <div class="control-row" style="justify-content: center;">
+                <span class="control-value" style="font-size: 24px;">{{ room.luminosity_display }}</span>
             </div>
             {% endif %}
         </div>
@@ -397,7 +632,12 @@
 <script>
     const roomId = {{ room.id }};
     const canControl = {{ can_control|yesno:"true,false" }};
+    const csrfToken = '{{ csrf_token }}';
     let ws = null;
+    let currentClimateMode = '{{ room.climate_mode }}';
+    let currentLuminosity = {{ room.luminosity }};
+    let currentLightMode = '{{ room.light_mode }}';
+    let currentFanSpeed = '{{ room.fan_speed }}';
 
     // Chart setup
     const ctx = document.getElementById('sensorChart').getContext('2d');
@@ -451,8 +691,43 @@
     function updateUI(data) {
         document.getElementById('temperature').textContent = data.temperature.toFixed(1);
         document.getElementById('humidity').textContent = Math.round(data.humidity);
-        document.getElementById('luminosity').textContent = data.luminosity;
         document.getElementById('gas-value').textContent = data.gas_level;
+        
+        // Update luminosity sensor reading
+        const luminositySensor = document.getElementById('luminosity-sensor');
+        if (luminositySensor && data.luminosity !== undefined) {
+            luminositySensor.textContent = data.luminosity;
+        }
+        
+        // Update current temp display in climate card
+        const currentTempDisplay = document.getElementById('current-temp-display');
+        if (currentTempDisplay) {
+            currentTempDisplay.textContent = data.temperature.toFixed(1);
+        }
+
+        // Update luminosity/light status
+        if (data.luminosity !== undefined) {
+            currentLuminosity = data.luminosity;
+            updateLightButtons(data.luminosity);
+            const lightStatusText = document.getElementById('light-status-text');
+            if (lightStatusText) {
+                const labels = ['Off', '1 Light', '2 Lights'];
+                lightStatusText.textContent = labels[data.luminosity] || 'Off';
+            }
+        }
+
+        // Update climate mode if received from physical controls
+        if (data.climate_mode !== undefined && data.climate_mode !== currentClimateMode) {
+            currentClimateMode = data.climate_mode;
+            updateModeButtons(data.climate_mode);
+            updateControlVisibility(data.climate_mode);
+        }
+
+        // Update fan speed if received from physical controls
+        if (data.fan_speed !== undefined && data.fan_speed !== currentFanSpeed) {
+            currentFanSpeed = data.fan_speed;
+            updateFanButtons(data.fan_speed);
+        }
 
         // Update alerts
         const tempAlert = document.getElementById('temp-alert');
@@ -478,6 +753,37 @@
         }
     }
 
+    // Helper functions for updating button states
+    function updateModeButtons(mode) {
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
+        });
+    }
+
+    function updateFanButtons(speed) {
+        document.querySelectorAll('.fan-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.speed === speed);
+        });
+    }
+
+    function updateLightButtons(level) {
+        document.querySelectorAll('.light-btn').forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.level) === level);
+        });
+    }
+
+    function updateControlVisibility(mode) {
+        const tempSection = document.getElementById('temp-control-section');
+        const fanSection = document.getElementById('fan-control-section');
+        
+        if (tempSection) {
+            tempSection.classList.toggle('hidden', mode !== 'auto');
+        }
+        if (fanSection) {
+            fanSection.classList.toggle('hidden', mode !== 'manual');
+        }
+    }
+
     // WebSocket connection
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     function connectWS() {
@@ -495,24 +801,131 @@
         const slider = document.getElementById('temp-slider');
         const targetDisplay = document.getElementById('target-temp');
 
-        slider.addEventListener('input', function() {
-            targetDisplay.textContent = this.value + '°C';
-        });
+        if (slider) {
+            slider.addEventListener('input', function() {
+                targetDisplay.textContent = this.value + '°C';
+            });
 
-        slider.addEventListener('change', function() {
-            const target = parseFloat(this.value);
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ action: 'set_target', target: target }));
-            } else {
+            slider.addEventListener('change', function() {
+                const target = parseFloat(this.value);
                 fetch(`/api/room/${roomId}/set_target/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRFToken': '{{ csrf_token }}'
+                        'X-CSRFToken': csrfToken
                     },
                     body: JSON.stringify({ target: target })
                 });
-            }
+            });
+        }
+
+        // Mode buttons
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const mode = this.dataset.mode;
+                currentClimateMode = mode;
+                updateModeButtons(mode);
+                updateControlVisibility(mode);
+                
+                fetch(`/api/room/${roomId}/set_climate_mode/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ mode: mode })
+                });
+            });
+        });
+
+        // Fan speed buttons
+        document.querySelectorAll('.fan-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const speed = this.dataset.speed;
+                currentFanSpeed = speed;
+                updateFanButtons(speed);
+                
+                fetch(`/api/room/${roomId}/set_fan_speed/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ speed: speed })
+                });
+            });
+        });
+
+        // Light mode button (Auto)
+        document.querySelectorAll('.light-mode-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                currentLightMode = 'auto';
+                
+                // Update button states
+                document.querySelectorAll('.light-mode-btn').forEach(b => b.classList.add('active'));
+                document.querySelectorAll('.light-level-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.disabled = true;
+                });
+                
+                const lightStatusText = document.getElementById('light-status-text');
+                if (lightStatusText) {
+                    lightStatusText.textContent = 'Auto';
+                }
+                
+                fetch(`/api/room/${roomId}/set_light_mode/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ mode: 'auto' })
+                });
+            });
+        });
+
+        // Light level buttons (Manual control)
+        document.querySelectorAll('.light-level-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (this.disabled) return;
+                
+                const level = parseInt(this.dataset.level);
+                currentLuminosity = level;
+                currentLightMode = 'manual';
+                
+                // Update button states
+                document.querySelectorAll('.light-mode-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.light-level-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.disabled = false;
+                });
+                this.classList.add('active');
+                
+                const labels = ['Off', '1 Light', '2 Lights'];
+                const lightStatusText = document.getElementById('light-status-text');
+                if (lightStatusText) {
+                    lightStatusText.textContent = labels[level];
+                }
+                
+                // First set mode to manual, then set luminosity
+                fetch(`/api/room/${roomId}/set_light_mode/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ mode: 'manual' })
+                }).then(() => {
+                    fetch(`/api/room/${roomId}/set_luminosity/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: JSON.stringify({ luminosity: level })
+                    });
+                });
+            });
         });
     }
 

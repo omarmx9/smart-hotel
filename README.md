@@ -1,14 +1,318 @@
-# smart-hotel
+# Smart Hotel
 
-Repository for Smart Hotel project — placeholder README.
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
+![Django](https://img.shields.io/badge/Django-4.2+-green.svg)
+![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)
+![IoT](https://img.shields.io/badge/IoT-ESP32-red.svg)
+![MQTT](https://img.shields.io/badge/MQTT-Mosquitto-yellow.svg)
+![InfluxDB](https://img.shields.io/badge/InfluxDB-2.x-purple.svg)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Status](https://img.shields.io/badge/status-active-success.svg)
 
-This repository contains firmware, dashboards, and kiosk components for
-the Smart Hotel project. Populate each subdirectory with project
-contents and update this README with setup and usage instructions.
+> A comprehensive IoT-powered smart hotel management system featuring real-time sensor monitoring, self-service guest check-in, passport scanning with MRZ extraction, and complete cloud infrastructure for deployment.
 
-## Dashboard Screenshot
+## Table of Contents
 
-Below is the current dashboard overview screenshot:
+- [Overview](#overview)
+- [System Architecture](#system-architecture)
+- [Components](#components)
+- [Quick Start](#quick-start)
+- [Screenshots](#screenshots)
+- [Documentation](#documentation)
+- [Hardware](#hardware)
+- [Development](#development)
+- [License](#license)
 
-![Dashboard Overview](dashboard.png)
+## Overview
+
+Smart Hotel is a full-stack IoT solution for modern hotel management. The system connects ESP32-based sensors and actuators to a cloud backend, providing staff with real-time monitoring dashboards and guests with a self-service check-in experience.
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Real-time Monitoring** | Temperature, humidity, luminosity, and gas sensors per room |
+| **Climate Control** | Remote temperature and lighting management |
+| **Self Check-in Kiosk** | Passport scanning with MRZ extraction |
+| **Multi-language Support** | EN, DE, PL, UK, RU for international guests |
+| **SSO Authentication** | Authentik-based identity management with OIDC |
+| **Role-based Access** | Admin, Monitor, and Guest permission levels |
+| **SMS Notifications** | Guest credential delivery via Node-RED (Twilio) |
+| **Telegram Alerts** | Admin notifications with automatic fallback |
+| **Unified Notifications** | Telegram → SMS fallback with admin alerts |
+| **Historical Analytics** | Time-series data visualization with Grafana |
+
+## System Architecture
+
+```mermaid
+flowchart TB
+    subgraph HOTEL_ROOMS["Hotel Rooms"]
+        ESP32_SENSORS["ESP32 Sensors<br/>Temp/Humidity/Light/Gas"]
+        ESP32_ACTUATORS["ESP32 Actuators<br/>AC/Lights"]
+    end
+
+    subgraph CLOUD["Cloud Infrastructure"]
+        subgraph AUTH_LAYER["Authentication"]
+            AUTHENTIK["Authentik<br/>Identity Provider"]
+        end
+
+        subgraph APPLICATIONS["Applications"]
+            DASHBOARD["Dashboard<br/>Django/Daphne"]
+            POSTGRES["PostgreSQL<br/>Rooms/Reservations"]
+            NODERED["Node-RED<br/>Notification Gateway"]
+        end
+
+        subgraph NOTIFICATIONS["Notification Services"]
+            TELEGRAM["Telegram<br/>Bot API"]
+            TWILIO["Twilio<br/>SMS API"]
+        end
+
+        subgraph DATA_PIPELINE["Data Pipeline"]
+            MOSQUITTO["Mosquitto<br/>MQTT Broker"]
+            TELEGRAF["Telegraf<br/>Data Bridge"]
+            INFLUXDB["InfluxDB<br/>Time-Series DB"]
+            GRAFANA["Grafana<br/>Visualization"]
+        end
+        
+        subgraph KIOSK_NETWORK["Kiosk Network"]
+            KIOSK_APP["Kiosk App<br/>Django"]
+            MRZ_BACKEND["MRZ Backend<br/>Flask<br/>Passport OCR"]
+        end
+    end
+
+    subgraph BACK_OFFICE["Back Office"]
+        STAFF["Staff"]
+        Admin["Admin"]
+    end
+
+    subgraph HOTEL_LOBBY["Hotel Lobby"]
+        KIOSK["Kiosk Terminal<br/>Self Check-in"]
+        CAMERA["Camera<br/>Passport Scanning"]
+    end
+
+    ESP32_SENSORS -->|MQTT| MOSQUITTO
+    MOSQUITTO -->|MQTT| ESP32_ACTUATORS
+    MOSQUITTO --> TELEGRAF
+    TELEGRAF --> INFLUXDB
+    INFLUXDB --> GRAFANA
+    INFLUXDB --> DASHBOARD
+    DASHBOARD --> POSTGRES
+    DASHBOARD -->|MQTT| NODERED
+    DASHBOARD --> MOSQUITTO
+    DASHBOARD -->|OIDC| AUTHENTIK
+    GRAFANA -->|OAuth| AUTHENTIK
+    
+    NODERED --> TELEGRAM
+    NODERED --> TWILIO
+    
+    KIOSK -->|WebRTC| CAMERA
+    KIOSK -->|HTTPS| KIOSK_APP
+    KIOSK_APP -->|API| MRZ_BACKEND
+    KIOSK_APP -->|API| DASHBOARD
+    
+    STAFF -->|OIDC| AUTHENTIK
+    Admin -->|OIDC| AUTHENTIK
+    STAFF --> DASHBOARD
+    Admin --> DASHBOARD
+    GUEST["Guest"] --> KIOSK
+    GUEST_PHONE["Guest Phone"] --> DASHBOARD
+```
+
+### Data Flow Summary
+
+| Flow | Path | Protocol |
+|------|------|----------|
+| Sensor → Cloud | ESP32 → Mosquitto → Telegraf → InfluxDB | MQTT |
+| Cloud → Actuator | Dashboard → Mosquitto → ESP32 | MQTT |
+| User Authentication | Browser → Authentik → Dashboard | OIDC |
+| Guest Check-in | Kiosk → MRZ Backend → Document | HTTP/REST |
+| Staff Monitoring | Dashboard → PostgreSQL/InfluxDB | HTTP/WebSocket |
+| SMS Notifications | Dashboard → MQTT → Node-RED → Twilio | MQTT/HTTPS |
+| Telegram Alerts | Dashboard → MQTT → Node-RED → Telegram | MQTT/HTTPS |
+
+## Components
+
+| Component | Description | Documentation |
+|-----------|-------------|---------------|
+| **Cloud Infrastructure** | Docker Compose stack with all backend services | [cloud/README.md](cloud/README.md) |
+| **Dashboard** | Django-based management interface | [dashboards/README.md](dashboards/README.md) |
+| **Guest Kiosk** | Self-service check-in system | [kiosk/README.md](kiosk/README.md) |
+| **MRZ Automation** | Passport scanning and OCR | [kiosk/app/README.md](kiosk/app/README.md) |
+| **ESP32 Firmware** | Sensor and actuator code | [esp32/README.md](esp32/README.md) |
+| **ESP32-CAM** | Camera module for facial recognition | [esp32-cam/README.md](esp32-cam/README.md) |
+| **Hardware** | PCB designs and schematics | [hardware/README.md](hardware/README.md) |
+
+## Quick Start
+
+### Prerequisites
+
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+- 8GB+ RAM recommended
+- USB camera (for kiosk passport scanning)
+
+### One-Command Deployment
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/smart-hotel.git
+cd smart-hotel/cloud
+
+# Generate secure environment configuration
+./generate-env.sh
+
+# Review and customize .env (add Twilio/Telegram credentials)
+nano .env
+
+# Start all services
+docker compose up --build -d
+
+# Check status
+docker compose ps
+```
+
+### Initial Setup
+
+1. **Authentik Setup**: Visit http://localhost:9000/if/flow/initial-setup/
+2. **Create OAuth2 Provider**: Admin → Applications → Providers → Create `smart-hotel`
+3. **Update OIDC Secret**: Copy client secret to `.env` and restart dashboard
+
+### Access Points
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **Authentik** | http://localhost:9000 | Created during setup |
+| **Staff Dashboard** | http://localhost:8001 | Via Authentik SSO |
+| **Guest Kiosk** | http://localhost:8002 | (no auth) |
+| **Grafana** | http://localhost:3000 | From `.env` |
+| **InfluxDB** | http://localhost:8086 | From `.env` |
+| **Node-RED** | http://localhost:1880/api/health | Headless (no UI) |
+
+### Development Mode
+
+For development with additional debugging features:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose-dev.yml up --build -d
+```
+
+This exposes:
+- MRZ Test Frontend at http://localhost:5000
+- Django/Flask debug modes enabled
+- Hot reload for code changes
+
+## Screenshots
+
+### Admin Dashboard
+![Admin Dashboard](images/dashboard-admin.png)
+*Full room overview with real-time sensor data and control options*
+
+### Guest Management
+![Guest Management](images/dashboard-admin-management.png)
+*Generate temporary guest accounts and manage access*
+
+### Monitor View
+![Monitor View](images/dashboard-monitor.png)
+*View-only access for monitoring staff*
+
+### Guest Dashboard
+![Guest Dashboard](images/dashboard-guest.png)
+*Limited access for guests to control their assigned room*
+
+### Login Page
+![Login Page](images/dashboard-login.png)
+*Secure role-based authentication*
+
+## Documentation
+
+Detailed documentation for each component:
+
+### Cloud Infrastructure
+Complete Docker Compose orchestration with InfluxDB, Grafana, Mosquitto, PostgreSQL, and all application services.
+
+📖 **[Cloud Documentation](cloud/README.md)** - Architecture, configuration, networking, volumes, troubleshooting
+
+### Staff Dashboard
+Django-based management interface with real-time WebSocket updates, MQTT integration, and role-based access control.
+
+📖 **[Dashboard Documentation](dashboards/django_app/README.md)** - Features, API reference, WebSocket endpoints, deployment
+
+### Guest Kiosk
+Self-service check-in system with passport scanning, multi-language support, and document generation.
+
+📖 **[Kiosk Documentation](kiosk/README.md)** - Guest flow, i18n, theming, MRZ integration
+
+### MRZ Automation AI
+Production-ready passport scanning with layered architecture for capture, correction, extraction, and document filling.
+
+📖 **[MRZ Documentation](kiosk/app/README.md)** - Pipeline architecture, API, configuration, debugging
+
+## Hardware
+
+### ESP32 Sensor Node
+
+The sensor nodes use ESP32-S modules with:
+- DHT22 temperature/humidity sensor
+- BH1750 luminosity sensor
+- MQ-2 gas sensor
+- WiFi connectivity for MQTT
+
+PCB designs available in the [hardware/ESP-32S PCB](hardware/ESP-32S%20PCB) directory with Gerber files for manufacturing.
+
+### ESP32-CAM Module
+
+Used for:
+- Passport scanning at kiosk
+- Optional facial recognition enrollment
+
+## Development
+
+### Local Development Setup
+
+```bash
+# Dashboard development
+cd dashboards/django_app
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py init_data
+daphne -b 0.0.0.0 -p 8000 smart_hotel.asgi:application
+
+# Kiosk development
+cd kiosk
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8002
+
+# MRZ Backend development
+cd kiosk/app
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python app.py
+```
+
+### Project Structure
+
+```
+smart-hotel/
+├── README.md                 # This file
+├── Dockerfile                # Base container image
+├── cloud/                    # Docker Compose infrastructure
+│   ├── docker-compose.yml    # Production stack
+│   ├── docker-compose-dev.yml# Development overrides
+│   └── config/               # Service configurations
+├── dashboards/               # Staff management interface
+│   └── django_app/           # Django application
+├── kiosk/                    # Guest self check-in
+│   ├── kiosk/                # Django kiosk app
+│   └── app/                  # MRZ Flask backend
+├── esp32/                    # Sensor firmware
+├── esp32-cam/                # Camera firmware
+└── hardware/                 # PCB designs
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 

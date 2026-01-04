@@ -10,6 +10,9 @@ pip-chill
 platformdirs
 python-dotenv
 tomli
+# CPU-only PyTorch (much smaller, no CUDA)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 torchvision
 # PDF processing for document filling
 PyPDF2

@@ -10,4 +10,6 @@ class DashboardConfig(AppConfig):
         # Only start in main process (not in migration commands)
         if os.environ.get('RUN_MAIN') == 'true' or os.environ.get('DAPHNE_PROCESS'):
             from . import influx_client
+            from . import mqtt_client
             influx_client.start_influx_client()
+            mqtt_client.start_mqtt_client()

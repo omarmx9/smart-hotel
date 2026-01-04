@@ -1,0 +1,337 @@
+{% extends 'base.html' %}
+
+{% block title %}Staff Management - Smart Hotel{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+
+    .staff-table {
+        width: 100%;
+        border-collapse: collapse;
+        background-color: var(--color-bg-card);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+    }
+
+    .staff-table th,
+    .staff-table td {
+        padding: 16px 20px;
+        text-align: left;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .staff-table th {
+        background-color: var(--color-bg-tertiary);
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-text-secondary);
+    }
+
+    .staff-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .staff-table tr:hover td {
+        background-color: var(--color-bg-elevated);
+    }
+
+    .role-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: 20px;
+    }
+
+    .role-badge.admin {
+        background-color: rgba(234, 67, 53, 0.15);
+        color: var(--color-accent-red);
+    }
+
+    .role-badge.monitor {
+        background-color: rgba(66, 133, 244, 0.15);
+        color: var(--color-accent-blue);
+    }
+
+    .action-btn {
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        border: none;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+    }
+
+    .action-btn.primary {
+        background-color: var(--color-primary);
+        color: white;
+    }
+
+    .action-btn.primary:hover {
+        background-color: var(--color-primary-dark);
+    }
+
+    .action-btn.warning {
+        background-color: rgba(249, 171, 0, 0.15);
+        color: var(--color-accent-orange);
+    }
+
+    .action-btn.warning:hover {
+        background-color: rgba(249, 171, 0, 0.25);
+    }
+
+    .action-btn.danger {
+        background-color: rgba(234, 67, 53, 0.15);
+        color: var(--color-accent-red);
+    }
+
+    .action-btn.danger:hover {
+        background-color: rgba(234, 67, 53, 0.25);
+    }
+
+    .create-staff-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 24px;
+        font-size: 14px;
+        font-weight: 600;
+        border: none;
+        border-radius: var(--radius-md);
+        background: linear-gradient(135deg, var(--color-accent-blue) 0%, #6366f1 100%);
+        color: white;
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        box-shadow: 0 4px 14px rgba(66, 133, 244, 0.35);
+        text-decoration: none;
+    }
+
+    .create-staff-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(66, 133, 244, 0.45);
+    }
+
+    .create-staff-btn:active {
+        transform: translateY(0);
+    }
+
+    .create-staff-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .actions-cell {
+        display: flex;
+        gap: 8px;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--color-text-muted);
+    }
+
+    .alert {
+        padding: 16px 20px;
+        border-radius: var(--radius-md);
+        margin-bottom: 20px;
+        font-size: 14px;
+    }
+
+    .alert.success {
+        background-color: rgba(52, 168, 83, 0.15);
+        color: var(--color-accent-green);
+        border: 1px solid rgba(52, 168, 83, 0.3);
+    }
+
+    .alert.error {
+        background-color: rgba(234, 67, 53, 0.15);
+        color: var(--color-accent-red);
+        border: 1px solid rgba(234, 67, 53, 0.3);
+    }
+
+    .authentik-notice {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1.25rem 1.5rem;
+        background: rgba(253, 126, 20, 0.1);
+        border: 1px solid #fd7e14;
+        border-radius: var(--radius-md);
+        margin-bottom: 24px;
+    }
+
+    .authentik-notice svg {
+        flex-shrink: 0;
+        color: #fd7e14;
+        margin-top: 2px;
+    }
+
+    .authentik-notice strong {
+        display: block;
+        color: #fd7e14;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .authentik-notice p {
+        margin: 0 0 0.75rem 0;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+        line-height: 1.5;
+    }
+
+    .authentik-links {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .authentik-links a {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.5rem 1rem;
+        background: rgba(253, 126, 20, 0.2);
+        color: #fd7e14;
+        border-radius: var(--radius-sm);
+        font-size: 0.8rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all var(--transition-fast);
+    }
+
+    .authentik-links a:hover {
+        background: rgba(253, 126, 20, 0.3);
+    }
+
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        margin-bottom: 0.5rem;
+    }
+
+    .section-description {
+        color: var(--color-text-secondary);
+        font-size: 0.875rem;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="header-title">Staff Management</h1>
+    <a href="{{ authentik_users_url }}" class="create-staff-btn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+        Manage Users in Authentik
+    </a>
+</div>
+
+<!-- Authentik Notice -->
+<div class="authentik-notice">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="16" x2="12" y2="12"/>
+        <line x1="12" y1="8" x2="12.01" y2="8"/>
+    </svg>
+    <div>
+        <strong>User Management via Authentik</strong>
+        <p>
+            User accounts are now managed through Authentik. To create, edit, or delete users, 
+            use the Authentik admin interface. Users will be automatically synced when they log in.
+        </p>
+        <div class="authentik-links">
+            <a href="{{ authentik_admin_url }}" target="_blank" rel="noopener">Admin Dashboard</a>
+            <a href="{{ authentik_users_url }}" target="_blank" rel="noopener">Manage Users</a>
+            <a href="{{ authentik_groups_url }}" target="_blank" rel="noopener">Manage Groups</a>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+    <div class="alert {% if message.tags %}{{ message.tags }}{% endif %}">
+        {{ message }}
+    </div>
+    {% endfor %}
+{% endif %}
+
+<h2 class="section-title">Synced Staff Users</h2>
+<p class="section-description">These users have logged in via Authentik and are synced locally.</p>
+
+{% if staff_users %}
+<table class="staff-table">
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Created</th>
+            <th>Last Login</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for staff in staff_users %}
+        <tr data-user-id="{{ staff.id }}">
+            <td>
+                <strong>{{ staff.username }}</strong>
+                {% if staff == request.user %}<span style="color: var(--color-text-muted);"> (you)</span>{% endif %}
+            </td>
+            <td>{{ staff.email|default:"-" }}</td>
+            <td>
+                <span class="role-badge {{ staff.role }}">{{ staff.get_role_display }}</span>
+            </td>
+            <td>{{ staff.date_joined|date:"M d, Y" }}</td>
+            <td>{{ staff.last_login|date:"M d, Y H:i"|default:"Never" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <p>No staff accounts synced yet. Users will appear here after logging in via Authentik.</p>
+</div>
+{% endif %}
+
+{% if guest_users %}
+<h2 class="section-title" style="margin-top: 2rem;">Active Guest Users</h2>
+<p class="section-description">Guest users currently synced from Authentik.</p>
+
+<table class="staff-table">
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Room</th>
+            <th>Expires</th>
+            <th>Last Login</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for guest in guest_users %}
+        <tr>
+            <td><strong>{{ guest.username }}</strong></td>
+            <td>{{ guest.assigned_room.room_number|default:"-" }}</td>
+            <td>{{ guest.expires_at|date:"M d, Y H:i"|default:"Never" }}</td>
+            <td>{{ guest.last_login|date:"M d, Y H:i"|default:"Never" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

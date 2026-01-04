@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+
+{% block title %}DW Registration Card - Smart Hotel{% endblock %}
+
+{% block content %}
+<div class="reg-page">
+    <div class="card p-4 p-md-5">
+        <div class="reg-header">
+            <div class="icon-box icon-brand">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" viewBox="0 0 16 16"><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zM10 4a1 1 0 0 1-1-1V1.5L13.5 5H11a1 1 0 0 1-1-1V4z"/><path d="M4.5 12.5A.5.5 0 0 1 5 12h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 10h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 8h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/></svg>
+            </div>
+            <div>
+                <h1 data-i18n="dw_registration_card">DW Registration Card</h1>
+                <p data-i18n="fill_registration_info">Please complete your registration information</p>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <div class="d-flex align-items-start gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" style="flex-shrink: 0; margin-top: 2px;"><path d="M4 11a1 1 0 1 1 2 0v1a1 1 0 1 1-2 0v-1zm6-4a1 1 0 1 1 2 0v5a1 1 0 1 1-2 0V7zM7 9a1 1 0 0 1 2 0v3a1 1 0 1 1-2 0V9z"/><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/></svg>
+                <div>
+                    <strong>Guest Registration Form</strong><br>
+                    <span class="text-muted">Fields marked with * are required. Information from your passport has been pre-filled where available.</span>
+                </div>
+            </div>
+        </div>
+
+        <form method="post" id="registrationForm">
+        {% csrf_token %}
+        
+            <h4 class="section-title">Personal Information</h4>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label required" for="surname">Surname</label>
+                    <input type="text" class="form-control" id="surname" name="surname" value="{{ initial.surname }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label required" for="name">First Name</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ initial.name }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label required" for="nationality">Nationality</label>
+                    <input type="text" class="form-control" id="nationality" name="nationality" value="{{ initial.nationality }}" required>
+                    <input type="hidden" name="nationality_code" value="{{ initial.nationality_code }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label required" for="passport_number">Passport Number</label>
+                    <input type="text" class="form-control" id="passport_number" name="passport_number" value="{{ initial.passport_number }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label required" for="date_of_birth">Date of Birth</label>
+                    <input type="date" class="form-control" id="date_of_birth" name="date_of_birth" value="{{ initial.date_of_birth }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="country">Issuing Country</label>
+                    <input type="text" class="form-control" id="country" name="country" value="{{ initial.country }}">
+                </div>
+            </div>
+
+            <h4 class="section-title">Additional Details</h4>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="profession">Profession</label>
+                    <input type="text" class="form-control" id="profession" name="profession" value="{{ initial.profession }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="hometown">Hometown</label>
+                    <input type="text" class="form-control" id="hometown" name="hometown" value="{{ initial.hometown }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="email">Email Address</label>
+                    <input type="email" class="form-control" id="email" name="email" value="{{ initial.email }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="phone">Phone Number</label>
+                    <input type="tel" class="form-control" id="phone" name="phone" value="{{ initial.phone }}">
+                </div>
+            </div>
+
+            <h4 class="section-title">Stay Information</h4>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label required" for="checkin">Check-in Date</label>
+                    <input type="date" class="form-control" id="checkin" name="checkin" value="{{ initial.checkin }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="checkout">Check-out Date</label>
+                    <input type="date" class="form-control" id="checkout" name="checkout" value="{{ initial.checkout }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="people_count">Number of Guests</label>
+                    <input type="number" class="form-control" id="people_count" name="people_count" min="1" max="10" value="{{ initial.people_count|default:1 }}">
+                </div>
+            </div>
+
+            <div id="accompany-section" style="display: none;">
+                <h4 class="section-title">Accompanying Guests</h4>
+                <div id="accompany-container"></div>
+            </div>
+
+            <h4 class="section-title">Signature Method</h4>
+            <p class="text-muted mb-3">Choose how you would like to sign the registration card:</p>
+            
+            <div class="signature-options">
+                <label class="signature-option selected" for="sig_digital">
+                    <input type="radio" name="signature_method" id="sig_digital" value="digital" checked>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/>
+                    </svg>
+                    <div class="option-text">
+                        <strong data-i18n="digital_signature">Digital Signature</strong>
+                        <span data-i18n="sign_on_screen">Sign directly on screen using touch or mouse</span>
+                    </div>
+                </label>
+                
+                <label class="signature-option" for="sig_physical">
+                    <input type="radio" name="signature_method" id="sig_physical" value="physical">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/>
+                        <path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/>
+                    </svg>
+                    <div class="option-text">
+                        <strong data-i18n="physical_signature">Print & Sign</strong>
+                        <span data-i18n="print_and_sign">Print document and sign with pen</span>
+                    </div>
+                </label>
+            </div>
+
+            <div class="d-flex flex-wrap gap-3 mt-4 pt-4" style="border-top: 1px solid var(--border);">
+                <button type="submit" class="btn btn-primary btn-lg flex-grow-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="me-2" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>
+                    <span data-i18n="continue_to_signing">Continue to Signing</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Signature option toggle
+    document.querySelectorAll('.signature-option').forEach(option => {
+        option.addEventListener('click', function() {
+            document.querySelectorAll('.signature-option').forEach(o => o.classList.remove('selected'));
+            this.classList.add('selected');
+            this.querySelector('input').checked = true;
+        });
+    });
+    
+    // Accompanying guests
+    const peopleCount = document.getElementById('people_count');
+    const accompanySection = document.getElementById('accompany-section');
+    const accompanyContainer = document.getElementById('accompany-container');
+    
+    function updateAccompanyFields() {
+        const count = Math.max(1, parseInt(peopleCount.value) || 1);
+        const accompanyCount = Math.max(0, count - 1);
+        
+        if (accompanyCount > 0) {
+            accompanySection.style.display = 'block';
+            accompanyContainer.innerHTML = '';
+            
+            for (let i = 1; i <= accompanyCount; i++) {
+                const html = `
+                    <div class="input-group mb-2">
+                        <span class="input-group-text">#${i}</span>
+                        <input type="text" class="form-control" name="accompany_name_${i}" placeholder="Full Name">
+                        <input type="text" class="form-control" name="accompany_nationality_${i}" placeholder="Nationality">
+                        <input type="text" class="form-control" name="accompany_passport_${i}" placeholder="Passport No.">
+                    </div>
+                `;
+                accompanyContainer.insertAdjacentHTML('beforeend', html);
+            }
+        } else {
+            accompanySection.style.display = 'none';
+        }
+    }
+    
+    peopleCount.addEventListener('change', updateAccompanyFields);
+    peopleCount.addEventListener('input', updateAccompanyFields);
+    updateAccompanyFields();
+});
+</script>
+{% endblock %}

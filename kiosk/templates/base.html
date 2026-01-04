@@ -1,0 +1,67 @@
+{% load static %}
+<!doctype html>
+<html lang="{{ kiosk_language|default:'en' }}">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=1080, height=1920, initial-scale=1, maximum-scale=1, user-scalable=no">
+		<meta name="mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+		<meta name="theme-color" content="#1a5f2a">
+		<title>{% block title %}Smart Hotel Kiosk{% endblock %}</title>
+		<link rel="icon" type="image/svg+xml" href="{% static 'img/favicon.svg' %}">
+		<link rel="apple-touch-icon" href="{% static 'img/favicon.svg' %}">
+		<link rel="stylesheet" href="{% static 'vendor/inter.css' %}">
+		<link rel="stylesheet" href="{% static 'vendor/bootstrap.min.css' %}">
+		<link rel="stylesheet" href="{% static 'css/style.css' %}">
+		<link rel="stylesheet" href="{% static 'css/christmas-theme.css' %}">
+		{% block head %}{% endblock %}
+		{% block extra_css %}{% endblock %}
+	</head>
+	<body>
+		<!-- Elegant CSS Snowflakes -->
+		<div class="snowflakes" aria-hidden="true">
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+			<div class="snowflake"></div>
+		</div>
+		<!-- Subtle Winter Stars Background -->
+		<div class="winter-stars" aria-hidden="true"></div>
+		
+		<nav class="navbar navbar-expand-lg navbar-dark mb-4">
+			<div class="container-fluid">
+				<a class="navbar-brand d-flex align-items-center" href="/">
+					<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>
+					<span class="ms-2 fw-semibold">Smart Hotel</span>
+				</a>
+				<span class="tagline d-none d-md-inline text-light opacity-75">Self Check-In Kiosk</span>
+			</div>
+		</nav>
+
+		<main class="container py-2">{% block content %}{% endblock %}</main>
+
+		<script src="{% static 'vendor/bootstrap.bundle.min.js' %}"></script>
+		{% if not no_translate %}
+		<script>const KIOSK_LANGUAGE = '{{ kiosk_language|default:"en" }}';</script>
+		<script src="{% static 'js/translate.js' %}"></script>
+		{% endif %}
+		{% block scripts %}{% endblock %}
+	</body>
+</html>

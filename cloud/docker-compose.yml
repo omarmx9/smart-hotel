@@ -1,0 +1,387 @@
+# Smart Hotel Cloud Infrastructure
+# All configuration via .env file - run ./generate-env.sh to create one
+#
+# Usage:
+#   Production: docker compose up -d
+#   Development: docker compose -f docker-compose.yml -f docker-compose-dev.yml up
+
+services:
+  # ============================================================================
+  # CORE DATA SERVICES
+  # ============================================================================
+
+  influxdb:
+    image: docker.io/influxdb:2-alpine
+    container_name: influxdb
+    ports:
+      - "${INFLUX_PORT:-8086}:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUX_ADMIN_USER:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUX_ADMIN_PASSWORD:-adminpass}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG:-smarthotel}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET:-sensors}
+      - DOCKER_INFLUXDB_INIT_RETENTION=${INFLUX_RETENTION:-0}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2:rw
+      - influxdb-config:/etc/influxdb2:rw
+      - ./config/influxdb/init-telegraf.sh:/docker-entrypoint-initdb.d/init-telegraf.sh:ro
+    restart: unless-stopped
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    image: docker.io/postgres:16-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-smarthotel}
+      - POSTGRES_USER=${POSTGRES_USER:-smarthotel}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data:rw
+    restart: unless-stopped
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smarthotel}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dashboard:
+    build:
+      context: ../dashboards/django_app
+      dockerfile: Dockerfile
+    container_name: dashboard
+    ports:
+      - "${DASHBOARD_PORT:-8001}:8000"
+    environment:
+      # Database
+      - DATABASE_URL=postgres://${POSTGRES_USER:-smarthotel}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-smarthotel}
+      - POSTGRES_DB=${POSTGRES_DB:-smarthotel}
+      - POSTGRES_USER=${POSTGRES_USER:-smarthotel}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      # InfluxDB
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+      - INFLUX_ORG=${INFLUX_ORG:-smarthotel}
+      - INFLUX_BUCKET=${INFLUX_BUCKET:-sensors}
+      # Django
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-*}
+      # MQTT
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      # Authentik OIDC
+      - AUTHENTIK_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}
+      - OIDC_RP_CLIENT_ID=${OIDC_CLIENT_ID:-smart-hotel}
+      - OIDC_RP_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - OIDC_OP_AUTHORIZATION_ENDPOINT=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}/application/o/authorize/
+      - OIDC_OP_TOKEN_ENDPOINT=http://authentik-server:9000/application/o/token/
+      - OIDC_OP_USER_ENDPOINT=http://authentik-server:9000/application/o/userinfo/
+      - OIDC_OP_JWKS_ENDPOINT=http://authentik-server:9000/application/o/smart-hotel/jwks/
+      - OIDC_OP_LOGOUT_ENDPOINT=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}/application/o/smart-hotel/end-session/
+      # Session settings (7 days default for hotel guests)
+      - SESSION_COOKIE_AGE=${SESSION_COOKIE_AGE:-604800}
+      - OIDC_RENEW_ID_TOKEN_EXPIRY_SECONDS=${OIDC_TOKEN_EXPIRY:-900}
+      # Telegram (optional)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      # Node-RED SMS Gateway
+      - NODERED_URL=http://nodered:1880
+    depends_on:
+      - influxdb
+      - postgres
+      - mosquitto
+      - authentik-server
+      - nodered
+    restart: unless-stopped
+    networks:
+      - default
+
+  grafana:
+    image: docker.io/grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
+      # Authentik OAuth (optional)
+      - GF_AUTH_GENERIC_OAUTH_ENABLED=${GRAFANA_OAUTH_ENABLED:-false}
+      - GF_AUTH_GENERIC_OAUTH_NAME=Authentik
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_ID=${GRAFANA_OAUTH_CLIENT_ID:-grafana}
+      - GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=${GRAFANA_OAUTH_CLIENT_SECRET:-}
+      - GF_AUTH_GENERIC_OAUTH_SCOPES=openid profile email
+      - GF_AUTH_GENERIC_OAUTH_AUTH_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}/application/o/authorize/
+      - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=http://authentik-server:9000/application/o/token/
+      - GF_AUTH_GENERIC_OAUTH_API_URL=http://authentik-server:9000/application/o/userinfo/
+      # Session settings
+      - GF_SESSION_COOKIE_MAX_AGE=${SESSION_COOKIE_AGE:-604800}
+      # InfluxDB datasource
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+    volumes:
+      - grafana-data:/var/lib/grafana:rw
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-logs:/var/log/grafana:rw
+    depends_on:
+      - influxdb
+      - telegraf
+    restart: unless-stopped
+    networks:
+      - default
+
+  telegraf:
+    image: docker.io/telegraf:alpine
+    container_name: telegraf
+    depends_on:
+      - influxdb
+      - mosquitto
+    volumes:
+      - ./config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    environment:
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+      - INFLUX_ORG=${INFLUX_ORG:-smarthotel}
+      - INFLUX_BUCKET=${INFLUX_BUCKET:-sensors}
+    restart: unless-stopped
+    cap_add:
+      - CAP_NET_RAW
+    networks:
+      - default
+
+  mosquitto:
+    image: docker.io/eclipse-mosquitto:latest
+    container_name: mosquitto
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+      - "${MQTT_WS_PORT:-9001}:9001"
+    volumes:
+      - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data:rw
+      - mosquitto-logs:/mosquitto/log:rw
+    restart: unless-stopped
+    networks:
+      - default
+
+  # ============================================================================
+  # AUTHENTIK - Identity Provider
+  # ============================================================================
+
+  authentik-redis:
+    image: docker.io/redis:alpine
+    container_name: authentik-redis
+    command: --save 60 1 --loglevel warning
+    volumes:
+      - authentik-redis:/data
+    restart: unless-stopped
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  authentik-db:
+    image: docker.io/postgres:16-alpine
+    container_name: authentik-db
+    environment:
+      - POSTGRES_DB=authentik
+      - POSTGRES_USER=authentik
+      - POSTGRES_PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
+    volumes:
+      - authentik-db:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authentik"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.10}
+    container_name: authentik-server
+    command: server
+    environment:
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_POSTGRESQL__HOST=authentik-db
+      - AUTHENTIK_POSTGRESQL__USER=authentik
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
+      # Email settings (optional)
+      - AUTHENTIK_EMAIL__HOST=${SMTP_HOST:-}
+      - AUTHENTIK_EMAIL__PORT=${SMTP_PORT:-587}
+      - AUTHENTIK_EMAIL__USERNAME=${SMTP_USER:-}
+      - AUTHENTIK_EMAIL__PASSWORD=${SMTP_PASSWORD:-}
+      - AUTHENTIK_EMAIL__USE_TLS=${SMTP_USE_TLS:-true}
+      - AUTHENTIK_EMAIL__FROM=${SMTP_FROM:-noreply@example.com}
+      # Session settings - 7 days for hotel guests
+      - AUTHENTIK_SESSION_STORAGE=redis
+      - AUTHENTIK_DEFAULT_USER_CHANGE_USERNAME=false
+    ports:
+      - "${AUTHENTIK_PORT:-9000}:9000"
+      - "${AUTHENTIK_PORT_HTTPS:-9443}:9443"
+    volumes:
+      - authentik-media:/media
+      - authentik-templates:/templates
+    depends_on:
+      - authentik-db
+      - authentik-redis
+    restart: unless-stopped
+    networks:
+      - default
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.10}
+    container_name: authentik-worker
+    command: worker
+    environment:
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_POSTGRESQL__HOST=authentik-db
+      - AUTHENTIK_POSTGRESQL__USER=authentik
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - authentik-media:/media
+      - authentik-certs:/certs
+      - authentik-templates:/templates
+    depends_on:
+      - authentik-db
+      - authentik-redis
+    restart: unless-stopped
+    networks:
+      - default
+
+  # ============================================================================
+  # NODE-RED - Headless Notification Gateway (Telegram + SMS)
+  # ============================================================================
+
+  nodered:
+    image: docker.io/nodered/node-red:latest
+    container_name: nodered
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+      # Telegram Bot Configuration
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      # Twilio SMS Configuration
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-}
+      # MQTT Authentication (optional)
+      - MQTT_USER=${MQTT_USER:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      # Node-RED credential encryption
+      - NODE_RED_CREDENTIAL_SECRET=${NODERED_CREDENTIAL_SECRET}
+    volumes:
+      - nodered-data:/data
+      - ./config/nodered/settings.js:/data/settings.js:ro
+      - ./config/nodered/flows.json:/data/flows.json:ro
+    ports:
+      - "${NODERED_PORT:-1880}:1880"
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:1880/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # KIOSK SERVICES
+  # ============================================================================
+
+  # Main Kiosk Web Application (Django)
+  kiosk:
+    build:
+      context: ../kiosk
+      dockerfile: Dockerfile
+    container_name: kiosk
+    ports:
+      - "${KIOSK_PORT:-8002}:8000"
+    environment:
+      DEBUG: '${KIOSK_DEBUG:-0}'
+      SECRET_KEY: '${KIOSK_SECRET_KEY}'
+      ALLOWED_HOSTS: '${KIOSK_ALLOWED_HOSTS:-*}'
+      # MRZ backend service connection
+      MRZ_SERVICE_URL: 'http://mrz-backend:5000'
+    volumes:
+      # Persist SQLite database across container restarts
+      - kiosk_data:/app/data
+      # Persist media files (uploaded scans, filled documents)
+      - kiosk_media:/app/media
+    depends_on:
+      - mrz-backend
+    restart: unless-stopped
+    networks:
+      - kiosk-network
+
+  # MRZ Backend Microservice (Flask) - API only, no camera hardware
+  # Note: Test frontend is only exposed in docker-compose-dev.yml
+  mrz-backend:
+    build:
+      context: ../kiosk/app
+      dockerfile: Dockerfile
+    # No ports exposed in production - only accessible internally by kiosk service
+    # Use docker-compose-dev.yml to expose port 5000 for testing
+    environment:
+      PYTHONUNBUFFERED: '1'
+    volumes:
+      # Persist logs (processed passports and filled documents)
+      - mrz_logs:/app/Logs
+    restart: unless-stopped
+    networks:
+      - kiosk-network
+
+networks:
+  kiosk-network:
+    driver: bridge
+  default:
+    driver: bridge
+
+volumes:
+  # Data Services
+  influxdb-data:
+  influxdb-config:
+  postgres-data:
+  mosquitto-data:
+  mosquitto-logs:
+  
+  # Grafana
+  grafana-data:
+  grafana-logs:
+  
+  # Authentik
+  authentik-db:
+  authentik-redis:
+  authentik-media:
+  authentik-templates:
+  authentik-certs:
+  
+  # Node-RED
+  nodered-data:
+  
+  # Kiosk
+  kiosk_data:
+  kiosk_media:
+  mrz_logs:

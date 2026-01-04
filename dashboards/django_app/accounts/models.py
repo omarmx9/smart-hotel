@@ -1,13 +1,18 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
-from datetime import timedelta
-import secrets
-import string
 
 
 class User(AbstractUser):
-    """Custom user model with role-based access control"""
+    """
+    Custom user model with role-based access control.
+    
+    With Authentik integration:
+    - User authentication is handled by Authentik OIDC
+    - User data is synced from Authentik claims
+    - Roles are mapped from Authentik groups
+    - This model stores user profile and role locally for quick access
+    """
     
     ROLE_ADMIN = 'admin'
     ROLE_MONITOR = 'monitor'
@@ -36,6 +41,9 @@ class User(AbstractUser):
         blank=True,
         related_name='created_users'
     )
+    
+    # OIDC subject identifier (Authentik user ID)
+    oidc_sub = models.CharField(max_length=255, blank=True, null=True, unique=True)
     
     class Meta:
         db_table = 'accounts_user'
@@ -77,49 +85,7 @@ class User(AbstractUser):
             return Room.objects.filter(pk=self.assigned_room.pk)
         return Room.objects.none()
     
-    @classmethod
-    def generate_guest_credentials(cls):
-        """Generate random username and password for guest accounts"""
-        username = 'guest_' + ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(6))
-        password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
-        return username, password
-    
     def __str__(self):
         if self.is_guest and self.assigned_room:
             return f"{self.username} ({self.assigned_room.room_number})"
         return f"{self.username} ({self.get_role_display()})"
-
-
-class PasswordResetToken(models.Model):
-    """Token for password reset via Telegram link"""
-    
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reset_tokens')
-    token = models.CharField(max_length=64, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-    used = models.BooleanField(default=False)
-    
-    class Meta:
-        db_table = 'accounts_password_reset_token'
-    
-    @classmethod
-    def create_for_user(cls, user, hours_valid=1):
-        """Create a new password reset token for a user"""
-        # Invalidate any existing tokens
-        cls.objects.filter(user=user, used=False).update(used=True)
-        
-        token = secrets.token_urlsafe(48)
-        expires_at = timezone.now() + timedelta(hours=hours_valid)
-        
-        return cls.objects.create(
-            user=user,
-            token=token,
-            expires_at=expires_at
-        )
-    
-    @property
-    def is_valid(self):
-        return not self.used and timezone.now() < self.expires_at
-    
-    def __str__(self):
-        return f"Reset token for {self.user.username}"

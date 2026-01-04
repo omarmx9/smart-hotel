@@ -1,0 +1,274 @@
+{% extends 'base.html' %}
+
+{% block title %}Sign Registration Card - Smart Hotel{% endblock %}
+
+{% block content %}
+<div class="sign-page">
+    <div class="card p-4 p-md-5">
+        <div class="sign-header">
+            <div class="icon-box icon-brand">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg>
+            </div>
+            <div>
+                <h1 data-i18n="sign_registration_card">Sign Registration Card</h1>
+                {% if reservation %}
+                <p>Reservation: <strong>{{ reservation.reservation_number }}</strong></p>
+                {% else %}
+                <p data-i18n="review_and_sign">Review your information and sign to complete</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Document Preview -->
+        <div class="document-preview" id="documentPreview">
+            {{ document_preview|safe }}
+        </div>
+        
+        <!-- Signature Method Tabs -->
+        <div class="method-tabs">
+            <button type="button" class="method-tab {% if signature_method == 'digital' %}active{% endif %}" data-method="digital">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3z"/><path d="M13.5 6.207 9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5z"/><path fill-rule="evenodd" d="m6.032 13.675-.179.178a.5.5 0 0 1-.11.168l-2 5a.5.5 0 1 1-.65-.65l5-2a.5.5 0 0 1 .168-.11l.178-.178z"/></svg>
+                <span data-i18n="digital_signature">Digital Signature</span>
+            </button>
+            <button type="button" class="method-tab {% if signature_method == 'physical' %}active{% endif %}" data-method="physical">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5z"/></svg>
+                <span data-i18n="print_sign">Print & Sign</span>
+            </button>
+        </div>
+        
+        <!-- Digital Signature Content -->
+        <div class="method-content {% if signature_method == 'digital' %}active{% endif %}" id="digitalContent">
+            <div class="signature-container">
+                <h4>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3z"/><path d="M13.5 6.207 9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5z"/></svg>
+                    <span data-i18n="draw_signature">Draw Your Signature</span>
+                </h4>
+                <div class="signature-canvas-wrapper" id="canvasWrapper">
+                    <canvas id="signatureCanvas"></canvas>
+                    <div class="signature-placeholder" id="signaturePlaceholder">
+                        ✍️ Sign here with your finger or mouse
+                    </div>
+                </div>
+                <div class="signature-actions">
+                    <button type="button" class="btn btn-outline-secondary" id="clearSignature">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5z"/></svg>
+                        <span data-i18n="clear">Clear</span>
+                    </button>
+                    <button type="button" class="btn btn-outline-primary" id="undoSignature">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/></svg>
+                        <span data-i18n="undo">Undo</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Print & Sign Content -->
+        <div class="method-content {% if signature_method == 'physical' %}active{% endif %}" id="physicalContent">
+            <div class="print-container">
+                <div class="icon-box icon-box-lg icon-brand">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="currentColor" viewBox="0 0 16 16"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/></svg>
+                </div>
+                <p data-i18n="print_instruction">Print the registration card and sign it with a pen. Then confirm below to continue.</p>
+                <a href="{% url 'kiosk:dw_generate_pdf' %}" target="_blank" class="btn btn-outline-primary btn-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="me-2" viewBox="0 0 16 16"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5z"/></svg>
+                    <span data-i18n="print_document">Print Document</span>
+                </a>
+            </div>
+        </div>
+        
+        <!-- Submit Form -->
+        <form method="post" id="signForm">
+            {% csrf_token %}
+            <input type="hidden" name="signature_data" id="signatureData" value="">
+            
+            <div class="action-buttons">
+                <a href="{% url 'kiosk:dw_registration_card' %}" class="btn btn-outline-secondary btn-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="me-2" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/></svg>
+                    <span data-i18n="back_to_edit">Back to Edit</span>
+                </a>
+                <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="me-2" viewBox="0 0 16 16"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg>
+                    <span data-i18n="confirm_continue">Confirm & Continue</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Method tab switching
+    const methodTabs = document.querySelectorAll('.method-tab');
+    const methodContents = document.querySelectorAll('.method-content');
+    
+    methodTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const method = this.dataset.method;
+            
+            methodTabs.forEach(t => t.classList.remove('active'));
+            methodContents.forEach(c => c.classList.remove('active'));
+            
+            this.classList.add('active');
+            document.getElementById(method + 'Content').classList.add('active');
+        });
+    });
+    
+    // Signature Canvas
+    const canvas = document.getElementById('signatureCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('canvasWrapper');
+    const placeholder = document.getElementById('signaturePlaceholder');
+    const signatureDataInput = document.getElementById('signatureData');
+    
+    let isDrawing = false;
+    let lastX = 0;
+    let lastY = 0;
+    let hasSignature = false;
+    let paths = [];
+    let currentPath = [];
+    
+    // Set canvas size
+    function resizeCanvas() {
+        const rect = wrapper.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = rect.width * dpr;
+        canvas.height = 200 * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = '200px';
+        ctx.scale(dpr, dpr);
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        redrawPaths();
+    }
+    
+    function redrawPaths() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        paths.forEach(path => {
+            if (path.length > 0) {
+                ctx.beginPath();
+                ctx.moveTo(path[0].x, path[0].y);
+                path.forEach(point => {
+                    ctx.lineTo(point.x, point.y);
+                });
+                ctx.stroke();
+            }
+        });
+    }
+    
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    
+    function getCoordinates(e) {
+        const rect = canvas.getBoundingClientRect();
+        if (e.touches) {
+            return {
+                x: e.touches[0].clientX - rect.left,
+                y: e.touches[0].clientY - rect.top
+            };
+        }
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+    }
+    
+    function startDrawing(e) {
+        e.preventDefault();
+        isDrawing = true;
+        wrapper.classList.add('signing');
+        placeholder.classList.add('hidden');
+        hasSignature = true;
+        
+        const coords = getCoordinates(e);
+        lastX = coords.x;
+        lastY = coords.y;
+        currentPath = [{ x: lastX, y: lastY }];
+        
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+    }
+    
+    function draw(e) {
+        if (!isDrawing) return;
+        e.preventDefault();
+        
+        const coords = getCoordinates(e);
+        ctx.lineTo(coords.x, coords.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(coords.x, coords.y);
+        
+        currentPath.push({ x: coords.x, y: coords.y });
+        lastX = coords.x;
+        lastY = coords.y;
+    }
+    
+    function stopDrawing(e) {
+        if (isDrawing && currentPath.length > 0) {
+            paths.push(currentPath);
+        }
+        isDrawing = false;
+        wrapper.classList.remove('signing');
+        currentPath = [];
+        updateSignatureData();
+    }
+    
+    function updateSignatureData() {
+        if (hasSignature) {
+            signatureDataInput.value = canvas.toDataURL('image/png');
+        }
+    }
+    
+    // Mouse events
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+    
+    // Touch events
+    canvas.addEventListener('touchstart', startDrawing);
+    canvas.addEventListener('touchmove', draw);
+    canvas.addEventListener('touchend', stopDrawing);
+    canvas.addEventListener('touchcancel', stopDrawing);
+    
+    // Clear button
+    document.getElementById('clearSignature').addEventListener('click', function() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        paths = [];
+        hasSignature = false;
+        placeholder.classList.remove('hidden');
+        signatureDataInput.value = '';
+    });
+    
+    // Undo button
+    document.getElementById('undoSignature').addEventListener('click', function() {
+        if (paths.length > 0) {
+            paths.pop();
+            redrawPaths();
+            updateSignatureData();
+            
+            if (paths.length === 0) {
+                hasSignature = false;
+                placeholder.classList.remove('hidden');
+                signatureDataInput.value = '';
+            }
+        }
+    });
+    
+    // Form submission
+    document.getElementById('signForm').addEventListener('submit', function(e) {
+        const activeMethod = document.querySelector('.method-tab.active').dataset.method;
+        
+        if (activeMethod === 'digital' && !hasSignature) {
+            e.preventDefault();
+            alert('Please draw your signature before continuing.');
+            return;
+        }
+        
+        updateSignatureData();
+    });
+});
+</script>
+{% endblock %}

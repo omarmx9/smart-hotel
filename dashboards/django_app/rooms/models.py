@@ -15,6 +15,37 @@ class Room(models.Model):
         (STATUS_MAINTENANCE, 'Maintenance'),
     ]
     
+    # Climate control modes
+    CLIMATE_AUTO = 'auto'
+    CLIMATE_MANUAL = 'manual'
+    CLIMATE_OFF = 'off'
+    
+    CLIMATE_CHOICES = [
+        (CLIMATE_AUTO, 'Automatic'),
+        (CLIMATE_MANUAL, 'Manual'),
+        (CLIMATE_OFF, 'Off'),
+    ]
+    
+    # Fan speed options for manual mode
+    FAN_LOW = 'low'
+    FAN_MEDIUM = 'medium'
+    FAN_HIGH = 'high'
+    
+    FAN_CHOICES = [
+        (FAN_LOW, 'Low'),
+        (FAN_MEDIUM, 'Medium'),
+        (FAN_HIGH, 'High'),
+    ]
+    
+    # Light control modes
+    LIGHT_AUTO = 'auto'
+    LIGHT_MANUAL = 'manual'
+    
+    LIGHT_CHOICES = [
+        (LIGHT_AUTO, 'Automatic'),
+        (LIGHT_MANUAL, 'Manual'),
+    ]
+    
     room_number = models.CharField(max_length=10, unique=True)
     floor = models.IntegerField(default=1)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_VACANT)
@@ -22,11 +53,14 @@ class Room(models.Model):
     # Sensor readings
     temperature = models.FloatField(default=22.0)
     humidity = models.FloatField(default=50.0)
-    luminosity = models.IntegerField(default=0)
+    luminosity = models.IntegerField(default=0)  # 0=off, 1=one light, 2=two lights
+    light_mode = models.CharField(max_length=20, choices=LIGHT_CHOICES, default=LIGHT_AUTO)
     gas_level = models.IntegerField(default=0)
     
-    # Control settings
+    # Climate control settings
+    climate_mode = models.CharField(max_length=20, choices=CLIMATE_CHOICES, default=CLIMATE_AUTO)
     target_temperature = models.FloatField(default=22.0)
+    fan_speed = models.CharField(max_length=20, choices=FAN_CHOICES, default=FAN_MEDIUM)
     heating_status = models.BooleanField(default=False)
     
     # MQTT topic prefix for this room
@@ -40,8 +74,20 @@ class Room(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.mqtt_topic_prefix:
-            self.mqtt_topic_prefix = f"hotel/room/{self.room_number}"
+            self.mqtt_topic_prefix = f"/hotel/{self.room_number}"
         super().save(*args, **kwargs)
+    
+    @property
+    def luminosity_display(self):
+        """Display luminosity as readable text"""
+        if self.light_mode == self.LIGHT_AUTO:
+            return 'Auto'
+        elif self.luminosity == 0:
+            return 'Off'
+        elif self.luminosity == 1:
+            return '1 Light'
+        else:
+            return '2 Lights'
     
     @property
     def temperature_alert(self):
@@ -68,8 +114,12 @@ class Room(models.Model):
             'temperature': self.temperature,
             'humidity': self.humidity,
             'luminosity': self.luminosity,
+            'luminosity_display': self.luminosity_display,
+            'light_mode': self.light_mode,
             'gas_level': self.gas_level,
+            'climate_mode': self.climate_mode,
             'target_temperature': self.target_temperature,
+            'fan_speed': self.fan_speed,
             'heating_status': self.heating_status,
             'temperature_alert': self.temperature_alert,
             'gas_alert': self.gas_alert,

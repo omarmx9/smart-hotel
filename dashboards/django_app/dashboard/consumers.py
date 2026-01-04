@@ -167,7 +167,12 @@ class RoomConsumer(AsyncWebsocketConsumer):
 
 
 class AdminConsumer(AsyncWebsocketConsumer):
-    """WebSocket consumer for admin operations including guest generation"""
+    """
+    WebSocket consumer for admin operations.
+    
+    Note: With Authentik integration, guest account creation is now handled
+    through Authentik. This consumer provides read-only access to synced guests.
+    """
     
     async def connect(self):
         user = self.scope.get('user')
@@ -194,31 +199,11 @@ class AdminConsumer(AsyncWebsocketConsumer):
         data = json.loads(text_data)
         action = data.get('action')
         
-        if action == 'generate_guest':
-            room_id = data.get('room_id')
-            phone_number = data.get('phone_number', '')
-            expiry_hours = data.get('expiry_hours', 24)
-            
-            result = await self.generate_guest_account(room_id, phone_number, expiry_hours)
-            await self.send(text_data=json.dumps({
-                'type': 'guest_generated',
-                'result': result
-            }))
-        
-        elif action == 'list_guests':
+        if action == 'list_guests':
             guests = await self.get_active_guests()
             await self.send(text_data=json.dumps({
                 'type': 'guest_list',
                 'guests': guests
-            }))
-        
-        elif action == 'revoke_guest':
-            guest_id = data.get('guest_id')
-            success = await self.revoke_guest(guest_id)
-            await self.send(text_data=json.dumps({
-                'type': 'guest_revoked',
-                'success': success,
-                'guest_id': guest_id
             }))
     
     @database_sync_to_async
@@ -228,59 +213,8 @@ class AdminConsumer(AsyncWebsocketConsumer):
         return user.is_admin or user.is_superuser
     
     @database_sync_to_async
-    def generate_guest_account(self, room_id, phone_number, expiry_hours):
-        from rooms.models import Room
-        from accounts.models import User
-        from .telegram import send_telegram_message
-        
-        try:
-            room = Room.objects.get(pk=room_id)
-            username, password = User.generate_guest_credentials()
-            
-            expires_at = timezone.now() + timedelta(hours=expiry_hours)
-            
-            admin_user = User.objects.get(pk=self.user.pk)
-            
-            guest = User.objects.create_user(
-                username=username,
-                password=password,
-                role=User.ROLE_GUEST,
-                assigned_room=room,
-                expires_at=expires_at,
-                phone_number=phone_number,
-                created_by=admin_user
-            )
-            
-            room.status = Room.STATUS_OCCUPIED
-            room.save()
-            
-            # Send via Telegram
-            message = (
-                f"Smart Hotel Guest Access\n"
-                f"------------------------\n"
-                f"Room: {room.room_number}\n"
-                f"Username: {username}\n"
-                f"Password: {password}\n"
-                f"Expires: {expires_at.strftime('%Y-%m-%d %H:%M')}"
-            )
-            telegram_sent = send_telegram_message(message)
-            
-            return {
-                'success': True,
-                'username': username,
-                'password': password,
-                'room': room.room_number,
-                'expires_at': expires_at.isoformat(),
-                'telegram_sent': telegram_sent
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'error': str(e)
-            }
-    
-    @database_sync_to_async
     def get_active_guests(self):
+        """Get list of active guest users synced from Authentik"""
         from accounts.models import User
         guests = User.objects.filter(
             role=User.ROLE_GUEST,
@@ -298,30 +232,3 @@ class AdminConsumer(AsyncWebsocketConsumer):
             }
             for g in guests
         ]
-    
-    @database_sync_to_async
-    def revoke_guest(self, guest_id):
-        from accounts.models import User
-        from rooms.models import Room
-        
-        try:
-            guest = User.objects.get(pk=guest_id, role=User.ROLE_GUEST)
-            room = guest.assigned_room
-            guest.is_active = False
-            guest.save()
-            
-            # Check if room has other active guests
-            if room:
-                active_guests = User.objects.filter(
-                    assigned_room=room,
-                    role=User.ROLE_GUEST,
-                    is_active=True
-                ).exclude(pk=guest_id).exists()
-                
-                if not active_guests:
-                    room.status = Room.STATUS_VACANT
-                    room.save()
-            
-            return True
-        except User.DoesNotExist:
-            return False

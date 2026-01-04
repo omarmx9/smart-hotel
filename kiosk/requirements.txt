@@ -1,0 +1,10 @@
+Django
+Pillow
+whitenoise
+requests
+# MRZ extraction and document generation
+fastmrz
+opencv-python-headless
+python-docx
+# Optional: only needed if using camera capture directly
+# opencv-python-headless can be used as lighter alternative
