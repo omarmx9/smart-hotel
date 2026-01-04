@@ -28,6 +28,8 @@ bool sdCardAvailable = false;
 bool useJPEG = SENSOR_HAS_JPEG;  // Set from cam_config.h based on sensor
 bool continuousCapture = false;  // For streaming capture mode
 bool ledFlashEnabled = false;    // LED flash toggle - default OFF
+uint32_t lastCaptureTime = 0;    // Timestamp tracking for adaptive timing
+int consecutiveFailures = 0;     // Track failures to adapt capture timing
 
 // ===========================
 // SD Card Functions
@@ -217,36 +219,5 @@ void setup() {
 // Loop
 // ===========================
 void loop() {
-    // Handle continuous capture mode
-    if(continuousCapture && sdCardAvailable && currentPerson != "") {
-#if defined(LED_GPIO_NUM)
-        if(ledFlashEnabled) {
-            digitalWrite(LED_GPIO_NUM, HIGH);
-        }
-#endif
-        camera_fb_t* fb = esp_camera_fb_get();
-        if(fb) {
-            imageCounter++;
-            saveImage(fb, currentPerson, imageCounter);
-            esp_camera_fb_return(fb);
-#if defined(LED_GPIO_NUM)
-            if(ledFlashEnabled) {
-                digitalWrite(LED_GPIO_NUM, LOW);
-            }
-#endif
-            // Small delay to prevent overwhelming the system
-            delay(100);  // Adjust this for faster/slower capture (100ms = ~10 images/sec)
-        } else {
-            Serial.println("Camera capture failed during continuous mode");
-#if defined(LED_GPIO_NUM)
-            if(ledFlashEnabled) {
-                digitalWrite(LED_GPIO_NUM, LOW);
-            }
-#endif
-            delay(100);
-        }
-    } else {
-        // All HTTP handling is done in separate tasks by the web server
-        delay(10);
-    }
+    delay(10);  // Continuous capture now handled via HTTP /capture calls
 }

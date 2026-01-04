@@ -581,40 +581,32 @@ String getIndexHTML() {
                     return;
                 }
                 debug('Starting continuous stream...', 'info');
-                fetch('/start-stream')
-                    .then(r => r.json())
-                    .then(data => {
-                        if(data.success) {
-                            debug('Stream started successfully', 'success');
-                            streamCapture = true;
-                            btn.textContent = 'Stop Stream';
-                            btn.className = 'btn-warning';
-                            mode.disabled = true;
-                            updateOverlay('Streaming... capturing images continuously');
-                            // Poll for image count updates
-                            streamInterval = setInterval(() => {
-                                fetch('/status')
-                                    .then(r => r.json())
-                                    .then(data => {
-                                        document.getElementById('imageCount').textContent = data.imageCount;
-                                        updateOverlay('Streaming... ' + data.imageCount + ' images captured');
-                                    });
-                            }, 500);
-                        } else {
-                            debug('Failed to start stream: ' + data.message, 'error');
-                            alert('Error: ' + data.message);
-                        }
-                    })
-                    .catch(err => {
-                        debug('Start stream error: ' + err, 'error');
-                    });
+                streamCapture = true;
+                btn.textContent = 'Stop Stream';
+                mode.disabled = true;
+
+                function captureLoop() {
+                    if(!streamCapture) return;
+                    
+                    fetch('/capture')
+                        .then(r => r.json())
+                        .then(data => {
+                            if(data.success) {
+                                document.getElementById('imageCount').textContent = data.imageCount;
+                                updateOverlay('Streaming... ' + data.imageCount);
+                            }
+                            if(streamCapture) setTimeout(captureLoop, 200); // 5 imgs/sec
+                        });
+                }
+                captureLoop();
+                updateOverlay('Streaming... capturing images continuously');
             }
         }
 
         function resetCounter() {
             if(confirm('Reset image counter? (Images will NOT be deleted)')) {
                 fetch('/reset')
-                    .then(r => r.json())
+                    .then r => r.json())
                     .then(data => {
                         document.getElementById('imageCount').textContent = '0';
                         updateOverlay('Counter reset');
@@ -906,22 +898,28 @@ static esp_err_t control_handler(httpd_req_t *req) {
                 httpd_query_key_value(buf, "val", val, sizeof(val)) == ESP_OK) {
                 
                 sensor_t * s = esp_camera_sensor_get();
-                int res = 0;
-                
-                if(!strcmp(var, "framesize")) {
-                    res = s->set_framesize(s, (framesize_t)atoi(val));
-                    if(res == 0) response = "{\"success\":true}";
-                }
-                else if(!strcmp(var, "quality")) res = s->set_quality(s, atoi(val));
+                if(!s) {
+                    response = "{\"success\":false,\"message\":\"Camera sensor not available\"}";
+                } else {
+                    int res = 0;
+                    
+                    if(!strcmp(var, "framesize")) {
+                        res = s->set_framesize(s, (framesize_t)atoi(val));
+                        if(res == 0) response = "{\"success\":true}";
+                    }
+                    else if(!strcmp(var, "quality")) res = s->set_quality(s, atoi(val));
                 else if(!strcmp(var, "contrast")) res = s->set_contrast(s, atoi(val));
                 else if(!strcmp(var, "brightness")) res = s->set_brightness(s, atoi(val));
-                else if(!strcmp(var, "saturation")) res = s->set_saturation(s, atoi(val));
-                else {
-                    response = "{\"success\":false,\"message\":\"Unknown variable\"}";
-                }
-                
-                if(res == 0 && response == "{\"success\":false}") {
-                    response = "{\"success\":true}";
+                    else if(!strcmp(var, "saturation")) res = s->set_saturation(s, atoi(val));
+                    else {
+                        response = "{\"success\":false,\"message\":\"Unknown variable\"}";
+                    }
+                    
+                    if(res == 0 && response == "{\"success\":false}") {
+                        response = "{\"success\":true}";
+                    } else if(res != 0) {
+                        response = "{\"success\":false,\"message\":\"Failed to set " + String(var) + "\"}";
+                    }
                 }
             }
         }
