@@ -33,7 +33,7 @@ Built with Django and modern web technologies, the kiosk provides a touch-friend
 ### Passport Scanning & MRZ Extraction
 - **Browser-based camera capture** - No hardware drivers required
 - **Real-time document detection** - Visual feedback for positioning
-- **Automatic data extraction** - MRZ parsing via microservice
+- **Manual capture with automatic extraction** - Guests press a `Capture` button to take a high-quality frame; MRZ parsing is then performed via the microservice. An `Enter Manually` option is also available to type passport details when scanning is not possible.
 - **Fallback processing** - Local parser when service unavailable
 - **Multi-document support** - TD1, TD2, TD3 formats (passports, ID cards)
 
@@ -142,8 +142,8 @@ Guest chooses to begin the check-in process. Clear instructions guide them throu
 The kiosk activates the camera for passport scanning:
 - Real-time preview shows camera feed
 - Green overlay indicates document detection
-- Guest holds passport steady for capture
-- System extracts MRZ data automatically
+- Guest holds passport steady and presses **Capture** when positioned correctly
+- System extracts MRZ data from the captured frame; alternatively the guest may choose **Enter Manually** to type their passport details
 
 ### Step 4: Information Verification
 Extracted passport data is displayed for verification:
