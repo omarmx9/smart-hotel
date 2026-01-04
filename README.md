@@ -261,6 +261,11 @@ Production-ready passport scanning with layered architecture for capture, correc
 
 📖 **[MRZ Documentation](kiosk/app/README.md)** - Pipeline architecture, API, configuration, debugging
 
+### ESP32-CAM AI Pipeline
+End-to-end facial recognition pipeline: model training, quantization, deployment, and ESP32-CAM firmware integration.
+
+📖 **[ESP32-CAM AI Pipeline](esp32-cam/AI/README.md)** - Model training, quantization, deployment, and technical deep dive
+
 ## Hardware
 
 ### ESP32 Sensor Node
@@ -295,7 +300,8 @@ Capabilities:
 - **VIP detection** with instant cloud notifications
 - **Remote control** via MQTT commands
 
-📖 **[ESP32-CAM Documentation](esp32-cam/README.md)** - Model training, MQTT topics, firmware setup
+📖 **[ESP32-CAM Documentation](esp32-cam/README.md)** - Hardware, MQTT topics, firmware setup
+📖 **[ESP32-CAM AI Pipeline](esp32-cam/AI/README.md)** - Full AI pipeline: model training, quantization, deployment
 
 ## Development
 
