@@ -1,6 +1,6 @@
-dataset/*
+AI/dataset/*
 guides/
-trained_models/*
+AI/trained_models/*
 
 .vscode/ 
 ESP_Capture_dataset.zip
