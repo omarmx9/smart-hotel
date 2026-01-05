@@ -530,10 +530,10 @@ flowchart TB
 const uint8_t face_recognition_model[] PROGMEM = {
     0x1c, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c, 0x33,
     0x14, 0x00, 0x20, 0x00, 0x04, 0x00, 0x08, 0x00,
-    // ... (approximately 1.5 million bytes)
+    // ... (approximately 0.97 million bytes)
 };
 
-const size_t face_recognition_model_len = 1572864;
+const size_t face_recognition_model_len = 978800;
 ```
 
 ### ESP32 Inference Pipeline

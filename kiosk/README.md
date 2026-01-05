@@ -75,7 +75,6 @@ flowchart TB
         
         subgraph SERVICES["Services Layer"]
             MRZ_CLIENT["MRZ API<br/>Client"]
-            DOC_FILLER["Document<br/>Filler"]
         end
     end
     
@@ -100,7 +99,8 @@ flowchart TB
     VIEWS --> EMULATOR
     VIEWS --> MRZ_CLIENT
     MRZ_CLIENT --> MRZ_BACKEND
-    VIEWS --> DOC_FILLER
+    FILL --> MRZ_CLIENT
+    MRZ_CLIENT --> VIEWS
 ```
 
 ### Component Responsibilities

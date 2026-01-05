@@ -295,7 +295,7 @@ sequenceDiagram
 
 #### Face Recognized
 ```
-Topic: hotel/kiosk/{device_id}/face/recognized
+Topic: hotel/kiosk/{room_id}/FaceRecognition/Authentication 
 Payload: {
     "name": "person_name",
     "confidence": 0.987,
@@ -303,49 +303,6 @@ Payload: {
     "device": "esp32cam-kiosk-01"
 }
 ```
-
-#### Unknown Face
-```
-Topic: hotel/kiosk/{device_id}/face/unknown
-Payload: {
-    "confidence": 0.45,
-    "timestamp": 1234567890,
-    "device": "esp32cam-kiosk-01"
-}
-```
-
-#### Device Status
-```
-Topic: hotel/kiosk/{device_id}/status
-Payload: {
-    "status": "online",
-    "uptime": 12345,
-    "model_ready": true,
-    "free_heap": 123456,
-    "wifi_rssi": -45,
-    "ip": "192.168.1.100"
-}
-```
-
-#### Heartbeat
-```
-Topic: hotel/kiosk/{device_id}/heartbeat
-Payload: {
-    "uptime": 12345,
-    "free_heap": 123456,
-    "wifi_rssi": -45
-}
-```
-
-### Control Commands (Subscribed)
-
-```
-Topic: hotel/kiosk/{device_id}/control
-Payload: {"command": "status"}    # Request status update
-Payload: {"command": "restart"}   # Restart device
-Payload: {"command": "capture"}   # Force recognition
-```
-
 ### Dashboard Integration
 
 The Smart Hotel dashboard automatically subscribes to ESP32-CAM topics:
