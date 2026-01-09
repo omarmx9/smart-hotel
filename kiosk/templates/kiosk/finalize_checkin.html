@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+
+{% block title %}Welcome - Check-In Complete{% endblock %}
+
+{% block content %}
+<div class="complete-page">
+	<div class="card p-4 p-md-5">
+		<div class="success-header">
+			<div class="icon-box icon-box-lg icon-success">
+				<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>
+			</div>
+			<h1 data-i18n="checkin_complete">Check-In Complete!</h1>
+			<p class="text-muted mb-0" data-i18n="welcome_message">Welcome to Smart Hotel! We hope you enjoy your stay.</p>
+		</div>
+		
+		<div class="row g-3 mb-4">
+			<div class="col-6 col-md-3">
+				<div class="info-card">
+					<small data-i18n="reservation">Reservation</small>
+					<strong>{{ reservation.reservation_number|default:"N/A" }}</strong>
+				</div>
+			</div>
+			<div class="col-6 col-md-3">
+				<div class="info-card">
+					<small data-i18n="guest">Guest</small>
+					<strong>{% if reservation.guest %}{{ reservation.guest.first_name }} {{ reservation.guest.last_name }}{% else %}Guest{% endif %}</strong>
+				</div>
+			</div>
+			<div class="col-6 col-md-3">
+				<div class="info-card">
+					<small data-i18n="room">Room</small>
+					<strong>{{ room_number|default:"---" }}</strong>
+				</div>
+			</div>
+			<div class="col-6 col-md-3">
+				<div class="info-card">
+					<small data-i18n="access_method">Access</small>
+					<strong>{{ access_method|default:"keycard" }}</strong>
+				</div>
+			</div>
+		</div>
+
+		{% if rfid_token %}
+		<div class="alert alert-info d-flex align-items-center gap-2">
+			<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm8.93 4.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM8 5.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>
+			<span data-i18n="keycard_ready">Your keycard has been programmed. Please collect it from the dispenser.</span>
+		</div>
+		{% endif %}
+	</div>
+
+	<!-- Room Directions Video Section - Only shown for check-in -->
+	<div class="card p-4 p-md-5 mt-4">
+		<div class="d-flex align-items-center justify-content-center gap-3 mb-4">
+			<div class="icon-box icon-brand">
+				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M15.817.113A.5.5 0 0 1 16 .5v14a.5.5 0 0 1-.402.49l-5 1a.502.502 0 0 1-.196 0L5.5 15.01l-4.902.98A.5.5 0 0 1 0 15.5v-14a.5.5 0 0 1 .402-.49l5-1a.5.5 0 0 1 .196 0L10.5.99l4.902-.98a.5.5 0 0 1 .415.103zM10 1.91l-4-.8v12.98l4 .8V1.91zm1 12.98 4-.8V1.11l-4 .8v12.98zm-6-.8V1.11l-4 .8v12.98l4-.8z"/></svg>
+			</div>
+			<h2 class="mb-0" data-i18n="route_title">Directions to Your Room</h2>
+		</div>
+		
+		<div class="room-display mb-4">
+			<small data-i18n="your_room">Your Room</small>
+			<div class="room-number">{{ room_number|default:"---" }}</div>
+		</div>
+
+		<div class="ratio ratio-16x9">
+			<!-- Room directions video - Replace with your hotel's actual video -->
+			<video id="directions-video" controls autoplay muted playsinline>
+				<source src="/static/videos/room_directions_{{ room_number }}.mp4" type="video/mp4">
+				<!-- Fallback to a default video or placeholder -->
+				<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="Room directions" allowfullscreen></iframe>
+			</video>
+		</div>
+		
+		<div class="text-center mt-4">
+			<p class="text-muted" data-i18n="directions_note">Follow the highlighted path to reach your room. Staff are available to assist you.</p>
+		</div>
+	</div>
+
+	<!-- Additional Check-in Information -->
+	<div class="card p-4 mt-4">
+		<h3 data-i18n="stay_info">Stay Information</h3>
+		<div class="row g-3">
+			<div class="col-md-6">
+				<strong data-i18n="checkin_date">Check-in Date:</strong>
+				<span>{{ reservation.checkin|default:"Today" }}</span>
+			</div>
+			<div class="col-md-6">
+				<strong data-i18n="checkout_date">Check-out Date:</strong>
+				<span>{{ reservation.checkout|default:"---" }}</span>
+			</div>
+		</div>
+		<hr>
+		<p class="mb-0 text-muted" data-i18n="checkout_reminder">Please remember to check out before 11:00 AM on your departure day.</p>
+	</div>
+
+	<div class="text-center mt-4">
+		<a href="{% url 'kiosk:advertisement' %}" class="btn btn-outline-secondary btn-lg" data-i18n="finish">
+			Finish
+		</a>
+	</div>
+</div>
+{% endblock %}

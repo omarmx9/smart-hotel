@@ -1,9 +1,9 @@
 Django>=4.2,<5.0
 channels>=4.0
 daphne>=4.0
+whitenoise>=6.6
 requests>=2.28
 influxdb-client>=1.36
 psycopg2-binary>=2.9
 gunicorn>=21.0
 paho-mqtt>=1.6
-mozilla-django-oidc>=4.0

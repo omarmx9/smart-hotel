@@ -5,6 +5,8 @@ import os
 import tempfile
 import json
 import base64
+import logging
+from functools import wraps
 from django.utils import timezone
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, Http404, HttpResponse
@@ -18,10 +20,225 @@ from .mrz_parser import get_mrz_parser, extract_passport_data, MRZExtractionErro
 from .document_filler import get_document_filler, fill_registration_card
 
 # MRZ API client for microservice communication
-from .mrz_api_client import get_mrz_client, MRZAPIError, convert_mrz_to_kiosk_format
+from .mrz_api_client import (
+    get_mrz_client, 
+    MRZAPIError, 
+    convert_mrz_to_kiosk_format,
+    get_document_client,
+    MRZDocumentClient
+)
 
 # Check if we should use the MRZ microservice
 USE_MRZ_SERVICE = os.environ.get('MRZ_SERVICE_URL') is not None
+
+# Logger for kiosk views
+logger = logging.getLogger(__name__)
+
+# Front desk phone number (configurable via environment)
+FRONT_DESK_PHONE = os.environ.get('FRONT_DESK_PHONE', '0')
+
+
+# ============================================================================
+# ERROR HANDLING UTILITIES
+# ============================================================================
+
+class KioskError(Exception):
+    """Base exception for kiosk errors that should show the error page."""
+    def __init__(self, message, error_code=None):
+        self.message = message
+        self.error_code = error_code
+        super().__init__(message)
+
+
+class DatabaseError(KioskError):
+    """Database connection or query error."""
+    pass
+
+
+class SessionError(KioskError):
+    """Missing or invalid session data."""
+    pass
+
+
+class ReservationNotFoundError(KioskError):
+    """Reservation not found for checkout."""
+    pass
+
+
+def render_error(request, message, error_code=None):
+    """
+    Render the error page with Call Front Desk option.
+    Use this instead of redirecting back to previous steps.
+    """
+    return render(request, 'kiosk/error.html', {
+        'error_message': message,
+        'error_code': error_code,
+        'front_desk_phone': FRONT_DESK_PHONE,
+    })
+
+
+def handle_kiosk_errors(view_func):
+    """
+    Decorator to catch database and session errors in kiosk views.
+    Displays error page with Call Front Desk option instead of crashing.
+    """
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        try:
+            return view_func(request, *args, **kwargs)
+        except KioskError as e:
+            logger.error(f"Kiosk error in {view_func.__name__}: {e.message}")
+            return render_error(request, e.message, e.error_code)
+        except Http404:
+            # Re-raise Http404 to let Django handle it
+            raise
+        except Exception as e:
+            logger.exception(f"Unexpected error in {view_func.__name__}: {e}")
+            return render_error(
+                request, 
+                "An unexpected error occurred. Please contact the front desk for assistance.",
+                error_code="UNEXPECTED_ERROR"
+            )
+    return wrapper
+
+
+def error_page(request):
+    """
+    Generic error page with Call Front Desk option.
+    Can be accessed directly or via redirect with query params.
+    """
+    error_message = request.GET.get('message', 'Something went wrong while processing your request.')
+    error_code = request.GET.get('code')
+    
+    return render(request, 'kiosk/error.html', {
+        'error_message': error_message,
+        'error_code': error_code,
+        'front_desk_phone': FRONT_DESK_PHONE,
+    })
+
+
+# ============================================================================
+# DASHBOARD INTEGRATION
+# ============================================================================
+
+def create_dashboard_guest_account(guest_data, reservation_data, room_number):
+    """
+    Create a guest account in the Dashboard for room access.
+    
+    Args:
+        guest_data: Dict with guest info (first_name, last_name, email, phone, etc.)
+        reservation_data: Dict with reservation info (checkout date)
+        room_number: Room number string
+    
+    Returns:
+        dict: Account credentials {'username': ..., 'password': ...} or None on failure
+    """
+    try:
+        import requests
+        
+        dashboard_url = os.environ.get('DASHBOARD_API_URL', 'http://dashboard:8001')
+        api_token = os.environ.get('KIOSK_API_TOKEN', '')
+        
+        if not dashboard_url:
+            logger.warning("Dashboard API URL not configured")
+            return None
+        
+        # Prepare request data
+        checkout_date = reservation_data.get('checkout', '')
+        if checkout_date and isinstance(checkout_date, str):
+            # Ensure ISO format
+            if 'T' not in checkout_date:
+                checkout_date = f"{checkout_date}T12:00:00"
+        
+        payload = {
+            'first_name': guest_data.get('first_name', ''),
+            'last_name': guest_data.get('last_name', ''),
+            'email': guest_data.get('email', ''),
+            'room_number': str(room_number),
+            'checkout_date': checkout_date,
+            'passport_number': guest_data.get('passport_number', ''),
+            'phone': guest_data.get('phone', '')
+        }
+        
+        headers = {'Content-Type': 'application/json'}
+        if api_token:
+            headers['Authorization'] = f'Token {api_token}'
+        
+        response = requests.post(
+            f'{dashboard_url}/api/guests/create/',
+            json=payload,
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 201:
+            result = response.json()
+            logger.info(f"Dashboard guest account created: {result.get('username')}")
+            return {
+                'username': result.get('username'),
+                'password': result.get('password'),
+                'room_number': result.get('room_number'),
+                'expires_at': result.get('expires_at')
+            }
+        else:
+            logger.error(f"Dashboard API error: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Failed to create Dashboard guest account: {e}")
+        return None
+
+
+def deactivate_dashboard_guest_account(username=None, room_number=None):
+    """
+    Deactivate a guest account in the Dashboard on checkout.
+    
+    Args:
+        username: Guest username to deactivate
+        room_number: Or room number to find and deactivate guest
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        import requests
+        
+        dashboard_url = os.environ.get('DASHBOARD_API_URL', 'http://dashboard:8001')
+        api_token = os.environ.get('KIOSK_API_TOKEN', '')
+        
+        if not dashboard_url:
+            logger.warning("Dashboard API URL not configured")
+            return False
+        
+        payload = {}
+        if username:
+            payload['username'] = username
+        elif room_number:
+            payload['room_number'] = str(room_number)
+        else:
+            return False
+        
+        headers = {'Content-Type': 'application/json'}
+        if api_token:
+            headers['Authorization'] = f'Token {api_token}'
+        
+        response = requests.post(
+            f'{dashboard_url}/api/guests/deactivate/',
+            json=payload,
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"Dashboard guest account deactivated")
+            return True
+        else:
+            logger.error(f"Dashboard API error: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Failed to deactivate Dashboard guest account: {e}")
+        return False
 
 
 def start(request):
@@ -120,6 +337,7 @@ def extract_status(request, task_id):
 
 
 @csrf_exempt
+@handle_kiosk_errors
 def verify_info(request):
     if request.method == 'POST':
         data = dict(request.POST)
@@ -146,7 +364,24 @@ def verify_info(request):
         if not access_methods:
             access_methods = ['keycard']
 
-        guest = db.get_or_create_guest(first_name, last_name, passport, dob)
+        # Validate required fields - show error instead of looping
+        if not first_name or not last_name:
+            return render_error(
+                request,
+                "We couldn't read your passport information. Please ask the front desk for assistance.",
+                error_code="PASSPORT_READ_ERROR"
+            )
+
+        try:
+            guest = db.get_or_create_guest(first_name, last_name, passport, dob)
+        except Exception as e:
+            logger.error(f"Database error creating guest: {e}")
+            return render_error(
+                request,
+                "We're experiencing technical difficulties. Please contact the front desk.",
+                error_code="DATABASE_ERROR"
+            )
+        
         request.session['guest_id'] = guest['id']
         request.session['access_method'] = ','.join(access_methods)
         request.session['pending_access_methods'] = access_methods
@@ -155,21 +390,48 @@ def verify_info(request):
         res_number = data.get('reservation_number', [''])[0]
         reservation = None
         
-        if res_number:
-            reservation = db.get_reservation_by_number(res_number)
+        try:
+            if res_number:
+                reservation = db.get_reservation_by_number(res_number)
 
-        if not reservation:
-            # Try to find by guest
-            res_qs = db.get_reservations_by_guest(guest)
-            if res_qs:
-                reservation = res_qs[0]
+            if not reservation:
+                # Try to find by guest
+                res_qs = db.get_reservations_by_guest(guest)
+                if res_qs:
+                    reservation = res_qs[0]
+        except Exception as e:
+            logger.error(f"Database error finding reservation: {e}")
+            return render_error(
+                request,
+                "We're experiencing technical difficulties. Please contact the front desk.",
+                error_code="DATABASE_ERROR"
+            )
+
+        # Get the flow type from session
+        flow_type = request.session.get('flow_type', 'checkin')
 
         if reservation:
             # Reservation found - store it and go to document signing
             request.session['reservation_id'] = reservation['id']
-            return redirect('kiosk:document_signing')
+            
+            if flow_type == 'checkout':
+                # Checkout flow - go directly to finalize with checkout context
+                return redirect('kiosk:finalize', reservation_id=reservation['id'])
+            else:
+                # Checkin flow - go to document signing
+                return redirect('kiosk:document_signing')
 
-        # No reservation found - go to walk-in page
+        # No reservation found
+        if flow_type == 'checkout':
+            # WALK-IN TRYING TO CHECKOUT - Show error page
+            # This is a critical case: someone who never checked in is trying to check out
+            return render_error(
+                request,
+                "No reservation found for check-out. If you made a reservation, please contact the front desk with your confirmation number. If you're a walk-in guest, please select 'Check In' instead.",
+                error_code="NO_RESERVATION_CHECKOUT"
+            )
+        
+        # Checkin flow without reservation - go to walk-in page
         return redirect('kiosk:walkin')
 
     # GET
@@ -195,8 +457,22 @@ def choose_language(request):
 
 
 def checkin(request):
-    # simple check-in/check-out choice page
-    return render(request, 'kiosk/checkin.html')
+    """
+    Check-in/Check-out choice page.
+    Sets the flow_type in session to track whether guest is checking in or out.
+    """
+    if request.method == 'POST':
+        flow_type = request.POST.get('flow_type', 'checkin')
+        request.session['flow_type'] = flow_type
+        # Clear any stale session data from previous flow
+        for key in ['guest_id', 'reservation_id', 'access_method', 'room_payload', 'pending_access_methods']:
+            request.session.pop(key, None)
+        
+        # For checkout, we'll verify they have a reservation after passport scan
+        # The verify_info view will handle the "walk-in trying to checkout" case
+        return redirect('kiosk:start')
+    lang = request.session.get('language', 'en')
+    return render(request, 'kiosk/checkin.html', {'kiosk_language': lang, 'no_translate': False})
 
 
 def documentation(request):
@@ -246,18 +522,43 @@ def documentation(request):
                 nm = request.POST.get(f'accompany_name_{i}', '').strip()
                 if nm:
                     accompany.append({'name': nm, 'nationality': request.POST.get(f'accompany_nationality_{i}', '').strip(), 'passport': request.POST.get(f'accompany_passport_{i}', '').strip()})
-
             signature_method = request.POST.get('signature_method', 'physical')
 
             # Confirm registration: persist guest and continue to signing
             if request.POST.get('action') == 'confirm_registration':
-                first = reg.get('name') or ''
-                last = reg.get('surname') or ''
-                passport = reg.get('passport_number') or ''
-                dob = reg.get('date_of_birth') or None
-                guest = db.create_guest(first, last, passport, dob)
+                # Parse name (may be "FIRST LAST" or just first name)
+                full_name = reg.get('name', '').strip()
+                surname = reg.get('surname', '').strip()
+                if ' ' in full_name and not surname:
+                    parts = full_name.split(' ', 1)
+                    first_name = parts[0]
+                    last_name = parts[1] if len(parts) > 1 else ''
+                else:
+                    first_name = full_name
+                    last_name = surname
+                
+                # Parse date of birth
+                dob_str = reg.get('date_of_birth', '')
+                dob = parse_date(dob_str) if dob_str else None
+                
+                # Persist guest to database
+                guest = db.get_or_create_guest(
+                    first_name=first_name,
+                    last_name=last_name,
+                    passport_number=reg.get('passport_number', ''),
+                    date_of_birth=dob
+                )
                 request.session['guest_id'] = guest['id']
-                request.session['registration_document'] = {'data': reg, 'accompany': accompany, 'signature_method': signature_method}
+                
+                # Store registration data in session for document filling
+                request.session['registration_data'] = {
+                    'guest': reg,
+                    'accompany': accompany,
+                    'accompany_count': accompany_count,
+                    'people_count': people_count,
+                    'signature_method': signature_method,
+                }
+                
                 return redirect('kiosk:document_signing')
 
             # Otherwise render registration preview
@@ -272,7 +573,7 @@ def documentation(request):
         if first_name and last_name:
             guest = db.get_or_create_guest(first_name, last_name, passport_number or '', dob)
             request.session['guest_id'] = guest['id']
-        return redirect('kiosk:document_signing')
+            return redirect('kiosk:document_signing')
 
     return render(request, 'kiosk/documentation.html', {'data': data, 'reservation': reservation})
 
@@ -359,6 +660,7 @@ def registration_preview(request):
     return render(request, 'kiosk/registration_preview.html', {'data': data, 'accompany': accompany, 'accompany_count': accompany_count, 'signature_method': signature_method})
 
 
+@handle_kiosk_errors
 def document_signing(request):
     """
     Document signing page - LINEAR FLOW (no loops).
@@ -368,31 +670,46 @@ def document_signing(request):
     2. Assign room and apply access methods
     3. Go to face enrollment OR finalize (never back)
     
-    If no reservation/guest: redirect to start (reset flow)
+    If no reservation/guest: show error page (don't loop)
     """
     guest_id = request.session.get('guest_id')
     reservation_id = request.session.get('reservation_id')
     
-    # GUARD: No guest = start over (don't loop)
+    # GUARD: No guest = show error (don't loop)
     if not guest_id:
-        return redirect('kiosk:start')
+        return render_error(
+            request,
+            "Your session has expired. Please start over or contact the front desk for assistance.",
+            error_code="SESSION_EXPIRED"
+        )
     
     # Try to get reservation from session or by guest lookup
     reservation = None
-    if reservation_id:
-        reservation = db.get_reservation(int(reservation_id))
-    else:
-        guest = db.get_guest(int(guest_id))
-        if guest:
-            res_qs = db.get_reservations_by_guest(guest)
-            if res_qs:
-                reservation = res_qs[-1]
-                request.session['reservation_id'] = reservation['id']
+    try:
+        if reservation_id:
+            reservation = db.get_reservation(int(reservation_id))
+        else:
+            guest = db.get_guest(int(guest_id))
+            if guest:
+                res_qs = db.get_reservations_by_guest(guest)
+                if res_qs:
+                    reservation = res_qs[-1]
+                    request.session['reservation_id'] = reservation['id']
+    except Exception as e:
+        logger.error(f"Database error in document_signing: {e}")
+        return render_error(
+            request,
+            "We're experiencing technical difficulties. Please contact the front desk.",
+            error_code="DATABASE_ERROR"
+        )
 
-    # GUARD: No reservation = this shouldn't happen in normal flow
-    # Instead of looping back, redirect to start
+    # GUARD: No reservation = show error (don't loop back)
     if not reservation:
-        return redirect('kiosk:start')
+        return render_error(
+            request,
+            "Your reservation information could not be found. Please contact the front desk for assistance.",
+            error_code="RESERVATION_NOT_FOUND"
+        )
 
     if request.method == 'POST':
         # Save digital signature if provided
@@ -452,6 +769,31 @@ def document_signing(request):
         request.session['room_payload'] = room_payload
         request.session.pop('pending_access_methods', None)
         
+        # Create guest account in Dashboard for room access
+        guest = reservation.get('guest') or {}
+        registration_data = request.session.get('registration_data', {})
+        guest_info = registration_data.get('guest', {})
+        
+        # Merge guest info from reservation and registration
+        dashboard_guest = {
+            'first_name': guest.get('first_name') or guest_info.get('name', '').split()[0] if guest_info.get('name') else '',
+            'last_name': guest.get('last_name') or guest_info.get('surname', ''),
+            'email': guest_info.get('email', ''),
+            'phone': guest_info.get('phone', ''),
+            'passport_number': guest.get('passport_number') or guest_info.get('passport_number', ''),
+        }
+        
+        dashboard_credentials = create_dashboard_guest_account(
+            guest_data=dashboard_guest,
+            reservation_data=reservation,
+            room_number=room_number
+        )
+        
+        if dashboard_credentials:
+            request.session['dashboard_credentials'] = dashboard_credentials
+            room_payload['dashboard_username'] = dashboard_credentials.get('username')
+            request.session['room_payload'] = room_payload
+        
         # FORWARD ONLY: face enrollment OR finalize
         if 'face' in access_methods:
             return redirect('kiosk:enroll_face', reservation_id=reservation['id'])
@@ -460,6 +802,7 @@ def document_signing(request):
     return render(request, 'kiosk/document_sign.html', {'reservation': reservation})
 
 
+@handle_kiosk_errors
 def choose_access(request, reservation_id):
     """
     Access method selection - LINEAR FLOW (no loops).
@@ -468,10 +811,26 @@ def choose_access(request, reservation_id):
     Flow: choose_access → enroll_face OR finalize
     Never redirects back to earlier steps.
     """
-    reservation = db.get_reservation(reservation_id)
+    try:
+        reservation = db.get_reservation(reservation_id)
+    except Exception as e:
+        logger.error(f"Database error in choose_access: {e}")
+        return render_error(
+            request,
+            "We're experiencing technical difficulties. Please contact the front desk.",
+            error_code="DATABASE_ERROR"
+        )
+    
     if not reservation:
-        # GUARD: Invalid reservation = start over
-        return redirect('kiosk:start')
+        # GUARD: Invalid reservation = show error
+        return render_error(
+            request,
+            "Your reservation could not be found. Please contact the front desk for assistance.",
+            error_code="RESERVATION_NOT_FOUND"
+        )
+    
+    # Pre-selected methods from session
+    preselected = request.session.get('pending_access_methods', [])
     
     if request.method == 'POST':
         # Allow multiple access methods (checkboxes). Default to keycard if none selected.
@@ -511,8 +870,8 @@ def choose_access(request, reservation_id):
                 room_payload['rfid_published'] = result.get('published', False)
                 request.session['room_payload'] = room_payload
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"RFID token publish error: {e}")
+                logger.error(f"RFID token publish error: {e}")
+                # Continue without RFID - staff can issue card manually
 
         # FORWARD ONLY: face enrollment OR finalize
         if 'face' in methods:
@@ -526,6 +885,7 @@ def choose_access(request, reservation_id):
     })
 
 
+@handle_kiosk_errors
 def walkin(request):
     """
     Walk-in guest page - LINEAR FLOW (no loops).
@@ -534,43 +894,87 @@ def walkin(request):
     Guest can choose to create a new reservation.
     
     Flow: walkin → reservation_entry → document_signing → finalize
-    If no guest: redirect to start (don't loop)
+    If no guest: show error page (don't loop back to start)
     """
     guest_id = request.session.get('guest_id')
     
-    # GUARD: No guest = start over (don't loop)
+    # GUARD: No guest = show error (don't loop)
     if not guest_id:
-        return redirect('kiosk:start')
+        return render_error(
+            request,
+            "Your session has expired. Please start over or contact the front desk for assistance.",
+            error_code="SESSION_EXPIRED"
+        )
     
-    guest = db.get_guest(int(guest_id))
+    try:
+        guest = db.get_guest(int(guest_id))
+    except Exception as e:
+        logger.error(f"Database error getting guest: {e}")
+        return render_error(
+            request,
+            "We're experiencing technical difficulties. Please contact the front desk.",
+            error_code="DATABASE_ERROR"
+        )
+    
     if not guest:
-        return redirect('kiosk:start')
+        return render_error(
+            request,
+            "Your guest information could not be found. Please start over or contact the front desk.",
+            error_code="GUEST_NOT_FOUND"
+        )
     
     return render(request, 'kiosk/walkin.html', {'guest': guest})
 
 
+@handle_kiosk_errors
 def reservation_entry(request):
     """
     Create reservation for walk-in guest - LINEAR FLOW (no loops).
     
     Flow: reservation_entry → document_signing → finalize
     Never redirects back to walkin or verify_info.
-    If no guest: redirect to start (don't loop)
+    If no guest: show error page (don't loop)
     """
     guest_id = request.session.get('guest_id')
     
-    # GUARD: No guest = start over (don't loop)
+    # GUARD: No guest = show error (don't loop)
     if not guest_id:
-        return redirect('kiosk:start')
+        return render_error(
+            request,
+            "Your session has expired. Please start over or contact the front desk for assistance.",
+            error_code="SESSION_EXPIRED"
+        )
     
-    guest = db.get_guest(int(guest_id))
+    try:
+        guest = db.get_guest(int(guest_id))
+    except Exception as e:
+        logger.error(f"Database error getting guest: {e}")
+        return render_error(
+            request,
+            "We're experiencing technical difficulties. Please contact the front desk.",
+            error_code="DATABASE_ERROR"
+        )
+    
     if not guest:
-        return redirect('kiosk:start')
+        return render_error(
+            request,
+            "Your guest information could not be found. Please start over or contact the front desk.",
+            error_code="GUEST_NOT_FOUND"
+        )
     
     if request.method == 'POST':
         resnum = request.POST.get('reservation_number', '').strip()
-        room_count = int(request.POST.get('room_count') or 1)
-        people_count = int(request.POST.get('people_count') or request.POST.get('room_count') or 1)
+        
+        try:
+            room_count = int(request.POST.get('room_count') or 1)
+        except ValueError:
+            room_count = 1
+            
+        try:
+            people_count = int(request.POST.get('people_count') or request.POST.get('room_count') or 1)
+        except ValueError:
+            people_count = 1
+            
         checkin = parse_date(request.POST.get('checkin') or '') or timezone.now().date()
         checkout = parse_date(request.POST.get('checkout') or '') or (timezone.now().date() + datetime.timedelta(days=1))
         
@@ -579,7 +983,15 @@ def reservation_entry(request):
             import secrets
             resnum = f"RES-{timezone.now().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}"
         
-        res = db.create_reservation(resnum, guest, checkin, checkout, room_count=room_count, people_count=people_count)
+        try:
+            res = db.create_reservation(resnum, guest, checkin, checkout, room_count=room_count, people_count=people_count)
+        except Exception as e:
+            logger.error(f"Database error creating reservation: {e}")
+            return render_error(
+                request,
+                "We couldn't create your reservation. Please contact the front desk.",
+                error_code="RESERVATION_CREATE_ERROR"
+            )
         
         # Store reservation and ALWAYS go forward to document signing
         request.session['reservation_id'] = res['id']
@@ -595,10 +1007,24 @@ def reservation_entry(request):
     })
 
 
+@handle_kiosk_errors
 def enroll_face(request, reservation_id):
-    reservation = db.get_reservation(reservation_id)
+    try:
+        reservation = db.get_reservation(reservation_id)
+    except Exception as e:
+        logger.error(f"Database error in enroll_face: {e}")
+        return render_error(
+            request,
+            "We're experiencing technical difficulties. Please contact the front desk.",
+            error_code="DATABASE_ERROR"
+        )
+    
     if not reservation:
-        raise Http404('reservation')
+        return render_error(
+            request,
+            "Your reservation could not be found. Please contact the front desk for assistance.",
+            error_code="RESERVATION_NOT_FOUND"
+        )
     # Emulate room capacity coming from an external DB/service
     room_payload = request.session.get('room_payload', {})
     room_number = room_payload.get('room_number') or str(100 + (reservation['id'] % 50))
@@ -633,45 +1059,128 @@ def enroll_face(request, reservation_id):
     return render(request, 'kiosk/enroll_face.html', {'reservation': reservation, 'capacity': capacity, 'remaining': remaining})
 
 
+@handle_kiosk_errors
 def finalize(request, reservation_id):
-    reservation = db.get_reservation(reservation_id)
+    """
+    Final page after check-in or check-out.
+    
+    Uses different templates based on flow_type:
+    - checkin: Shows room directions video and welcome message
+    - checkout: Shows card submittal and payment finalization
+    """
+    try:
+        reservation = db.get_reservation(reservation_id)
+    except Exception as e:
+        logger.error(f"Database error in finalize: {e}")
+        return render_error(
+            request,
+            "We're experiencing technical difficulties. Please contact the front desk.",
+            error_code="DATABASE_ERROR"
+        )
+    
     if not reservation:
-        raise Http404('reservation')
+        return render_error(
+            request,
+            "Your reservation could not be found. Please contact the front desk for assistance.",
+            error_code="RESERVATION_NOT_FOUND"
+        )
+    
+    flow_type = request.session.get('flow_type', 'checkin')
     access_method = request.session.get('access_method', 'keycard')
     room_payload = request.session.get('room_payload') or {}
     room_number = room_payload.get('room_number') or reservation.get('room_number') or str(100 + (reservation_id % 50))
     rfid_token = room_payload.get('rfid_token')
     
-    return render(request, 'kiosk/finalize.html', {
+    context = {
         'reservation': reservation, 
         'access_method': access_method, 
         'room_number': room_number,
-        'rfid_token': rfid_token
-    })
+        'rfid_token': rfid_token,
+        'flow_type': flow_type
+    }
+    
+    # Use different templates for check-in vs check-out
+    if flow_type == 'checkout':
+        lang = request.session.get('language', 'en')
+        context['kiosk_language'] = lang
+        return render(request, 'kiosk/finalize_checkout.html', context)
+    else:
+        lang = request.session.get('language', 'en')
+        context['kiosk_language'] = lang
+        return render(request, 'kiosk/finalize_checkin.html', context)
 
 
+@handle_kiosk_errors
 def submit_keycards(request, reservation_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'POST only'}, status=400)
-    reservation = db.get_reservation(reservation_id)
+    
+    try:
+        reservation = db.get_reservation(reservation_id)
+    except Exception as e:
+        logger.error(f"Database error in submit_keycards: {e}")
+        return render_error(
+            request,
+            "We're experiencing technical difficulties. Please contact the front desk.",
+            error_code="DATABASE_ERROR"
+        )
+    
     if not reservation:
-        raise Http404('reservation')
+        return render_error(
+            request,
+            "Your reservation could not be found. Please contact the front desk for assistance.",
+            error_code="RESERVATION_NOT_FOUND"
+        )
 
-    # mark keycards returned and finalize payment (demo: always finalize)
-    db.submit_keycards(reservation)
-    db.finalize_payment(reservation, amount=reservation.get('amount_due', 0) or 0)
+    try:
+        # mark keycards returned and finalize payment (demo: always finalize)
+        db.submit_keycards(reservation)
+        db.finalize_payment(reservation, amount=reservation.get('amount_due', 0) or 0)
+        
+        # Deactivate the guest's Dashboard account
+        room_payload = request.session.get('room_payload') or {}
+        room_number = room_payload.get('room_number') or reservation.get('room_number') or str(100 + (reservation_id % 50))
+        dashboard_username = room_payload.get('dashboard_username')
+        
+        if dashboard_username:
+            deactivate_dashboard_guest_account(username=dashboard_username)
+        else:
+            # Try by room number
+            deactivate_dashboard_guest_account(room_number=room_number)
+            
+    except Exception as e:
+        logger.error(f"Database error finalizing payment: {e}")
+        return render_error(
+            request,
+            "We couldn't process your checkout. Please contact the front desk.",
+            error_code="PAYMENT_ERROR"
+        )
 
     return redirect('kiosk:finalize', reservation_id=reservation['id'])
 
 
+@handle_kiosk_errors
 def report_stolen_card(request, reservation_id):
     """
     Report a stolen or lost keycard and issue a new one.
     Revokes the old RFID token and generates a new one.
     """
-    reservation = db.get_reservation(reservation_id)
+    try:
+        reservation = db.get_reservation(reservation_id)
+    except Exception as e:
+        logger.error(f"Database error in report_stolen_card: {e}")
+        return render_error(
+            request,
+            "We're experiencing technical difficulties. Please contact the front desk.",
+            error_code="DATABASE_ERROR"
+        )
+    
     if not reservation:
-        raise Http404('reservation')
+        return render_error(
+            request,
+            "Your reservation could not be found. Please contact the front desk for assistance.",
+            error_code="RESERVATION_NOT_FOUND"
+        )
     
     room_payload = request.session.get('room_payload') or {}
     room_number = room_payload.get('room_number') or str(100 + (reservation_id % 50))
@@ -763,10 +1272,19 @@ def revoke_rfid_card_api(request):
 def dw_registration_card(request):
     """
     Display and fill the DW Registration Card with guest data from passport extraction.
+    Uses MRZ backend for document processing.
     
     GET: Show form pre-filled with data from session or query params
-    POST: Generate document preview and proceed to signing
+    POST: Send edited data to MRZ backend and proceed to signing
     """
+    import uuid
+    
+    # Get or create session ID for document workflow
+    document_session_id = request.session.get('document_session_id')
+    if not document_session_id:
+        document_session_id = str(uuid.uuid4())
+        request.session['document_session_id'] = document_session_id
+    
     # Get extracted data from session or query params
     extracted_data = request.session.get('extracted_passport_data', {})
     
@@ -828,9 +1346,28 @@ def dw_registration_card(request):
         # Store in session for signing step
         request.session['dw_registration_data'] = form_data
         
-        # Generate document preview
-        result = fill_registration_card(form_data)
-        request.session['dw_document_preview'] = result.get('html_preview', '')
+        # Try to send to MRZ backend for processing
+        document_preview = ''
+        if USE_MRZ_SERVICE:
+            try:
+                doc_client = get_document_client()
+                result = doc_client.update_document(
+                    session_id=document_session_id,
+                    guest_data=form_data,
+                    accompanying_guests=accompanying
+                )
+                document_preview = result.get('document_preview_html', '')
+            except MRZAPIError as e:
+                logger.warning(f"MRZ document API failed, using local: {e}")
+                # Fall back to local processing
+                result = fill_registration_card(form_data)
+                document_preview = result.get('html_preview', '')
+        else:
+            # Local processing
+            result = fill_registration_card(form_data)
+            document_preview = result.get('html_preview', '')
+        
+        request.session['dw_document_preview'] = document_preview
         
         # Redirect to signing page
         return redirect('kiosk:dw_sign_document')
@@ -838,24 +1375,33 @@ def dw_registration_card(request):
     return render(request, 'kiosk/dw_registration_card.html', {'initial': initial_data})
 
 
+@handle_kiosk_errors
 def dw_sign_document(request):
     """
-    Document signing page - LINEAR FLOW (no loops).
+    Document signing page with legal preview - LINEAR FLOW (no loops).
     
-    Shows the DW R.C. document preview and allows:
-    - Digital signature via canvas
-    - Print for physical signature
+    Shows the DW R.C. document preview from MRZ backend for legal review before signing.
+    Supports:
+    - Digital signature via canvas (SVG) - stored in database
+    - Physical signature - submitted to front desk
     
     Flow: dw_sign_document → document_signing → finalize
     Never redirects back to dw_registration_card.
     """
+    import uuid
+    
     registration_data = request.session.get('dw_registration_data', {})
     document_preview = request.session.get('dw_document_preview', '')
-    signature_method = registration_data.get('signature_method', 'physical')
+    signature_method = registration_data.get('signature_method', 'digital')
+    document_session_id = request.session.get('document_session_id', str(uuid.uuid4()))
     
-    # GUARD: No registration data = start over (don't loop back)
+    # GUARD: No registration data = show error (don't loop back)
     if not registration_data:
-        return redirect('kiosk:start')
+        return render_error(
+            request,
+            "Your registration session has expired. Please start over or contact the front desk.",
+            error_code="SESSION_EXPIRED"
+        )
     
     # Get reservation if exists
     reservation = None
@@ -868,31 +1414,140 @@ def dw_sign_document(request):
                 reservation = res_qs[-1]
                 request.session['reservation_id'] = reservation['id']
     
+    # Get document preview from MRZ backend for legal review (if not already in session)
+    if not document_preview and USE_MRZ_SERVICE:
+        try:
+            doc_client = get_document_client()
+            result = doc_client.get_document_preview(
+                session_id=document_session_id,
+                guest_data=registration_data
+            )
+            document_preview = result.get('preview_html', '')
+            request.session['dw_document_preview'] = document_preview
+        except MRZAPIError as e:
+            logger.warning(f"MRZ preview API failed: {e}")
+            # Generate local preview
+            result = fill_registration_card(registration_data)
+            document_preview = result.get('html_preview', '')
+    
     if request.method == 'POST':
-        # Handle signature submission
+        # Get signature data - support both PNG (legacy) and SVG formats
         signature_data = request.POST.get('signature_data', '')
-        # Save digital signature as file if provided
-        if signature_data and signature_data.startswith('data:image/png;base64,'):
+        signature_svg = request.POST.get('signature_svg', '')
+        active_method = request.POST.get('signature_method', signature_method)
+        
+        # Prefer SVG if available, fall back to PNG
+        signature_to_use = signature_svg or signature_data
+        
+        if active_method == 'digital':
+            # Digital signature flow - send to MRZ backend
+            if not signature_to_use:
+                return render(request, 'kiosk/dw_sign_document.html', {
+                    'registration_data': registration_data,
+                    'document_preview': document_preview,
+                    'signature_method': signature_method,
+                    'reservation': reservation,
+                    'error': 'Please draw your signature before continuing.',
+                })
+            
+            # Save signature locally as SVG (preferred) or PNG
             try:
                 sig_dir = os.path.join(settings.BASE_DIR, 'media', 'signatures')
                 os.makedirs(sig_dir, exist_ok=True)
-                sig_filename = f"dw_signature_{guest_id or 'unknown'}_{int(time.time())}.png"
-                sig_path = os.path.join(sig_dir, sig_filename)
-                sig_bytes = base64.b64decode(signature_data.split(',')[1])
-                with open(sig_path, 'wb') as f:
-                    f.write(sig_bytes)
-                registration_data['signature_file'] = sig_filename
-                request.session['dw_signature_path'] = sig_path
+                
+                if signature_svg:
+                    # Save as SVG
+                    sig_filename = f"signature_{guest_id or 'guest'}_{int(time.time())}.svg"
+                    sig_path = os.path.join(sig_dir, sig_filename)
+                    with open(sig_path, 'w', encoding='utf-8') as f:
+                        f.write(signature_svg)
+                    registration_data['signature_format'] = 'svg'
+                elif signature_data and signature_data.startswith('data:image/png;base64,'):
+                    # Save as PNG (legacy)
+                    sig_filename = f"signature_{guest_id or 'guest'}_{int(time.time())}.png"
+                    sig_path = os.path.join(sig_dir, sig_filename)
+                    sig_bytes = base64.b64decode(signature_data.split(',')[1])
+                    with open(sig_path, 'wb') as f:
+                        f.write(sig_bytes)
+                    registration_data['signature_format'] = 'png'
+                else:
+                    sig_path = None
+                    sig_filename = None
+                
+                if sig_path:
+                    registration_data['signature_file'] = sig_filename
+                    request.session['dw_signature_path'] = sig_path
+                    
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Failed to save DW signature: {e}")
-        # Update document with signature (base64 or file ref)
-        if signature_data:
-            registration_data['signature_data'] = signature_data
+                logger.warning(f"Failed to save signature: {e}")
+            
+            # Send digital signature to MRZ backend for document finalization
+            if USE_MRZ_SERVICE and signature_svg:
+                try:
+                    doc_client = get_document_client()
+                    sign_result = doc_client.sign_document_digital(
+                        session_id=document_session_id,
+                        guest_data=registration_data,
+                        signature_svg=signature_svg
+                    )
+                    # Store document ID for reference
+                    request.session['signed_document_id'] = sign_result.get('document_id')
+                    registration_data['document_signed'] = True
+                    registration_data['signature_stored_in_db'] = True
+                except MRZAPIError as e:
+                    logger.warning(f"MRZ sign API failed, continuing with local: {e}")
+                    registration_data['signature_stored_in_db'] = False
+            
+            # Update registration data with signature
+            registration_data['signature_data'] = signature_to_use
+            registration_data['signature_type'] = 'digital'
             request.session['dw_registration_data'] = registration_data
-            # Regenerate preview with signature
+            
+        else:
+            # Physical signature flow - submit to front desk
+            registration_data['signature_type'] = 'physical'
+            request.session['dw_registration_data'] = registration_data
+            
+            if USE_MRZ_SERVICE:
+                try:
+                    doc_client = get_document_client()
+                    submit_result = doc_client.submit_physical_signature(
+                        session_id=document_session_id,
+                        guest_data=registration_data,
+                        reservation_id=reservation['id'] if reservation else None,
+                        room_number=request.session.get('room_payload', {}).get('room_number')
+                    )
+                    request.session['physical_submission_id'] = submit_result.get('submission_id')
+                    registration_data['front_desk_notified'] = submit_result.get('front_desk_notified', False)
+                except MRZAPIError as e:
+                    logger.warning(f"MRZ physical submission API failed: {e}")
+                    registration_data['front_desk_notified'] = False
+        
+        # Regenerate preview with signature (if digital)
+        if active_method == 'digital' and signature_to_use:
             result = fill_registration_card(registration_data)
             request.session['dw_document_preview'] = result.get('html_preview', '')
+        
+        # Save the final document as HTML file for printing
+        try:
+            doc_dir = os.path.join(settings.BASE_DIR, 'media', 'filled_documents')
+            os.makedirs(doc_dir, exist_ok=True)
+            doc_timestamp = int(time.time())
+            doc_filename = f"registration_{guest_id or 'guest'}_{doc_timestamp}.html"
+            doc_path = os.path.join(doc_dir, doc_filename)
+            
+            # Generate the complete HTML document
+            document_preview = request.session.get('dw_document_preview', '')
+            html_content = _generate_printable_html(document_preview, registration_data)
+            
+            with open(doc_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            
+            request.session['saved_document_path'] = doc_path
+            request.session['saved_document_filename'] = doc_filename
+        except Exception as e:
+            logger.warning(f"Failed to save document: {e}")
+        
         # Create guest if not exists
         if not guest_id:
             first = registration_data.get('name', '')
@@ -902,8 +1557,10 @@ def dw_sign_document(request):
             guest = db.create_guest(first, last, passport, dob)
             request.session['guest_id'] = guest['id']
             guest_id = guest['id']
+        
         # Store completed registration
         request.session['registration_complete'] = True
+        
         # FORWARD ONLY: document_signing (which will handle finalize)
         if reservation:
             return redirect('kiosk:document_signing')
@@ -917,14 +1574,156 @@ def dw_sign_document(request):
     })
 
 
+def _generate_printable_html(document_preview, registration_data):
+    """Generate a complete printable HTML document."""
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>DW Registration Card - Print</title>
+    <style>
+        @page {{
+            size: A4;
+            margin: 20mm;
+        }}
+        body {{
+            font-family: 'Arial', sans-serif;
+            font-size: 12pt;
+            line-height: 1.5;
+            color: #333;
+        }}
+        .registration-card {{
+            max-width: 100%;
+            margin: 0 auto;
+        }}
+        .header {{
+            text-align: center;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }}
+        .header h1 {{
+            margin: 0;
+            font-size: 24pt;
+            color: #1a1a1a;
+        }}
+        .header .subtitle {{
+            color: #666;
+            font-size: 11pt;
+        }}
+        .section {{
+            margin-bottom: 20px;
+        }}
+        .section h3 {{
+            font-size: 14pt;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }}
+        .field-row {{
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+        }}
+        .field {{
+            flex: 1;
+        }}
+        .field label {{
+            font-weight: bold;
+            color: #555;
+        }}
+        .field .value {{
+            display: inline;
+        }}
+        .accompanying-table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        .accompanying-table th,
+        .accompanying-table td {{
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+        }}
+        .accompanying-table th {{
+            background: #f5f5f5;
+        }}
+        .signature-section {{
+            margin-top: 40px;
+        }}
+        .signature-line {{
+            width: 250px;
+            height: 60px;
+            border-bottom: 2px solid #333;
+            margin: 20px 0;
+        }}
+        .signature-image {{
+            max-width: 250px;
+            max-height: 80px;
+        }}
+        .signature-note {{
+            font-size: 10pt;
+            color: #666;
+        }}
+        @media print {{
+            body {{ print-color-adjust: exact; -webkit-print-color-adjust: exact; }}
+            .no-print {{ display: none !important; }}
+        }}
+        .print-controls {{
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: center;
+        }}
+        .print-controls button {{
+            padding: 12px 24px;
+            font-size: 16px;
+            background: #0d6efd;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 0 8px;
+        }}
+        .print-controls button:hover {{
+            background: #0b5ed7;
+        }}
+        .print-controls button.secondary {{
+            background: #6c757d;
+        }}
+        .print-controls button.secondary:hover {{
+            background: #5c636a;
+        }}
+    </style>
+</head>
+<body>
+    <div class="print-controls no-print">
+        <button onclick="window.print()">🖨️ Print Document</button>
+        <button class="secondary" onclick="window.close()">Close</button>
+    </div>
+    {document_preview}
+</body>
+</html>"""
+
+
 @csrf_exempt
 def dw_generate_pdf(request):
     """
-    Generate a PDF version of the DW R.C. for printing.
+    Generate/serve the DW R.C. for printing.
     
-    Note: This is a simplified HTML-to-print version. 
-    For full PDF generation, integrate with weasyprint or similar.
+    If a saved document exists (with signature), serve that file.
+    Otherwise, generate a new printable document from session data.
     """
+    # Check if there's a saved document with signature
+    saved_path = request.session.get('saved_document_path')
+    if saved_path and os.path.exists(saved_path):
+        # Serve the saved document file
+        with open(saved_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        return HttpResponse(html_content, content_type='text/html')
+    
+    # Otherwise, generate from session data
     registration_data = request.session.get('dw_registration_data', {})
     document_preview = request.session.get('dw_document_preview', '')
     
@@ -933,107 +1732,8 @@ def dw_generate_pdf(request):
         result = fill_registration_card(registration_data)
         document_preview = result.get('html_preview', '')
     
-    # Return printable HTML page
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>DW Registration Card - Print</title>
-        <style>
-            @page {{
-                size: A4;
-                margin: 20mm;
-            }}
-            body {{
-                font-family: 'Arial', sans-serif;
-                font-size: 12pt;
-                line-height: 1.5;
-                color: #333;
-            }}
-            .registration-card {{
-                max-width: 100%;
-                margin: 0 auto;
-            }}
-            .header {{
-                text-align: center;
-                border-bottom: 2px solid #333;
-                padding-bottom: 15px;
-                margin-bottom: 20px;
-            }}
-            .header h1 {{
-                margin: 0;
-                font-size: 24pt;
-                color: #1a1a1a;
-            }}
-            .header .subtitle {{
-                color: #666;
-                font-size: 11pt;
-            }}
-            .section {{
-                margin-bottom: 20px;
-            }}
-            .section h3 {{
-                font-size: 14pt;
-                border-bottom: 1px solid #ccc;
-                padding-bottom: 5px;
-                margin-bottom: 10px;
-            }}
-            .field-row {{
-                display: flex;
-                gap: 20px;
-                margin-bottom: 10px;
-            }}
-            .field {{
-                flex: 1;
-            }}
-            .field label {{
-                font-weight: bold;
-                color: #555;
-            }}
-            .field .value {{
-                display: inline;
-            }}
-            .accompanying-table {{
-                width: 100%;
-                border-collapse: collapse;
-            }}
-            .accompanying-table th,
-            .accompanying-table td {{
-                border: 1px solid #ccc;
-                padding: 8px;
-                text-align: left;
-            }}
-            .accompanying-table th {{
-                background: #f5f5f5;
-            }}
-            .signature-section {{
-                margin-top: 40px;
-            }}
-            .signature-line {{
-                width: 250px;
-                height: 60px;
-                border-bottom: 2px solid #333;
-                margin: 20px 0;
-            }}
-            .signature-image {{
-                max-width: 250px;
-                max-height: 80px;
-            }}
-            .signature-note {{
-                font-size: 10pt;
-                color: #666;
-            }}
-            @media print {{
-                body {{ print-color-adjust: exact; }}
-            }}
-        </style>
-    </head>
-    <body onload="window.print()">
-        {document_preview}
-    </body>
-    </html>
-    """
+    # Generate printable HTML with controls
+    html_content = _generate_printable_html(document_preview, registration_data)
     
     return HttpResponse(html_content, content_type='text/html')
 
@@ -1261,13 +1961,360 @@ def save_faces(request, reservation_id):
 
 
 # ============================================================================
-# GUEST ACCOUNT API (Authentik Integration)
+# DOCUMENT MANAGEMENT API (Proxy to MRZ Backend)
+# ============================================================================
+
+@csrf_exempt
+def document_update_api(request):
+    """
+    API endpoint to update document with edited guest information.
+    Proxies to MRZ backend or handles locally.
+    
+    POST /api/document/update/
+    
+    Request body (JSON):
+        {
+            "session_id": "abc123",
+            "guest_data": { ... },
+            "accompanying_guests": [ ... ]
+        }
+    
+    Response:
+        {
+            "success": true,
+            "document_preview_html": "<html>...",
+            "session_id": "abc123"
+        }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST only'}, status=400)
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+        session_id = data.get('session_id', str(__import__('uuid').uuid4()))
+        guest_data = data.get('guest_data', {})
+        accompanying = data.get('accompanying_guests', [])
+        
+        if not guest_data:
+            return JsonResponse({
+                'success': False,
+                'error': 'guest_data is required'
+            }, status=400)
+        
+        # Store in Django session
+        request.session['document_session_id'] = session_id
+        request.session['dw_registration_data'] = guest_data
+        
+        # Try MRZ backend
+        if USE_MRZ_SERVICE:
+            try:
+                doc_client = get_document_client()
+                result = doc_client.update_document(
+                    session_id=session_id,
+                    guest_data=guest_data,
+                    accompanying_guests=accompanying
+                )
+                request.session['dw_document_preview'] = result.get('document_preview_html', '')
+                return JsonResponse(result)
+            except MRZAPIError as e:
+                logger.warning(f"MRZ document API failed, using local: {e}")
+        
+        # Local fallback
+        result = fill_registration_card(guest_data)
+        preview_html = result.get('html_preview', '')
+        request.session['dw_document_preview'] = preview_html
+        
+        return JsonResponse({
+            'success': True,
+            'session_id': session_id,
+            'document_preview_html': preview_html,
+            'timestamp': result.get('timestamp')
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Document update API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+def document_preview_api(request):
+    """
+    API endpoint to get document preview for legal review before signing.
+    
+    POST /api/document/preview/
+    
+    Request body (JSON):
+        {
+            "session_id": "abc123",
+            "guest_data": { ... }  # optional if session_id provided
+        }
+    
+    Response:
+        {
+            "success": true,
+            "preview_html": "<html>...",
+            "fields": { ... }
+        }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST only'}, status=400)
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+        session_id = data.get('session_id')
+        guest_data = data.get('guest_data')
+        
+        # Use session data if guest_data not provided
+        if not guest_data and session_id:
+            guest_data = request.session.get('dw_registration_data', {})
+        
+        if not guest_data:
+            return JsonResponse({
+                'success': False,
+                'error': 'guest_data or valid session_id is required'
+            }, status=400)
+        
+        # Try MRZ backend
+        if USE_MRZ_SERVICE:
+            try:
+                doc_client = get_document_client()
+                result = doc_client.get_document_preview(
+                    session_id=session_id,
+                    guest_data=guest_data
+                )
+                return JsonResponse(result)
+            except MRZAPIError as e:
+                logger.warning(f"MRZ preview API failed, using local: {e}")
+        
+        # Local fallback
+        result = fill_registration_card(guest_data)
+        preview_html = result.get('html_preview', '')
+        
+        return JsonResponse({
+            'success': True,
+            'session_id': session_id,
+            'preview_html': preview_html,
+            'fields': guest_data
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Document preview API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+def document_sign_api(request):
+    """
+    API endpoint to sign document digitally with SVG signature.
+    Signature is stored in database for digital records.
+    
+    POST /api/document/sign/
+    
+    Request body (JSON):
+        {
+            "session_id": "abc123",
+            "guest_data": { ... },
+            "signature_svg": "<svg>...</svg>"
+        }
+    
+    Response:
+        {
+            "success": true,
+            "document_id": "doc_123",
+            "signature_stored": true
+        }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST only'}, status=400)
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+        session_id = data.get('session_id')
+        guest_data = data.get('guest_data')
+        signature_svg = data.get('signature_svg', '')
+        
+        if not guest_data:
+            guest_data = request.session.get('dw_registration_data', {})
+        
+        if not signature_svg:
+            return JsonResponse({
+                'success': False,
+                'error': 'signature_svg is required'
+            }, status=400)
+        
+        # Save signature locally as SVG
+        try:
+            sig_dir = os.path.join(settings.BASE_DIR, 'media', 'signatures')
+            os.makedirs(sig_dir, exist_ok=True)
+            
+            sig_filename = f"signature_{session_id}_{int(time.time())}.svg"
+            sig_path = os.path.join(sig_dir, sig_filename)
+            
+            with open(sig_path, 'w', encoding='utf-8') as f:
+                f.write(signature_svg)
+            
+            logger.info(f"Saved SVG signature: {sig_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save signature locally: {e}")
+            sig_path = None
+        
+        # Try MRZ backend for storage
+        document_id = None
+        if USE_MRZ_SERVICE:
+            try:
+                doc_client = get_document_client()
+                result = doc_client.sign_document_digital(
+                    session_id=session_id,
+                    guest_data=guest_data,
+                    signature_svg=signature_svg
+                )
+                document_id = result.get('document_id')
+                
+                # Update session
+                request.session['signed_document_id'] = document_id
+                guest_data['document_signed'] = True
+                guest_data['signature_stored_in_db'] = True
+                request.session['dw_registration_data'] = guest_data
+                
+                return JsonResponse(result)
+            except MRZAPIError as e:
+                logger.warning(f"MRZ sign API failed, using local: {e}")
+        
+        # Local fallback - generate document ID
+        document_id = f"doc_local_{session_id}_{int(time.time())}"
+        
+        # Update session
+        request.session['signed_document_id'] = document_id
+        guest_data['signature_data'] = signature_svg
+        guest_data['signature_type'] = 'digital'
+        guest_data['signature_format'] = 'svg'
+        guest_data['document_signed'] = True
+        request.session['dw_registration_data'] = guest_data
+        
+        return JsonResponse({
+            'success': True,
+            'document_id': document_id,
+            'signature_path': sig_path,
+            'signature_stored': True,
+            'storage': 'local'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Document sign API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+def document_submit_physical_api(request):
+    """
+    API endpoint to submit document for physical signature at front desk.
+    Notifies front desk and creates pending document record.
+    
+    POST /api/document/submit-physical/
+    
+    Request body (JSON):
+        {
+            "session_id": "abc123",
+            "guest_data": { ... },
+            "reservation_id": 123,
+            "room_number": "101"
+        }
+    
+    Response:
+        {
+            "success": true,
+            "submission_id": "sub_123",
+            "status": "pending_signature",
+            "front_desk_notified": true
+        }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST only'}, status=400)
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+        session_id = data.get('session_id')
+        guest_data = data.get('guest_data')
+        reservation_id = data.get('reservation_id')
+        room_number = data.get('room_number')
+        
+        if not guest_data:
+            guest_data = request.session.get('dw_registration_data', {})
+        
+        # Try MRZ backend
+        if USE_MRZ_SERVICE:
+            try:
+                doc_client = get_document_client()
+                result = doc_client.submit_physical_signature(
+                    session_id=session_id,
+                    guest_data=guest_data,
+                    reservation_id=reservation_id,
+                    room_number=room_number
+                )
+                
+                # Update session
+                request.session['physical_submission_id'] = result.get('submission_id')
+                guest_data['signature_type'] = 'physical'
+                guest_data['front_desk_notified'] = result.get('front_desk_notified', False)
+                request.session['dw_registration_data'] = guest_data
+                
+                return JsonResponse(result)
+            except MRZAPIError as e:
+                logger.warning(f"MRZ physical submission API failed, using local: {e}")
+        
+        # Local fallback
+        submission_id = f"sub_local_{session_id}_{int(time.time())}"
+        
+        # TODO: In production, notify front desk via MQTT or other mechanism
+        
+        # Update session
+        request.session['physical_submission_id'] = submission_id
+        guest_data['signature_type'] = 'physical'
+        guest_data['front_desk_notified'] = False  # Local mode doesn't notify
+        request.session['dw_registration_data'] = guest_data
+        
+        return JsonResponse({
+            'success': True,
+            'submission_id': submission_id,
+            'status': 'pending_signature',
+            'front_desk_notified': False,
+            'message': 'Please proceed to front desk to complete your registration.',
+            'storage': 'local'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Document physical submission API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+# ============================================================================
+# GUEST ACCOUNT API (Dashboard Integration)
 # ============================================================================
 
 @csrf_exempt
 def create_guest_account_api(request):
     """
-    Create a guest account in Authentik.
+    Create a guest account in the Dashboard.
     
     POST /api/guest/create/
     
@@ -1295,14 +2342,15 @@ def create_guest_account_api(request):
         return JsonResponse({'error': 'POST only'}, status=400)
     
     try:
-        from .authentik_client import get_authentik_client, AuthentikAPIError
+        import requests
         
-        client = get_authentik_client()
+        dashboard_url = os.environ.get('DASHBOARD_API_URL', 'http://dashboard:8001')
+        api_token = os.environ.get('KIOSK_API_TOKEN', '')
         
-        if not client.is_configured():
+        if not dashboard_url:
             return JsonResponse({
                 'success': False,
-                'error': 'Authentik integration not configured'
+                'error': 'Dashboard API not configured'
             }, status=503)
         
         # Parse request body
@@ -1329,26 +2377,39 @@ def create_guest_account_api(request):
         except ValueError:
             return JsonResponse({'error': 'Invalid checkout_date format. Use YYYY-MM-DD'}, status=400)
         
-        # Create the guest account
-        result = client.create_guest_account(
-            first_name=data['first_name'],
-            last_name=data['last_name'],
-            email=data['email'],
-            room_number=data['room_number'],
-            checkout_date=checkout_date,
-            passport_number=data.get('passport_number'),
-            phone=data.get('phone')
+        # Create the guest account via Dashboard API
+        headers = {'Authorization': f'Token {api_token}'} if api_token else {}
+        response = requests.post(
+            f'{dashboard_url}/api/guests/create/',
+            json={
+                'first_name': data['first_name'],
+                'last_name': data['last_name'],
+                'email': data['email'],
+                'room_number': data['room_number'],
+                'checkout_date': checkout_date.isoformat(),
+                'passport_number': data.get('passport_number'),
+                'phone': data.get('phone')
+            },
+            headers=headers,
+            timeout=10
         )
         
-        return JsonResponse({
-            'success': True,
-            **result
-        })
+        if response.status_code == 201:
+            result = response.json()
+            return JsonResponse({
+                'success': True,
+                **result
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': response.json().get('error', 'Failed to create account')
+            }, status=response.status_code)
         
-    except AuthentikAPIError as e:
+    except requests.exceptions.RequestException as e:
         return JsonResponse({
             'success': False,
-            'error': str(e)
+            'error': f'Dashboard API error: {str(e)}'
         }, status=500)
     except Exception as e:
         return JsonResponse({
@@ -1379,14 +2440,15 @@ def deactivate_guest_account_api(request):
         return JsonResponse({'error': 'POST only'}, status=400)
     
     try:
-        from .authentik_client import get_authentik_client, AuthentikAPIError
+        import requests
         
-        client = get_authentik_client()
+        dashboard_url = os.environ.get('DASHBOARD_API_URL', 'http://dashboard:8001')
+        api_token = os.environ.get('KIOSK_API_TOKEN', '')
         
-        if not client.is_configured():
+        if not dashboard_url:
             return JsonResponse({
                 'success': False,
-                'error': 'Authentik integration not configured'
+                'error': 'Dashboard API not configured'
             }, status=503)
         
         # Parse request body
@@ -1399,10 +2461,16 @@ def deactivate_guest_account_api(request):
         if not username:
             return JsonResponse({'error': 'Missing required field: username'}, status=400)
         
-        # Deactivate the account
-        success = client.deactivate_guest(username)
+        # Deactivate the account via Dashboard API
+        headers = {'Authorization': f'Token {api_token}'} if api_token else {}
+        response = requests.post(
+            f'{dashboard_url}/api/guests/deactivate/',
+            json={'username': username},
+            headers=headers,
+            timeout=10
+        )
         
-        if success:
+        if response.status_code == 200:
             return JsonResponse({
                 'success': True,
                 'message': 'Account deactivated'
@@ -1410,13 +2478,13 @@ def deactivate_guest_account_api(request):
         else:
             return JsonResponse({
                 'success': False,
-                'error': 'Failed to deactivate account'
-            }, status=500)
+                'error': response.json().get('error', 'Failed to deactivate account')
+            }, status=response.status_code)
         
-    except AuthentikAPIError as e:
+    except requests.exceptions.RequestException as e:
         return JsonResponse({
             'success': False,
-            'error': str(e)
+            'error': f'Dashboard API error: {str(e)}'
         }, status=500)
     except Exception as e:
         return JsonResponse({

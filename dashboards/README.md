@@ -30,11 +30,10 @@ The Smart Hotel Dashboard is the central management interface for hotel staff. I
 
 ## Features
 
-### Authentication via Authentik
-- **Single Sign-On (SSO)** using OpenID Connect (OIDC)
-- **Centralized User Management** in Authentik identity provider
-- **Role Mapping** from Authentik groups to Django permissions
-- See [cloud/README.md - Authentik Setup](../../cloud/README.md#authentik-setup) for configuration
+### Authentication
+- **Django-based Authentication** using standard session management
+- **User Management** via Django admin panel
+- **Role-Based Permissions** using Django groups
 
 ### Role-Based Access Control
 - **Admin**: Full access to all rooms, control temperature and lighting, manage guest accounts
@@ -53,11 +52,10 @@ The Smart Hotel Dashboard is the central management interface for hotel staff. I
 - **Real-time Feedback**: Immediate visual confirmation of control changes
 
 ### Guest Account Management
-- Create guest accounts in Authentik with room assignments
-- Auto-expire accounts based on custom attributes
+- Guest accounts are created automatically during kiosk check-in
+- Accounts include room assignments and expiration dates
 - Send credentials via unified notification system (Telegram → SMS fallback)
-- Track active guest sessions synced from Authentik
-- See [cloud/README.md#authentik-setup](../../cloud/README.md#authentik-setup) for identity provider security
+- Track active guest sessions in Django admin
 
 ### Notification Center (Admin/Monitor)
 - Real-time service status (Telegram, SMS configuration)
@@ -326,8 +324,6 @@ Available commands: `status`, `restart`, `capture`
 | `/api/room/<id>/set_light_mode/` | POST | Set light mode (auto/manual) | Can control |
 | `/api/room/<id>/history/` | GET | Sensor history | Room access |
 
-> **Note:** Guest account management has been moved to Authentik. See [AUTHENTIK_SETUP.md](../../AUTHENTIK_SETUP.md) for details.
-
 ### Request/Response Examples
 
 **Set Target Temperature:**
@@ -351,8 +347,6 @@ curl -X POST http://localhost:8000/api/room/1/set_light_mode/ \
 | `/ws/dashboard/` | Dashboard-wide updates |
 | `/ws/room/<id>/` | Single room updates |
 | `/ws/admin/` | Admin operations (view synced guests) |
-
-> **Note:** Guest generation/revocation has been moved to Authentik. The admin WebSocket now only supports read-only guest list queries.
 
 ### WebSocket Message Format
 
@@ -415,45 +409,38 @@ django_app/
 
 ## Security Notes
 
-- All authentication is handled by Authentik (OIDC/SSO)
+- Authentication is handled by Django's built-in session authentication
 - Set a proper `DJANGO_SECRET_KEY` in production (use `generate-env.sh`)
 - Use HTTPS in production with a reverse proxy
 - Configure session timeouts appropriately in `.env`
-- See [AUTHENTIK_SETUP.md](../../AUTHENTIK_SETUP.md) for identity provider security
 
 ## User Management
 
-### Authentication via Authentik
+### Django Admin
 
-All user management (creating users, password resets, MFA) is handled through Authentik:
+All user management is handled through Django admin:
 
-1. **Access Authentik Admin**: http://localhost:9000/if/admin/
-2. **Create Users**: Directory → Users → Create
+1. **Access Django Admin**: http://localhost:8001/admin/
+2. **Create Users**: Accounts → Users → Add User
 3. **Assign Roles**: Add users to appropriate groups:
-   - `smart-hotel-admins` - Full admin access
-   - `smart-hotel-monitors` - View-only access
-   - `smart-hotel-guests` - Guest room access
+   - `Admins` - Full admin access
+   - `Monitors` - View-only access
+   - `Guests` - Guest room access
 
 ### Password Reset
 
-Users can reset their passwords through Authentik:
-1. Click "Forgot Password" on the login page
-2. Authentik sends reset email (requires SMTP configuration)
-3. User follows link to set new password
+Admins can reset passwords through Django admin:
+1. Go to Accounts → Users
+2. Select the user
+3. Click "Change password" link
 
 ### Guest Account Setup
 
-For hotel guests:
-1. Create user in Authentik
-2. Add to `smart-hotel-guests` group
-3. Set custom attributes:
-   ```json
-   {
-     "room_number": "101",
-     "expires_at": "2026-01-10T12:00:00Z"
-   }
-   ```
-4. Credentials are synced to Django on first login
+Guest accounts are created automatically during kiosk check-in:
+1. Guest checks in at kiosk with passport scan
+2. Account is created with room assignment
+3. Credentials are sent via notification system
+4. Account expires at checkout date
 
 ## Theme Support
 

@@ -47,7 +47,7 @@ Options:
 
 Services available for individual update:
   influxdb, postgres, dashboard, grafana, telegraf, mosquitto,
-  authentik-server, authentik-worker, nodered, kiosk, mrz-backend
+  nodered, kiosk, mrz-backend
 
 Examples:
   $0                      # Full update
@@ -74,13 +74,6 @@ backup_databases() {
         info "Backing up PostgreSQL (smarthotel)..."
         docker compose exec -T postgres pg_dump -U smarthotel smarthotel > "$backup_dir/postgres_smarthotel.sql" 2>/dev/null || warn "PostgreSQL backup failed"
         success "PostgreSQL backup saved"
-    fi
-    
-    # Backup Authentik PostgreSQL
-    if docker compose ps authentik-db --format json 2>/dev/null | grep -q running; then
-        info "Backing up PostgreSQL (authentik)..."
-        docker compose exec -T authentik-db pg_dump -U authentik authentik > "$backup_dir/postgres_authentik.sql" 2>/dev/null || warn "Authentik DB backup failed"
-        success "Authentik database backup saved"
     fi
     
     # Backup InfluxDB metadata

@@ -27,7 +27,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'channels',
-    'mozilla_django_oidc',
     'accounts',
     'rooms',
     'dashboard',
@@ -35,13 +34,13 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'mozilla_django_oidc.middleware.SessionRefresh',
 ]
 
 ROOT_URLCONF = 'smart_hotel.urls'
@@ -110,10 +109,9 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 # Save session on every request to extend lifetime
 SESSION_SAVE_EVERY_REQUEST = True
 
-# Authentication backends - Authentik OIDC + Django ModelBackend fallback
+# Authentication backends - Standard Django auth with PostgreSQL
 AUTHENTICATION_BACKENDS = [
-    'accounts.oidc_backend.AuthentikOIDCBackend',
-    'django.contrib.auth.backends.ModelBackend',  # Fallback for admin access
+    'django.contrib.auth.backends.ModelBackend',
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -131,6 +129,16 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+
+# Whitenoise configuration for serving static files in production
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -157,72 +165,3 @@ NODERED_URL = os.environ.get('NODERED_URL', 'http://nodered:1880')
 
 # Guest account settings
 GUEST_ACCOUNT_EXPIRY_HOURS = 24
-
-# ==============================================================================
-# Authentik OIDC Configuration
-# ==============================================================================
-
-# Authentik server URL (base URL without trailing slash)
-AUTHENTIK_URL = os.environ.get('AUTHENTIK_URL', 'https://auth.example.com')
-
-# OIDC Endpoints - use explicit endpoints from environment or fall back to constructed URLs
-# This allows working even when discovery endpoint is unavailable
-OIDC_OP_AUTHORIZATION_ENDPOINT = os.environ.get(
-    'OIDC_OP_AUTHORIZATION_ENDPOINT', 
-    f"{AUTHENTIK_URL}/application/o/authorize/"
-)
-OIDC_OP_TOKEN_ENDPOINT = os.environ.get(
-    'OIDC_OP_TOKEN_ENDPOINT',
-    f"{AUTHENTIK_URL}/application/o/token/"
-)
-OIDC_OP_USER_ENDPOINT = os.environ.get(
-    'OIDC_OP_USER_ENDPOINT',
-    f"{AUTHENTIK_URL}/application/o/userinfo/"
-)
-OIDC_OP_JWKS_ENDPOINT = os.environ.get(
-    'OIDC_OP_JWKS_ENDPOINT',
-    f"{AUTHENTIK_URL}/application/o/smart-hotel/jwks/"
-)
-
-# Client credentials from Authentik OAuth2/OIDC Provider
-OIDC_RP_CLIENT_ID = os.environ.get('OIDC_RP_CLIENT_ID', os.environ.get('OIDC_CLIENT_ID', 'smart-hotel'))
-OIDC_RP_CLIENT_SECRET = os.environ.get('OIDC_RP_CLIENT_SECRET', os.environ.get('OIDC_CLIENT_SECRET', ''))
-
-# Signing algorithm (Authentik uses RS256 by default)
-OIDC_RP_SIGN_ALGO = os.environ.get('OIDC_SIGN_ALGO', 'RS256')
-
-# Scopes to request - include 'groups' for role mapping
-OIDC_RP_SCOPES = 'openid email profile groups'
-
-# Store OIDC tokens in session for logout
-OIDC_STORE_ID_TOKEN = True
-
-# Logout configuration
-OIDC_OP_LOGOUT_ENDPOINT = f"{AUTHENTIK_URL}/application/o/smart-hotel/end-session/"
-OIDC_OP_LOGOUT_URL_METHOD = 'accounts.oidc_logout.get_logout_url'
-
-# Redirect URIs (update these for your domain)
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/'
-
-# Use OIDC login as default (now at root /oidc/)
-LOGIN_URL = '/oidc/authenticate/'
-
-# Session settings for OIDC
-OIDC_RENEW_ID_TOKEN_EXPIRY_SECONDS = int(os.environ.get('OIDC_RENEW_ID_TOKEN_EXPIRY_SECONDS', 900))  # Default: 15 minutes
-
-# Custom claims for user attributes
-OIDC_CLAIM_USERNAME = 'preferred_username'
-OIDC_CLAIM_EMAIL = 'email'
-OIDC_CLAIM_GROUPS = 'groups'
-
-# Group mappings for roles (customize these to match your Authentik groups)
-OIDC_ADMIN_GROUPS = os.environ.get('OIDC_ADMIN_GROUPS', 'smart-hotel-admins,admins').split(',')
-OIDC_MONITOR_GROUPS = os.environ.get('OIDC_MONITOR_GROUPS', 'smart-hotel-monitors,monitors').split(',')
-OIDC_GUEST_GROUPS = os.environ.get('OIDC_GUEST_GROUPS', 'smart-hotel-guests,guests').split(',')
-
-# Allow creating new users on first OIDC login
-OIDC_CREATE_USER = True
-
-# Verify SSL in production (set to False only for development with self-signed certs)
-OIDC_VERIFY_SSL = os.environ.get('OIDC_VERIFY_SSL', 'True').lower() == 'true'

@@ -99,6 +99,15 @@
         background-color: rgba(234, 67, 53, 0.25);
     }
 
+    .action-btn.secondary {
+        background-color: rgba(128, 128, 128, 0.15);
+        color: var(--color-text-secondary);
+    }
+
+    .action-btn.secondary:hover {
+        background-color: rgba(128, 128, 128, 0.25);
+    }
+
     .create-staff-btn {
         display: inline-flex;
         align-items: center;
@@ -160,61 +169,6 @@
         border: 1px solid rgba(234, 67, 53, 0.3);
     }
 
-    .authentik-notice {
-        display: flex;
-        align-items: flex-start;
-        gap: 1rem;
-        padding: 1.25rem 1.5rem;
-        background: rgba(253, 126, 20, 0.1);
-        border: 1px solid #fd7e14;
-        border-radius: var(--radius-md);
-        margin-bottom: 24px;
-    }
-
-    .authentik-notice svg {
-        flex-shrink: 0;
-        color: #fd7e14;
-        margin-top: 2px;
-    }
-
-    .authentik-notice strong {
-        display: block;
-        color: #fd7e14;
-        font-size: 1rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .authentik-notice p {
-        margin: 0 0 0.75rem 0;
-        font-size: 0.875rem;
-        color: var(--color-text-secondary);
-        line-height: 1.5;
-    }
-
-    .authentik-links {
-        display: flex;
-        gap: 1rem;
-        flex-wrap: wrap;
-    }
-
-    .authentik-links a {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.25rem;
-        padding: 0.5rem 1rem;
-        background: rgba(253, 126, 20, 0.2);
-        color: #fd7e14;
-        border-radius: var(--radius-sm);
-        font-size: 0.8rem;
-        font-weight: 500;
-        text-decoration: none;
-        transition: all var(--transition-fast);
-    }
-
-    .authentik-links a:hover {
-        background: rgba(253, 126, 20, 0.3);
-    }
-
     .section-title {
         font-size: 1.1rem;
         font-weight: 600;
@@ -227,41 +181,182 @@
         font-size: 0.875rem;
         margin-bottom: 1rem;
     }
+
+    .info-notice {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1.25rem 1.5rem;
+        background: rgba(0, 188, 212, 0.1);
+        border: 1px solid var(--color-accent-cyan);
+        border-radius: var(--radius-md);
+        margin-bottom: 24px;
+    }
+
+    .info-notice svg {
+        flex-shrink: 0;
+        color: var(--color-accent-cyan);
+        margin-top: 2px;
+    }
+
+    .info-notice strong {
+        display: block;
+        color: var(--color-accent-cyan);
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .info-notice p {
+        margin: 0;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+        line-height: 1.5;
+    }
+
+    /* Form Styles */
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .form-group label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--color-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .form-group input,
+    .form-group select {
+        padding: 10px 12px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-primary);
+        color: var(--color-text-primary);
+        font-size: 14px;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--color-accent-cyan);
+        box-shadow: 0 0 0 2px rgba(0, 188, 212, 0.2);
+    }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--color-border);
+    }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 500;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: all 0.2s;
+        border: none;
+    }
+
+    .btn-primary {
+        background: var(--color-accent-cyan);
+        color: #000;
+    }
+
+    .btn-primary:hover {
+        background: #00a5b8;
+    }
+
+    .btn-sm {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .room-checkboxes {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 12px;
+        background: var(--color-bg-primary);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        max-height: 150px;
+        overflow-y: auto;
+    }
+
+    .room-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: var(--color-bg-tertiary);
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .room-checkbox:hover {
+        background: var(--color-border);
+    }
+
+    .room-checkbox input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+    }
+
+    .room-restriction-badge {
+        display: inline-block;
+        font-size: 11px;
+        padding: 2px 6px;
+        background: rgba(249, 171, 0, 0.15);
+        color: var(--color-accent-orange);
+        border-radius: 4px;
+        margin-left: 6px;
+    }
+
+    .card {
+        background-color: var(--color-bg-card);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        margin-bottom: 24px;
+    }
+
+    .card-header {
+        padding: 20px;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .card-title {
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .card-body {
+        padding: 20px;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
     <h1 class="header-title">Staff Management</h1>
-    <a href="{{ authentik_users_url }}" class="create-staff-btn" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-            <polyline points="15 3 21 3 21 9"/>
-            <line x1="10" y1="14" x2="21" y2="3"/>
-        </svg>
-        Manage Users in Authentik
-    </a>
-</div>
-
-<!-- Authentik Notice -->
-<div class="authentik-notice">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
-        <circle cx="12" cy="12" r="10"/>
-        <line x1="12" y1="16" x2="12" y2="12"/>
-        <line x1="12" y1="8" x2="12.01" y2="8"/>
-    </svg>
-    <div>
-        <strong>User Management via Authentik</strong>
-        <p>
-            User accounts are now managed through Authentik. To create, edit, or delete users, 
-            use the Authentik admin interface. Users will be automatically synced when they log in.
-        </p>
-        <div class="authentik-links">
-            <a href="{{ authentik_admin_url }}" target="_blank" rel="noopener">Admin Dashboard</a>
-            <a href="{{ authentik_users_url }}" target="_blank" rel="noopener">Manage Users</a>
-            <a href="{{ authentik_groups_url }}" target="_blank" rel="noopener">Manage Groups</a>
-        </div>
-    </div>
 </div>
 
 {% if messages %}
@@ -272,8 +367,69 @@
     {% endfor %}
 {% endif %}
 
-<h2 class="section-title">Synced Staff Users</h2>
-<p class="section-description">These users have logged in via Authentik and are synced locally.</p>
+<!-- Create Staff Form -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Create Staff Account</h2>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{% url 'accounts:staff_management' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="username">Username *</label>
+                    <input type="text" id="username" name="username" required placeholder="jsmith">
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" placeholder="john@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="first_name">First Name</label>
+                    <input type="text" id="first_name" name="first_name" placeholder="John">
+                </div>
+                <div class="form-group">
+                    <label for="last_name">Last Name</label>
+                    <input type="text" id="last_name" name="last_name" placeholder="Smith">
+                </div>
+                <div class="form-group">
+                    <label for="role">Role *</label>
+                    <select id="role" name="role" required onchange="toggleRoomSelection()">
+                        {% for value, label in role_choices %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" id="allowed-rooms-group" style="display: none; grid-column: 1 / -1;">
+                    <label>Allowed Rooms (Monitor only - leave empty for all rooms)</label>
+                    <div class="room-checkboxes">
+                        {% for room in all_rooms %}
+                        <label class="room-checkbox">
+                            <input type="checkbox" name="allowed_rooms" value="{{ room.id }}">
+                            <span>Room {{ room.room_number }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="8.5" cy="7" r="4"/>
+                        <line x1="20" y1="8" x2="20" y2="14"/>
+                        <line x1="23" y1="11" x2="17" y2="11"/>
+                    </svg>
+                    Create Staff
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<h2 class="section-title">Staff Users</h2>
+<p class="section-description">Staff members with dashboard access.</p>
 
 {% if staff_users %}
 <table class="staff-table">
@@ -282,8 +438,10 @@
             <th>Username</th>
             <th>Email</th>
             <th>Role</th>
+            <th>Room Access</th>
             <th>Created</th>
             <th>Last Login</th>
+            <th>Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -292,46 +450,87 @@
             <td>
                 <strong>{{ staff.username }}</strong>
                 {% if staff == request.user %}<span style="color: var(--color-text-muted);"> (you)</span>{% endif %}
+                {% if not staff.is_active %}<span style="color: var(--color-accent-orange);"> (inactive)</span>{% endif %}
             </td>
             <td>{{ staff.email|default:"-" }}</td>
             <td>
                 <span class="role-badge {{ staff.role }}">{{ staff.get_role_display }}</span>
             </td>
+            <td>
+                {% if staff.role == 'admin' %}
+                    <span style="color: var(--color-accent-green);">All rooms</span>
+                {% elif staff.role == 'monitor' %}
+                    {% if staff.allowed_rooms.exists %}
+                        <span class="room-restriction-badge">Limited</span>
+                        {% for room in staff.allowed_rooms.all %}{{ room.room_number }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                    {% else %}
+                        <span style="color: var(--color-accent-green);">All rooms</span>
+                    {% endif %}
+                {% else %}
+                    -
+                {% endif %}
+            </td>
             <td>{{ staff.date_joined|date:"M d, Y" }}</td>
             <td>{{ staff.last_login|date:"M d, Y H:i"|default:"Never" }}</td>
+            <td class="actions-cell">
+                {% if staff != request.user %}
+                <form method="post" style="display:inline;" onsubmit="return confirm('Reset password for {{ staff.username }}?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="reset_password">
+                    <input type="hidden" name="user_id" value="{{ staff.id }}">
+                    <button type="submit" class="action-btn secondary">Reset Password</button>
+                </form>
+                {% if staff.is_active %}
+                <form method="post" style="display:inline;" onsubmit="return confirm('Deactivate {{ staff.username }}?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="deactivate">
+                    <input type="hidden" name="user_id" value="{{ staff.id }}">
+                    <button type="submit" class="action-btn warning">Deactivate</button>
+                </form>
+                {% else %}
+                <form method="post" style="display:inline;">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="activate">
+                    <input type="hidden" name="user_id" value="{{ staff.id }}">
+                    <button type="submit" class="action-btn primary">Activate</button>
+                </form>
+                {% endif %}
+                <form method="post" style="display:inline;" onsubmit="return confirm('Permanently delete {{ staff.username }}? This cannot be undone.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="user_id" value="{{ staff.id }}">
+                    <button type="submit" class="action-btn danger">Delete</button>
+                </form>
+                {% else %}
+                <span style="color: var(--color-text-muted);">-</span>
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 {% else %}
 <div class="empty-state">
-    <p>No staff accounts synced yet. Users will appear here after logging in via Authentik.</p>
+    <p>No staff accounts yet. Create your first staff user above.</p>
 </div>
 {% endif %}
 
-{% if guest_users %}
-<h2 class="section-title" style="margin-top: 2rem;">Active Guest Users</h2>
-<p class="section-description">Guest users currently synced from Authentik.</p>
+<script>
+function toggleRoomSelection() {
+    const roleSelect = document.getElementById('role');
+    const roomsGroup = document.getElementById('allowed-rooms-group');
+    
+    if (roleSelect.value === 'monitor') {
+        roomsGroup.style.display = 'block';
+    } else {
+        roomsGroup.style.display = 'none';
+        // Clear checkboxes when switching away from monitor
+        const checkboxes = roomsGroup.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => cb.checked = false);
+    }
+}
 
-<table class="staff-table">
-    <thead>
-        <tr>
-            <th>Username</th>
-            <th>Room</th>
-            <th>Expires</th>
-            <th>Last Login</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for guest in guest_users %}
-        <tr>
-            <td><strong>{{ guest.username }}</strong></td>
-            <td>{{ guest.assigned_room.room_number|default:"-" }}</td>
-            <td>{{ guest.expires_at|date:"M d, Y H:i"|default:"Never" }}</td>
-            <td>{{ guest.last_login|date:"M d, Y H:i"|default:"Never" }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endif %}
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', toggleRoomSelection);
+</script>
 {% endblock %}

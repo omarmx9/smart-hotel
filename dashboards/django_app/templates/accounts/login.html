@@ -164,7 +164,7 @@
             </div>
 
             <h1 class="login-title">Welcome Back</h1>
-            <p class="login-subtitle">Sign in with your Authentik account</p>
+            <p class="login-subtitle">Sign in to your account</p>
 
             {% if messages %}
             <div class="messages">
@@ -174,20 +174,40 @@
             </div>
             {% endif %}
 
-            <a href="{% url 'oidc_authentication_init' %}" class="btn-login">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                    <polyline points="10 17 15 12 10 7"/>
-                    <line x1="15" y1="12" x2="3" y2="12"/>
-                </svg>
-                Sign in with Authentik
-            </a>
+            {% if form.errors %}
+            <div class="messages">
+                <div class="message error">Invalid username or password. Please try again.</div>
+            </div>
+            {% endif %}
+
+            <form method="post" action="{% url 'accounts:login' %}">
+                {% csrf_token %}
+                <div style="margin-bottom: 16px;">
+                    <label for="id_username" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--color-text-secondary);">Username</label>
+                    <input type="text" name="username" id="id_username" required autofocus
+                           style="width: 100%; padding: 12px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-primary); font-size: 14px;">
+                </div>
+                <div style="margin-bottom: 24px;">
+                    <label for="id_password" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--color-text-secondary);">Password</label>
+                    <input type="password" name="password" id="id_password" required
+                           style="width: 100%; padding: 12px 16px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-primary); font-size: 14px;">
+                </div>
+                <input type="hidden" name="next" value="{{ next }}">
+                <button type="submit" class="btn-login">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                        <polyline points="10 17 15 12 10 7"/>
+                        <line x1="15" y1="12" x2="3" y2="12"/>
+                    </svg>
+                    Sign In
+                </button>
+            </form>
 
             <div class="info-box">
-                <h3>Authentication</h3>
+                <h3>Staff Login</h3>
                 <p>
-                    This application uses Authentik for secure authentication. 
-                    You will be redirected to the identity provider to sign in.
+                    Enter your credentials to access the Smart Hotel Dashboard.
+                    Contact an administrator if you need an account.
                 </p>
             </div>
         </div>

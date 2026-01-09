@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Smart Hotel Cloud Infrastructure
 # All configuration via .env file - run ./generate-env.sh to create one
 #
@@ -5,7 +6,11 @@
 #   Production: docker compose up -d
 #   Development: docker compose -f docker-compose.yml -f docker-compose-dev.yml up
 
+x-python-base: &python-base
+  image: python:3.11-slim-bookworm
+
 services:
+  # ...existing code...
   # ============================================================================
   # CORE DATA SERVICES
   # ============================================================================
@@ -55,9 +60,7 @@ services:
       retries: 3
 
   dashboard:
-    build:
-      context: ../dashboards/django_app
-      dockerfile: Dockerfile
+    <<: *python-base
     container_name: dashboard
     ports:
       - "${DASHBOARD_PORT:-8001}:8000"
@@ -81,28 +84,31 @@ services:
       # MQTT
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
-      # Authentik OIDC
-      - AUTHENTIK_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}
-      - OIDC_RP_CLIENT_ID=${OIDC_CLIENT_ID:-smart-hotel}
-      - OIDC_RP_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
-      - OIDC_OP_AUTHORIZATION_ENDPOINT=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}/application/o/authorize/
-      - OIDC_OP_TOKEN_ENDPOINT=http://authentik-server:9000/application/o/token/
-      - OIDC_OP_USER_ENDPOINT=http://authentik-server:9000/application/o/userinfo/
-      - OIDC_OP_JWKS_ENDPOINT=http://authentik-server:9000/application/o/smart-hotel/jwks/
-      - OIDC_OP_LOGOUT_ENDPOINT=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}/application/o/smart-hotel/end-session/
       # Session settings (7 days default for hotel guests)
       - SESSION_COOKIE_AGE=${SESSION_COOKIE_AGE:-604800}
-      - OIDC_RENEW_ID_TOKEN_EXPIRY_SECONDS=${OIDC_TOKEN_EXPIRY:-900}
       # Telegram (optional)
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       # Node-RED SMS Gateway
       - NODERED_URL=http://nodered:1880
+      # Kiosk API token for guest account integration
+      - KIOSK_API_TOKEN=${KIOSK_API_TOKEN:-}
+    working_dir: /app
+    volumes:
+      - ../dashboards/django_app:/app:rw
+      - ~/.cache/pip:/root/.cache/pip:rw
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y --no-install-recommends libpq-dev &&
+        pip install -r requirements.txt daphne &&
+        python manage.py migrate --noinput &&
+        python manage.py collectstatic --noinput --clear &&
+        daphne -b 0.0.0.0 -p 8000 smart_hotel.asgi:application
+      "
     depends_on:
       - influxdb
       - postgres
       - mosquitto
-      - authentik-server
       - nodered
     restart: unless-stopped
     networks:
@@ -117,15 +123,6 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
-      # Authentik OAuth (optional)
-      - GF_AUTH_GENERIC_OAUTH_ENABLED=${GRAFANA_OAUTH_ENABLED:-false}
-      - GF_AUTH_GENERIC_OAUTH_NAME=Authentik
-      - GF_AUTH_GENERIC_OAUTH_CLIENT_ID=${GRAFANA_OAUTH_CLIENT_ID:-grafana}
-      - GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=${GRAFANA_OAUTH_CLIENT_SECRET:-}
-      - GF_AUTH_GENERIC_OAUTH_SCOPES=openid profile email
-      - GF_AUTH_GENERIC_OAUTH_AUTH_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}/application/o/authorize/
-      - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=http://authentik-server:9000/application/o/token/
-      - GF_AUTH_GENERIC_OAUTH_API_URL=http://authentik-server:9000/application/o/userinfo/
       # Session settings
       - GF_SESSION_COOKIE_MAX_AGE=${SESSION_COOKIE_AGE:-604800}
       # InfluxDB datasource
@@ -172,121 +169,9 @@ services:
       - "${MQTT_WS_PORT:-9001}:9001"
       - "${MQTT_TLS_PORT:-8883}:8883"
     volumes:
-      - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./config/mosquitto/passwd:/mosquitto/config/passwd:ro
-      - ./config/mosquitto/certs:/mosquitto/config/certs:ro
+      - ./config/mosquitto:/mosquitto/config:rw
       - mosquitto-data:/mosquitto/data:rw
       - mosquitto-logs:/mosquitto/log:rw
-    restart: unless-stopped
-    networks:
-      - default
-
-  # ============================================================================
-  # AUTHENTIK - Identity Provider
-  # ============================================================================
-
-  authentik-redis:
-    image: docker.io/redis:alpine
-    container_name: authentik-redis
-    command: --save 60 1 --loglevel warning
-    volumes:
-      - authentik-redis:/data
-    restart: unless-stopped
-    networks:
-      - default
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  authentik-db:
-    image: docker.io/postgres:16-alpine
-    container_name: authentik-db
-    environment:
-      - POSTGRES_DB=authentik
-      - POSTGRES_USER=authentik
-      - POSTGRES_PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
-    volumes:
-      - authentik-db:/var/lib/postgresql/data
-    restart: unless-stopped
-    networks:
-      - default
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U authentik"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  authentik-server:
-    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.10}
-    container_name: authentik-server
-    command: server
-    environment:
-      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
-      - AUTHENTIK_REDIS__HOST=authentik-redis
-      - AUTHENTIK_POSTGRESQL__HOST=authentik-db
-      - AUTHENTIK_POSTGRESQL__USER=authentik
-      - AUTHENTIK_POSTGRESQL__NAME=authentik
-      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
-      # Bootstrap configuration (first-time setup)
-      - AUTHENTIK_BOOTSTRAP_PASSWORD=${AUTHENTIK_BOOTSTRAP_PASSWORD:-changeme}
-      - AUTHENTIK_BOOTSTRAP_TOKEN=${AUTHENTIK_BOOTSTRAP_TOKEN:-}
-      - AUTHENTIK_BOOTSTRAP_EMAIL=${AUTHENTIK_BOOTSTRAP_EMAIL:-admin@smarthotel.local}
-      # OAuth2 client configuration for blueprints
-      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-smart-hotel}
-      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
-      - KIOSK_API_TOKEN=${KIOSK_API_TOKEN:-}
-      - AUTHENTIK_EXTERNAL_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}
-      # Email settings (optional)
-      - AUTHENTIK_EMAIL__HOST=${SMTP_HOST:-}
-      - AUTHENTIK_EMAIL__PORT=${SMTP_PORT:-587}
-      - AUTHENTIK_EMAIL__USERNAME=${SMTP_USER:-}
-      - AUTHENTIK_EMAIL__PASSWORD=${SMTP_PASSWORD:-}
-      - AUTHENTIK_EMAIL__USE_TLS=${SMTP_USE_TLS:-true}
-      - AUTHENTIK_EMAIL__FROM=${SMTP_FROM:-noreply@example.com}
-      # Session settings - use cache for Redis-backed sessions
-      - AUTHENTIK_DEFAULT_USER_CHANGE_USERNAME=false
-    ports:
-      - "${AUTHENTIK_PORT:-9000}:9000"
-      - "${AUTHENTIK_PORT_HTTPS:-9443}:9443"
-    volumes:
-      - authentik-media:/media
-      - authentik-templates:/templates
-      - ./config/authentik/blueprints:/blueprints/custom:ro
-    depends_on:
-      - authentik-db
-      - authentik-redis
-    restart: unless-stopped
-    networks:
-      - default
-
-  authentik-worker:
-    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2024.10}
-    container_name: authentik-worker
-    command: worker
-    environment:
-      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
-      - AUTHENTIK_REDIS__HOST=authentik-redis
-      - AUTHENTIK_POSTGRESQL__HOST=authentik-db
-      - AUTHENTIK_POSTGRESQL__USER=authentik
-      - AUTHENTIK_POSTGRESQL__NAME=authentik
-      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
-      # OAuth2 client configuration for blueprints
-      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-smart-hotel}
-      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
-      - KIOSK_API_TOKEN=${KIOSK_API_TOKEN:-}
-      - AUTHENTIK_EXTERNAL_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}
-    user: root
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - authentik-media:/media
-      - authentik-certs:/certs
-      - authentik-templates:/templates
-      - ./config/authentik/blueprints:/blueprints/custom:ro
-    depends_on:
-      - authentik-db
-      - authentik-redis
     restart: unless-stopped
     networks:
       - default
@@ -316,8 +201,7 @@ services:
       - nodered-data:/data
       - ./config/nodered/settings.js:/data/settings.js:ro
       - ./config/nodered/flows.json:/data/flows.json:ro
-    ports:
-      - "${NODERED_PORT:-1880}:1880"
+    # No ports exposed - Node-RED is headless (internal only)
     depends_on:
       - mosquitto
     restart: unless-stopped
@@ -335,9 +219,7 @@ services:
 
   # Main Kiosk Web Application (Django)
   kiosk:
-    build:
-      context: ../kiosk
-      dockerfile: Dockerfile
+    <<: *python-base
     container_name: kiosk
     ports:
       - "${KIOSK_PORT:-8002}:8000"
@@ -347,8 +229,8 @@ services:
       ALLOWED_HOSTS: '${KIOSK_ALLOWED_HOSTS:-*}'
       # MRZ backend service connection
       MRZ_SERVICE_URL: 'http://mrz-backend:5000'
-      # Authentik integration for guest account creation
-      AUTHENTIK_URL: 'http://authentik-server:9000'
+      # Dashboard API for guest account creation
+      DASHBOARD_API_URL: 'http://dashboard:8000'
       KIOSK_API_TOKEN: '${KIOSK_API_TOKEN:-}'
       # MQTT configuration for RFID access card programming
       MQTT_HOST: 'mosquitto'
@@ -356,33 +238,44 @@ services:
       MQTT_USER: '${MQTT_USER:-}'
       MQTT_PASSWORD: '${MQTT_PASSWORD:-}'
       MQTT_ENABLED: 'true'
+    working_dir: /app
     volumes:
-      # Persist SQLite database across container restarts
-      - kiosk_data:/app/data
-      # Persist media files (uploaded scans, filled documents)
-      - kiosk_media:/app/media
+      - ../kiosk:/app:rw
+      - ~/.cache/pip:/root/.cache/pip:rw
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 &&
+        pip install -r requirements.txt gunicorn &&
+        python manage.py migrate --noinput &&
+        rm -rf staticfiles && python manage.py collectstatic --noinput &&
+        gunicorn --bind 0.0.0.0:8000 kiosk_project.wsgi:application --workers 2
+      "
     depends_on:
       - mrz-backend
-      - authentik-server
       - mosquitto
+      - dashboard
     restart: unless-stopped
     networks:
       - kiosk-network
       - default
 
   # MRZ Backend Microservice (Flask) - API only, no camera hardware
-  # Note: Test frontend is only exposed in docker-compose-dev.yml
   mrz-backend:
-    build:
-      context: ../kiosk/app
-      dockerfile: Dockerfile
-    # No ports exposed in production - only accessible internally by kiosk service
-    # Use docker-compose-dev.yml to expose port 5000 for testing
+    <<: *python-base
+    container_name: mrz-backend
     environment:
       PYTHONUNBUFFERED: '1'
+    working_dir: /app
     volumes:
-      # Persist logs (processed passports and filled documents)
+      - ../kiosk/app:/app:rw
       - mrz_logs:/app/Logs
+      - ~/.cache/pip:/root/.cache/pip:rw
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 &&
+        pip install -r requirements.txt flask gunicorn &&
+        gunicorn --bind 0.0.0.0:5000 app:app --workers 2
+      "
     restart: unless-stopped
     networks:
       - kiosk-network
@@ -400,22 +293,13 @@ volumes:
   postgres-data:
   mosquitto-data:
   mosquitto-logs:
-  
+
   # Grafana
   grafana-data:
   grafana-logs:
-  
-  # Authentik
-  authentik-db:
-  authentik-redis:
-  authentik-media:
-  authentik-templates:
-  authentik-certs:
-  
+
   # Node-RED
   nodered-data:
-  
+
   # Kiosk
-  kiosk_data:
-  kiosk_media:
   mrz_logs:

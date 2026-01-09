@@ -8,11 +8,17 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-change-in-production')
 DEBUG = os.environ.get('DEBUG', '0').lower() in ('1', 'true', 'yes')
 
 ALLOWED_HOSTS = ['*']
+
 # Trusted origins for CSRF (add external domains here)
 CSRF_TRUSTED_ORIGINS = [
     'https://saddevsatator.qzz.io',
     'https://*.saddevastator.qzz.io',
 ]
+
+# Trust proxy headers from Nginx/Cloudflare
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 INSTALLED_APPS = [
     'django.contrib.auth',
@@ -20,11 +26,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'kiosk',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -84,8 +92,24 @@ MEDIA_URL = '/media/'
 _media_path = '/app/media' if _os.path.isdir('/app/media') else os.path.join(BASE_DIR, 'media')
 MEDIA_ROOT = _media_path
 
-# WhiteNoise: enable compressed files and caching for static files
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# WhiteNoise: serve static files without caching manifest (simpler, avoids stale cache issues)
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+
+# WhiteNoise: ensure JSON files are served with correct content type
+WHITENOISE_MIMETYPES = {
+    '.json': 'application/json',
+}
+
+# WhiteNoise: don't skip any static files
+WHITENOISE_SKIP_COMPRESS_EXTENSIONS = []
+
+# WhiteNoise: Add headers to prevent Cloudflare caching stale files
+WHITENOISE_ADD_HEADERS_FUNCTION = None  # Use default headers
+
+# CORS settings for Cloudflare/proxy compatibility
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_EXPOSE_HEADERS = ['Content-Type', 'Content-Length']
 
 # Use signed cookie sessions so the app does not require DB-backed sessions
 SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'

@@ -1,0 +1,11 @@
+{
+  "timestamp": "20260108_234056",
+  "image_path": "Logs/captured_passports/captured_images/passport_20260108_234056.jpg",
+  "image_filename": "upload.jpg",
+  "status": "success",
+  "mrz_data": {
+    "status": "FAILURE",
+    "status_message": "No MRZ detected"
+  },
+  "capture_time": "2026-01-08T23:40:57.610995"
+}

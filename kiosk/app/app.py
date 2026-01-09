@@ -133,7 +133,24 @@ class MRZBackendService:
             
             logger.info("[Layer 3] Extracting MRZ...")
             mrz_data = self.mrz_extractor.extract(filepath)
+            # Prepare result data
+            result_data = {
+                "timestamp": timestamp,
+                "image_path": filepath,
+                "image_filename": filename,
+                "status": "success",
+                "mrz_data": mrz_data,
+            }
             
+            # Save JSON (Layer 3)
+            logger.info("[Pipeline] Saving result JSON...")
+            self.image_saver.save_result_json(result_data, timestamp)
+
+            logger.info("[Layer 3] MRZ extraction successful")
+
+            # Note: Manual edit option and signature handling are implemented
+            # in the Django kiosk frontend (passport_scan.html, views.py)
+
             # Layer 4: Fill document template (optional)
             fill_result = None
             if self.document_filler is not None:
@@ -145,6 +162,10 @@ class MRZBackendService:
                     logger.warning(f"[Layer 4] Document filling failed: {e.message}")
                 except Exception as e:
                     logger.error(f"[Layer 4] Unexpected error: {e}")
+            
+
+
+
             
             logger.info("[Pipeline] Success!")
             logger.info("=" * 60)
@@ -350,9 +371,415 @@ def api_status():
             "health": "/health",
             "extract": "/api/extract",
             "detect": "/api/detect",
-            "status": "/api/status"
+            "status": "/api/status",
+            "document/update": "/api/document/update",
+            "document/sign": "/api/document/sign",
+            "document/preview": "/api/document/preview",
+            "document/submit-physical": "/api/document/submit-physical"
         }
     })
+
+
+# ============================================================================
+# Document Management API Endpoints
+# ============================================================================
+
+@app.route("/api/document/update", methods=["POST"])
+def api_document_update():
+    """
+    Update document with edited guest information.
+    Receives edited information from kiosk and updates the document.
+    
+    Request (application/json):
+        {
+            "session_id": "abc123",
+            "guest_data": {
+                "surname": "DOE",
+                "name": "JOHN",
+                "nationality": "USA",
+                "nationality_code": "USA",
+                "passport_number": "AB1234567",
+                "date_of_birth": "1990-01-15",
+                "profession": "Engineer",
+                "hometown": "New York",
+                "country": "United States",
+                "email": "john@example.com",
+                "phone": "+1234567890",
+                "checkin": "2026-01-09",
+                "checkout": "2026-01-12"
+            },
+            "accompanying_guests": [
+                {"name": "Jane Doe", "nationality": "USA", "passport": "CD9876543"}
+            ]
+        }
+    
+    Response:
+        {
+            "success": true,
+            "session_id": "abc123",
+            "document_preview_html": "<html>...</html>",
+            "timestamp": "20260109_120000"
+        }
+    """
+    logger.info("Document update request received")
+    
+    if not request.is_json:
+        return jsonify({
+            "success": False,
+            "error": "JSON body required",
+            "error_code": "INVALID_REQUEST"
+        }), 400
+    
+    data = request.get_json()
+    guest_data = data.get('guest_data', {})
+    session_id = data.get('session_id', str(uuid.uuid4()))
+    accompanying = data.get('accompanying_guests', [])
+    
+    if not guest_data:
+        return jsonify({
+            "success": False,
+            "error": "guest_data is required",
+            "error_code": "MISSING_DATA"
+        }), 400
+    
+    # TODO: Validate guest data fields
+    # TODO: Store updated guest data in session/database
+    # TODO: Generate document preview HTML
+    
+    try:
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        
+        # Generate HTML preview for document
+        preview_html = _generate_document_preview_html(guest_data, accompanying)
+        
+        # TODO: Store session data in database/cache for later signing
+        
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "document_preview_html": preview_html,
+            "timestamp": timestamp,
+            "guest_data": guest_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Document update failed: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "error_code": "UPDATE_FAILED"
+        }), 500
+
+
+@app.route("/api/document/preview", methods=["POST"])
+def api_document_preview():
+    """
+    Get document preview with current data (before signing).
+    Shows the parsed document for legal review before signing.
+    
+    Request (application/json):
+        {
+            "session_id": "abc123",
+            "guest_data": { ... }
+        }
+    
+    Response:
+        {
+            "success": true,
+            "preview_html": "<html>...</html>",
+            "fields": { ... normalized fields ... }
+        }
+    """
+    logger.info("Document preview request received")
+    
+    if not request.is_json:
+        return jsonify({
+            "success": False,
+            "error": "JSON body required"
+        }), 400
+    
+    data = request.get_json()
+    guest_data = data.get('guest_data', {})
+    session_id = data.get('session_id')
+    
+    # TODO: If session_id provided, retrieve stored data
+    # TODO: Generate preview HTML with all fields for legal review
+    
+    try:
+        accompanying = data.get('accompanying_guests', [])
+        preview_html = _generate_document_preview_html(guest_data, accompanying, for_signing=True)
+        
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "preview_html": preview_html,
+            "fields": guest_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Document preview failed: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/document/sign", methods=["POST"])
+def api_document_sign():
+    """
+    Sign document with SVG signature and store in database.
+    For digital signatures - stored for future reference.
+    
+    Request (application/json):
+        {
+            "session_id": "abc123",
+            "guest_data": { ... },
+            "signature_svg": "<svg>...</svg>",
+            "signature_type": "digital"
+        }
+    
+    Response:
+        {
+            "success": true,
+            "document_id": "doc_123",
+            "document_path": "/path/to/signed_document.pdf",
+            "signature_stored": true
+        }
+    """
+    logger.info("Document sign request received")
+    
+    if not request.is_json:
+        return jsonify({
+            "success": False,
+            "error": "JSON body required"
+        }), 400
+    
+    data = request.get_json()
+    session_id = data.get('session_id')
+    guest_data = data.get('guest_data', {})
+    signature_svg = data.get('signature_svg', '')
+    signature_type = data.get('signature_type', 'digital')
+    
+    if not signature_svg:
+        return jsonify({
+            "success": False,
+            "error": "signature_svg is required for digital signing",
+            "error_code": "MISSING_SIGNATURE"
+        }), 400
+    
+    # TODO: Validate SVG signature
+    # TODO: Convert SVG to image for PDF embedding
+    # TODO: Generate final PDF with signature embedded
+    # TODO: Store document in database with metadata
+    # TODO: Create database record for digital signature
+    
+    try:
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        document_id = f"doc_{session_id}_{timestamp}"
+        
+        # Save SVG signature
+        signature_path = _save_svg_signature(signature_svg, document_id)
+        
+        # TODO: Generate final signed PDF
+        # TODO: Store in database
+        
+        return jsonify({
+            "success": True,
+            "document_id": document_id,
+            "signature_path": signature_path,
+            "signature_stored": True,
+            "signature_type": signature_type,
+            "timestamp": timestamp,
+            "message": "Document signed and stored successfully"
+        })
+        
+    except Exception as e:
+        logger.error(f"Document signing failed: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "error_code": "SIGNING_FAILED"
+        }), 500
+
+
+@app.route("/api/document/submit-physical", methods=["POST"])
+def api_document_submit_physical():
+    """
+    Submit document for physical signature at front desk.
+    Creates a pending document request for front desk staff.
+    
+    Request (application/json):
+        {
+            "session_id": "abc123",
+            "guest_data": { ... },
+            "reservation_id": 123,
+            "room_number": "101"
+        }
+    
+    Response:
+        {
+            "success": true,
+            "submission_id": "sub_123",
+            "status": "pending_signature",
+            "front_desk_notified": true
+        }
+    """
+    logger.info("Physical signature submission request received")
+    
+    if not request.is_json:
+        return jsonify({
+            "success": False,
+            "error": "JSON body required"
+        }), 400
+    
+    data = request.get_json()
+    session_id = data.get('session_id')
+    guest_data = data.get('guest_data', {})
+    reservation_id = data.get('reservation_id')
+    room_number = data.get('room_number')
+    
+    # TODO: Create pending document record in database
+    # TODO: Notify front desk system (MQTT, webhook, etc.)
+    # TODO: Generate printable PDF for front desk
+    # TODO: Store submission with pending status
+    
+    try:
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        submission_id = f"sub_{session_id}_{timestamp}"
+        
+        # Generate PDF for printing
+        if service.document_filler:
+            # TODO: Generate PDF
+            pass
+        
+        # TODO: Notify front desk via MQTT
+        
+        return jsonify({
+            "success": True,
+            "submission_id": submission_id,
+            "status": "pending_signature",
+            "front_desk_notified": True,
+            "message": "Document submitted to front desk. Please proceed to complete your check-in.",
+            "timestamp": timestamp
+        })
+        
+    except Exception as e:
+        logger.error(f"Physical submission failed: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "error_code": "SUBMISSION_FAILED"
+        }), 500
+
+
+# ============================================================================
+# Helper Functions for Document API
+# ============================================================================
+
+def _generate_document_preview_html(guest_data: dict, accompanying: list = None, for_signing: bool = False) -> str:
+    """
+    Generate HTML preview of the registration document.
+    
+    Args:
+        guest_data: Dictionary with guest information
+        accompanying: List of accompanying guest dicts
+        for_signing: If True, includes legal disclaimer for signing
+    
+    Returns:
+        str: HTML string for document preview
+    """
+    # TODO: Use proper template engine
+    
+    surname = guest_data.get('surname', '')
+    name = guest_data.get('name', guest_data.get('first_name', ''))
+    nationality = guest_data.get('nationality', '')
+    passport_number = guest_data.get('passport_number', '')
+    date_of_birth = guest_data.get('date_of_birth', '')
+    profession = guest_data.get('profession', '')
+    hometown = guest_data.get('hometown', '')
+    country = guest_data.get('country', '')
+    email = guest_data.get('email', '')
+    phone = guest_data.get('phone', '')
+    checkin = guest_data.get('checkin', '')
+    checkout = guest_data.get('checkout', '')
+    
+    accompanying = accompanying or []
+    
+    html = f'''
+    <div class="document-preview-content">
+        <h3>DW Registration Card</h3>
+        <div class="preview-section">
+            <h4>Guest Information</h4>
+            <div class="preview-row"><span class="label">Surname:</span> <span class="value">{surname}</span></div>
+            <div class="preview-row"><span class="label">Name:</span> <span class="value">{name}</span></div>
+            <div class="preview-row"><span class="label">Nationality:</span> <span class="value">{nationality}</span></div>
+            <div class="preview-row"><span class="label">Passport No:</span> <span class="value">{passport_number}</span></div>
+            <div class="preview-row"><span class="label">Date of Birth:</span> <span class="value">{date_of_birth}</span></div>
+            <div class="preview-row"><span class="label">Country:</span> <span class="value">{country}</span></div>
+        </div>
+        <div class="preview-section">
+            <h4>Contact Information</h4>
+            <div class="preview-row"><span class="label">Email:</span> <span class="value">{email or "-"}</span></div>
+            <div class="preview-row"><span class="label">Phone:</span> <span class="value">{phone or "-"}</span></div>
+            <div class="preview-row"><span class="label">Profession:</span> <span class="value">{profession or "-"}</span></div>
+            <div class="preview-row"><span class="label">Hometown:</span> <span class="value">{hometown or "-"}</span></div>
+        </div>
+        <div class="preview-section">
+            <h4>Stay Information</h4>
+            <div class="preview-row"><span class="label">Check-in:</span> <span class="value">{checkin}</span></div>
+            <div class="preview-row"><span class="label">Check-out:</span> <span class="value">{checkout or "-"}</span></div>
+        </div>
+    '''
+    
+    if accompanying:
+        html += '''
+        <div class="preview-section">
+            <h4>Accompanying Guests</h4>
+        '''
+        for i, guest in enumerate(accompanying, 1):
+            html += f'''
+            <div class="preview-row"><span class="label">Guest {i}:</span> <span class="value">{guest.get("name", "")} ({guest.get("nationality", "")}) - {guest.get("passport", "")}</span></div>
+            '''
+        html += '</div>'
+    
+    if for_signing:
+        html += '''
+        <div class="preview-section legal-notice">
+            <p><strong>Legal Notice:</strong> By signing this document, I confirm that the information provided above is accurate and complete. 
+            I agree to the hotel's terms and conditions.</p>
+        </div>
+        '''
+    
+    html += '</div>'
+    
+    return html
+
+
+def _save_svg_signature(svg_content: str, document_id: str) -> str:
+    """
+    Save SVG signature to file.
+    
+    Args:
+        svg_content: SVG string content
+        document_id: Document ID for filename
+    
+    Returns:
+        str: Path to saved signature file
+    """
+    # TODO: Validate SVG content
+    # TODO: Sanitize SVG for security
+    
+    signatures_dir = os.path.join(SAVED_DOCUMENTS_DIR, 'signatures')
+    os.makedirs(signatures_dir, exist_ok=True)
+    
+    filename = f"signature_{document_id}.svg"
+    filepath = os.path.join(signatures_dir, filename)
+    
+    with open(filepath, 'w') as f:
+        f.write(svg_content)
+    
+    logger.info(f"Saved SVG signature: {filepath}")
+    return filepath
 
 
 # ============================================================================

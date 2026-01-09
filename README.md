@@ -35,7 +35,7 @@ Smart Hotel is a full-stack IoT solution for modern hotel management. The system
 | **Climate Control** | Remote temperature and lighting management |
 | **Self Check-in Kiosk** | Passport scanning with MRZ extraction |
 | **Multi-language Support** | EN, DE, PL, UK, RU for international guests |
-| **SSO Authentication** | Authentik-based identity management with OIDC |
+| **User Authentication** | Django-based authentication with PostgreSQL |
 | **Role-based Access** | Admin, Monitor, and Guest permission levels |
 | **SMS Notifications** | Guest credential delivery via Node-RED (Twilio) |
 | **Telegram Alerts** | Admin notifications with automatic fallback |
@@ -52,10 +52,6 @@ flowchart TB
     end
 
     subgraph CLOUD["Cloud Infrastructure"]
-        subgraph AUTH_LAYER["Authentication"]
-            AUTHENTIK["Authentik<br/>Identity Provider"]
-        end
-
         subgraph APPLICATIONS["Applications"]
             DASHBOARD["Dashboard<br/>Django/Daphne"]
             POSTGRES["PostgreSQL<br/>Rooms/Reservations"]
@@ -99,8 +95,6 @@ flowchart TB
     DASHBOARD --> POSTGRES
     DASHBOARD -->|MQTT| NODERED
     DASHBOARD --> MOSQUITTO
-    DASHBOARD -->|OIDC| AUTHENTIK
-    GRAFANA -->|OAuth| AUTHENTIK
     
     NODERED --> TELEGRAM
     NODERED --> TWILIO
@@ -110,8 +104,6 @@ flowchart TB
     KIOSK_APP -->|API| MRZ_BACKEND
     KIOSK_APP -->|API| DASHBOARD
     
-    STAFF -->|OIDC| AUTHENTIK
-    Admin -->|OIDC| AUTHENTIK
     STAFF --> DASHBOARD
     Admin --> DASHBOARD
     GUEST["Guest"] --> KIOSK
@@ -124,7 +116,7 @@ flowchart TB
 |------|------|----------|
 | Sensor → Cloud | ESP32 → Mosquitto → Telegraf → InfluxDB | MQTT |
 | Cloud → Actuator | Dashboard → Mosquitto → ESP32 | MQTT |
-| User Authentication | Browser → Authentik → Dashboard | OIDC |
+| User Authentication | Browser → Dashboard (Django) | HTTP |
 | Guest Check-in | Kiosk → MRZ Backend → Document | HTTP/REST |
 | Staff Monitoring | Dashboard → PostgreSQL/InfluxDB | HTTP/WebSocket |
 | SMS Notifications | Dashboard → MQTT → Node-RED → Twilio | MQTT/HTTPS |
@@ -177,7 +169,7 @@ The setup wizard will:
 ### Initial Setup
 
 After starting, all core services are pre-configured:
-- **Authentik**: Auto-provisioned with OAuth2 providers and groups
+- **Dashboard**: Admin user created (admin/SmartHotel2026!)
 - **InfluxDB**: Pre-configured with sensor buckets and retention policies
 - **Grafana**: Connected to InfluxDB with default dashboards
 
@@ -185,18 +177,17 @@ After starting, all core services are pre-configured:
 
 | Service | Username | Password |
 |---------|----------|----------|
-| **Authentik Admin** | `akadmin` | `SmartHotel2026!` |
-| **Grafana** | Via Authentik SSO | - |
+| **Dashboard Admin** | `admin` | `SmartHotel2026!` |
+| **Grafana** | `admin` | See `.env` |
 | **InfluxDB** | `admin` | See `.env` |
 
-> **📌 Security:** Change the Authentik admin password in production!
+> **📌 Security:** Change the admin password in production!
 
 ### Access Points
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| **Authentik** | http://localhost:9000 | Created during setup |
-| **Staff Dashboard** | http://localhost:8001 | Via Authentik SSO |
+| **Staff Dashboard** | http://localhost:8001 | admin / SmartHotel2026! |
 | **Guest Kiosk** | http://localhost:8002 | (no auth) |
 | **Grafana** | http://localhost:3000 | From `.env` |
 | **InfluxDB** | http://localhost:8086 | From `.env` |

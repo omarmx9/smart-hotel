@@ -4,6 +4,9 @@ from . import views
 app_name = 'kiosk'
 
 urlpatterns = [
+    # Error page (Call Front Desk)
+    path('error/', views.error_page, name='error'),
+    
     # Main kiosk flow
     path('', views.advertisement, name='advertisement'),
     path('language/', views.choose_language, name='choose_language'),
@@ -37,7 +40,13 @@ urlpatterns = [
     # API endpoints
     path('api/save-passport-data/', views.save_passport_extraction, name='save_passport_extraction'),
     
-    # Guest Account API (Authentik integration)
+    # Document Management API (proxy to MRZ backend)
+    path('api/document/update/', views.document_update_api, name='document_update_api'),
+    path('api/document/preview/', views.document_preview_api, name='document_preview_api'),
+    path('api/document/sign/', views.document_sign_api, name='document_sign_api'),
+    path('api/document/submit-physical/', views.document_submit_physical_api, name='document_submit_physical_api'),
+    
+    # Guest Account API (Dashboard integration)
     path('api/guest/create/', views.create_guest_account_api, name='create_guest_account'),
     path('api/guest/deactivate/', views.deactivate_guest_account_api, name='deactivate_guest_account'),
     

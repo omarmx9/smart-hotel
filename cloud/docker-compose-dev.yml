@@ -2,24 +2,46 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose-dev.yml up
 #
 # This file extends the base docker-compose.yml with development-specific settings.
-# The MRZ testing frontend is only available in this development configuration.
+# All Python apps run in dev mode with hot-reload enabled.
 
 services:
-  # Override mrz-backend to expose the test frontend port
+  # Override mrz-backend to expose port and run in dev mode
   mrz-backend:
     ports:
-      - "5000:5000"   # API + Test Frontend (http://localhost:5000/)
+      - "${MRZ_PORT:-5000}:5000"   # API + Test Frontend (http://localhost:5000/)
     environment:
       PYTHONUNBUFFERED: '1'
       FLASK_ENV: 'development'
       FLASK_DEBUG: '1'
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 &&
+        pip install -r requirements.txt flask &&
+        flask run --host=0.0.0.0 --port=5000 --reload --debug
+      "
 
-  # Development settings for dashboard
+  # Development settings for dashboard - use runserver with hot-reload
   dashboard:
     environment:
       - DJANGO_DEBUG=True
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y --no-install-recommends libpq-dev &&
+        pip install -r requirements.txt &&
+        python manage.py migrate --noinput &&
+        python manage.py collectstatic --noinput --clear &&
+        python manage.py runserver 0.0.0.0:8000
+      "
 
-  # Development settings for kiosk
+  # Development settings for kiosk - use runserver with hot-reload
   kiosk:
     environment:
       DEBUG: '1'
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 &&
+        pip install -r requirements.txt &&
+        python manage.py migrate --noinput &&
+        rm -rf staticfiles && python manage.py collectstatic --noinput &&
+        python manage.py runserver 0.0.0.0:8000
+      "

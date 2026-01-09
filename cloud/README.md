@@ -16,7 +16,6 @@
 - [Services](#services)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
-- [Authentik Setup](#authentik-setup)
 - [Notification System](#notification-system)
 - [Network Topology](#network-topology)
 - [Data Persistence](#data-persistence)
@@ -46,12 +45,6 @@ flowchart TB
     end
 
     subgraph DOCKER["Docker Network"]
-        subgraph AUTH_LAYER["Authentication Layer"]
-            AUTHENTIK["Authentik<br/>Identity Provider"]
-            AUTH_DB["Authentik DB<br/>PostgreSQL"]
-            AUTH_REDIS["Redis<br/>Session Store"]
-        end
-
         subgraph DATA_LAYER["Data Layer"]
             MOSQUITTO["Mosquitto<br/>MQTT Broker"]
             TELEGRAF["Telegraf<br/>Data Bridge"]
@@ -78,22 +71,16 @@ flowchart TB
 
     ESP32 <-->|MQTT| MOSQUITTO
     STAFF -->|HTTP| DASHBOARD
-    STAFF -->|OIDC| AUTHENTIK
     GUESTS -->|HTTP| KIOSK
     
     MOSQUITTO --> TELEGRAF
     TELEGRAF --> INFLUXDB
     INFLUXDB --> GRAFANA
-    GRAFANA -->|OAuth| AUTHENTIK
-    
-    AUTHENTIK --> AUTH_DB
-    AUTHENTIK --> AUTH_REDIS
     
     DASHBOARD <--> POSTGRES
     DASHBOARD <--> MOSQUITTO
     DASHBOARD --> NODERED
     DASHBOARD --> INFLUXDB
-    DASHBOARD -->|OIDC| AUTHENTIK
     
     NODERED --> TELEGRAM
     NODERED --> SMS
@@ -142,11 +129,7 @@ flowchart LR
 
 | Service | Image | Port | Description |
 |---------|-------|------|-------------|
-| **Authentik Server** | `ghcr.io/goauthentik/server` | 9000, 9443 | Identity provider (OIDC/OAuth2) |
-| **Authentik Worker** | `ghcr.io/goauthentik/server` | - | Background task processor |
-| **Authentik DB** | `postgres:16-alpine` | - | Authentik PostgreSQL database |
-| **Authentik Redis** | `redis:alpine` | - | Session store & cache |
-| **Node-RED** | `nodered/node-red:latest` | 1880 | Notification gateway (Telegram + SMS) |
+| **Node-RED** | `nodered/node-red:latest` | internal only | Notification gateway (Telegram + SMS) |
 
 ### Application Services
 
@@ -206,10 +189,10 @@ The setup wizard automatically detects if any required ports are in use and offe
 
 Remapped ports are automatically saved to `.env` and displayed in the summary.
 
-All core services (Authentik, InfluxDB, Grafana) are **pre-configured automatically** via:
-- Authentik blueprints (auto-provision OAuth2 providers, groups, and guest enrollment)
+All core services (InfluxDB, Grafana, Dashboard) are **pre-configured automatically** via:
 - InfluxDB initialization scripts (create buckets, retention policies, and Telegraf configs)
 - Grafana provisioning (datasources and default dashboards)
+- Dashboard admin user created automatically
 
 ### Updating the Stack
 
@@ -256,18 +239,254 @@ docker compose down -v
 
 All ports are configurable via `.env` - the setup wizard can remap ports if conflicts are detected.
 
-| Service | Default URL | Credentials |
-|---------|-------------|-------------|
-| Authentik | http://localhost:9000 | `akadmin` / from `AUTHENTIK_BOOTSTRAP_PASSWORD` |
-| Authentik HTTPS | https://localhost:9443 | Same as above |
-| Grafana | http://localhost:3000 | From `.env` (or via Authentik SSO) |
-| InfluxDB | http://localhost:8086 | From `.env` |
-| Dashboard | http://localhost:8001 | Via Authentik SSO |
-| Kiosk | http://localhost:8002 | (no auth for guests) |
-| Node-RED | http://localhost:1880/api/health | Headless (no UI) |
+| Service | Default URL | Notes |
+|---------|-------------|-------|
+| Dashboard | http://localhost:8001 | Login: admin / SmartHotel2026! |
+| Grafana | http://localhost:3000 | Credentials from `.env` |
+| InfluxDB | http://localhost:8086 | Credentials from `.env` |
+| Kiosk | http://localhost:8002 | No auth required for guests |
+| Node-RED | Internal only | Headless - no external port exposed |
 | Mosquitto | mqtt://localhost:1883 | Optional auth via setup.sh |
 | Mosquitto TLS | mqtts://localhost:8883 | Optional, configure via setup.sh |
 | Mosquitto WS | ws://localhost:9001 | WebSocket for browser clients |
+
+### Reverse Proxy Configuration
+
+For production deployment with custom domains, use a reverse proxy (nginx, Traefik, or Caddy). Below is a comprehensive nginx configuration for all Smart Hotel services:
+
+#### Complete Nginx Configuration
+
+```nginx
+# /etc/nginx/conf.d/smart-hotel.conf
+# Smart Hotel Reverse Proxy Configuration
+
+# Upstream definitions
+upstream dashboard {
+    server 127.0.0.1:8001;
+    keepalive 10;
+}
+
+upstream kiosk {
+    server 127.0.0.1:8002;
+    keepalive 10;
+}
+
+upstream grafana {
+    server 127.0.0.1:3000;
+    keepalive 10;
+}
+
+upstream influxdb {
+    server 127.0.0.1:8086;
+    keepalive 10;
+}
+
+# Staff Dashboard
+server {
+    listen 443 ssl http2;
+    server_name dashboard.yourdomain.com;
+    
+    ssl_certificate /etc/nginx/ssl/yourdomain.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/yourdomain.com.key;
+    
+    location / {
+        proxy_pass http://dashboard;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support for real-time updates
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400;
+    }
+    
+    # Static files
+    location /static/ {
+        proxy_pass http://dashboard;
+        proxy_cache_valid 200 1d;
+    }
+}
+
+# Guest Kiosk (Public - No authentication required)
+server {
+    listen 443 ssl http2;
+    server_name kiosk.yourdomain.com;
+    
+    ssl_certificate /etc/nginx/ssl/yourdomain.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/yourdomain.com.key;
+    
+    # Larger body size for passport image uploads
+    client_max_body_size 10M;
+    
+    location / {
+        proxy_pass http://kiosk;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Longer timeouts for MRZ processing
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 60s;
+    }
+    
+    # Media files (passport scans, signatures)
+    location /media/ {
+        proxy_pass http://kiosk;
+        proxy_cache_valid 200 1h;
+    }
+}
+
+# Grafana Dashboards
+server {
+    listen 443 ssl http2;
+    server_name grafana.yourdomain.com;
+    
+    ssl_certificate /etc/nginx/ssl/yourdomain.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/yourdomain.com.key;
+    
+    location / {
+        proxy_pass http://grafana;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support for live dashboards
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # Grafana API
+    location /api/ {
+        proxy_pass http://grafana;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# InfluxDB API (Optional - for external data access)
+server {
+    listen 443 ssl http2;
+    server_name influxdb.yourdomain.com;
+    
+    ssl_certificate /etc/nginx/ssl/yourdomain.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/yourdomain.com.key;
+    
+    # Restrict to internal/trusted IPs
+    # allow 10.0.0.0/8;
+    # deny all;
+    
+    location / {
+        proxy_pass http://influxdb;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# HTTP to HTTPS redirect for all domains
+server {
+    listen 80;
+    server_name dashboard.yourdomain.com kiosk.yourdomain.com grafana.yourdomain.com influxdb.yourdomain.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+#### Single Domain with Path-Based Routing
+
+Alternatively, you can host all services under a single domain with path-based routing:
+
+```nginx
+# Single domain configuration
+server {
+    listen 443 ssl http2;
+    server_name hotel.yourdomain.com;
+    
+    ssl_certificate /etc/nginx/ssl/yourdomain.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/yourdomain.com.key;
+    
+    client_max_body_size 10M;
+    
+    # Staff Dashboard
+    location /dashboard/ {
+        proxy_pass http://127.0.0.1:8001/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # Guest Kiosk
+    location /kiosk/ {
+        proxy_pass http://127.0.0.1:8002/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+    
+    # Grafana
+    location /grafana/ {
+        proxy_pass http://127.0.0.1:3000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # Default: redirect to dashboard
+    location / {
+        return 302 /dashboard/;
+    }
+}
+```
+
+#### Traefik Configuration (Docker Labels)
+
+If using Traefik as your reverse proxy, add these labels to `docker-compose.yml`:
+
+```yaml
+services:
+  dashboard:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`dashboard.yourdomain.com`)"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.services.dashboard.loadbalancer.server.port=8001"
+  
+  kiosk:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kiosk.rule=Host(`kiosk.yourdomain.com`)"
+      - "traefik.http.routers.kiosk.tls=true"
+      - "traefik.http.services.kiosk.loadbalancer.server.port=8002"
+  
+  grafana:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.yourdomain.com`)"
+      - "traefik.http.routers.grafana.tls=true"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+```
 
 ### MQTT Security (Optional)
 
@@ -305,7 +524,6 @@ See `.env.example` for complete documentation of all variables.
 |----------|-----------|-------------|
 | **Database** | `POSTGRES_*` | Main PostgreSQL settings |
 | **InfluxDB** | `INFLUX_*` | Time-series database |
-| **Authentik** | `AUTHENTIK_*`, `OIDC_*` | Identity provider |
 | **Grafana** | `GRAFANA_*` | Visualization dashboard |
 | **MQTT** | `MQTT_*` | Optional auth and TLS settings |
 | **Node-RED** | `NODERED_*`, `TWILIO_*` | SMS gateway |
@@ -333,8 +551,6 @@ cloud/
 ├── docker-compose.yml       # Main compose file
 ├── docker-compose-dev.yml   # Development overrides
 └── config/
-    ├── authentik/
-    │   └── blueprints/      # Auto-provision OAuth2, groups, flows
     ├── grafana/
     │   └── provisioning/    # Grafana datasources and dashboards
     ├── influxdb/
@@ -350,95 +566,6 @@ cloud/
     └── telegraf/
         └── telegraf.conf    # MQTT→InfluxDB bridge config
 ```
-
-## Authentik Setup
-
-Authentik provides centralized identity management for the Smart Hotel system. **Most configuration is automatic** via blueprints.
-
-### Pre-Configured Components
-
-The following are created automatically on first startup:
-
-| Component | Description |
-|-----------|-------------|
-| **OAuth2 Provider** (`smart-hotel`) | OIDC provider for Dashboard authentication |
-| **OAuth2 Provider** (`grafana`) | OIDC provider for Grafana SSO |
-| **Application** (`Smart Hotel`) | Main application with both providers |
-| **Group** (`Hotel Staff`) | Admin/staff access group |
-| **Group** (`Hotel Guests`) | Guest access group with limited permissions |
-| **Service Account** (`kiosk-service`) | API token for kiosk guest account creation |
-| **Guest Enrollment Flow** | Self-service guest registration flow |
-
-### Default Admin Credentials
-
-The initial admin account is created automatically:
-
-| Setting | Value | Source |
-|---------|-------|--------|
-| Username | `akadmin` | Authentik default |
-| Password | `SmartHotel2026!` | `AUTHENTIK_BOOTSTRAP_PASSWORD` in `.env` |
-| Email | `admin@smarthotel.local` | `AUTHENTIK_BOOTSTRAP_EMAIL` in `.env` |
-
-> **📌 Production Reminder:** Change the admin password after first login for security!
-
-```bash
-# Access Authentik admin at:
-open http://localhost:9000/if/admin/
-
-# Login with:
-# Username: akadmin
-# Password: SmartHotel2026!
-```
-
-### Creating Staff Users
-
-1. Go to **Directory** → **Users** → **Create**
-2. Fill in user details
-3. Go to **Groups** tab → Add to `Hotel Staff`
-4. User can now log in at http://localhost:8001
-
-### Guest Account API
-
-The kiosk application can create temporary guest accounts via API:
-
-```bash
-# Create a guest account
-curl -X POST http://localhost:8002/api/guest/create/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "first_name": "John",
-    "last_name": "Doe",
-    "room_number": "101",
-    "checkout_date": "2026-01-15"
-  }'
-
-# Deactivate a guest account
-curl -X POST http://localhost:8002/api/guest/deactivate/ \
-  -H "Content-Type: application/json" \
-  -d '{"username": "guest_john_doe_20260108"}'
-```
-
-### Manual Configuration (Optional)
-
-If you need to customize the OAuth2 settings:
-
-1. Go to **Admin Interface** → **Applications** → **Providers**
-2. Edit `smart-hotel` provider
-3. Adjust Redirect URIs for your domain:
-   ```
-   https://yourdomain.com/accounts/oidc/callback/
-   ```
-
-### Session Configuration
-
-Sessions are configured for hotel guest convenience:
-
-| Setting | Default | Purpose |
-|---------|---------|---------|
-| `SESSION_COOKIE_AGE` | 604800 (7 days) | Session lifetime |
-| `OIDC_RENEW_ID_TOKEN_EXPIRY_SECONDS` | 900 (15 min) | Token refresh |
-
-Adjust in `.env` as needed.
 
 ## Notification System
 
@@ -609,11 +736,6 @@ All persistent data is stored in Docker named volumes:
 | `mosquitto-data` | Mosquitto | Retained messages |
 | `mosquitto-logs` | Mosquitto | Broker logs |
 | `postgres-data` | PostgreSQL | Rooms, reservations |
-| `authentik-db` | Authentik DB | User data, config |
-| `authentik-redis` | Authentik Redis | Sessions, cache |
-| `authentik-media` | Authentik | Uploaded media |
-| `authentik-templates` | Authentik | Custom templates |
-| `authentik-certs` | Authentik | SSL certificates |
 | `nodered-data` | Node-RED | Flow data |
 | `kiosk_data` | Kiosk | SQLite database |
 | `kiosk_media` | Kiosk | Uploaded files |
@@ -767,12 +889,10 @@ docker compose up -d
 ⚠️ **Production Checklist:**
 
 1. **Run `./generate-env.sh`** to create secure secrets automatically
-2. **Complete Authentik setup** - create admin account and OAuth2 provider
-3. **Configure external URLs** - update `AUTHENTIK_EXTERNAL_URL` for your domain
-4. **Enable HTTPS** - configure reverse proxy (nginx, traefik) for all services
-5. **Set up Twilio** for SMS notifications (optional)
-6. **Configure Telegram** for admin alerts (optional)
-7. **Enable MQTT authentication** in mosquitto.conf for IoT security
-8. **Regular backups** of all volumes
-9. **Update Authentik** regularly for security patches
-10. **Review session timeouts** - default 7 days may be too long for some deployments
+2. **Change default admin password** - update via Django admin panel
+3. **Enable HTTPS** - configure reverse proxy (nginx, traefik) for all services
+4. **Set up Twilio** for SMS notifications (optional)
+5. **Configure Telegram** for admin alerts (optional)
+6. **Enable MQTT authentication** in mosquitto.conf for IoT security
+7. **Regular backups** of all volumes
+8. **Review session timeouts** - default 7 days may be too long for some deployments

@@ -53,9 +53,14 @@ class Room(models.Model):
     # Sensor readings
     temperature = models.FloatField(default=22.0)
     humidity = models.FloatField(default=50.0)
-    luminosity = models.IntegerField(default=0)  # 0=off, 1=one light, 2=two lights
+    luminosity = models.IntegerField(default=0)  # 0=off, 1=one light, 2=two lights (calculated from LED states)
+    ldr_percentage = models.IntegerField(default=0)  # Light sensor reading (0-100%)
     light_mode = models.CharField(max_length=20, choices=LIGHT_CHOICES, default=LIGHT_AUTO)
     gas_level = models.IntegerField(default=0)
+    
+    # LED status (received from ESP32)
+    led1_status = models.BooleanField(default=False)
+    led2_status = models.BooleanField(default=False)
     
     # Climate control settings
     climate_mode = models.CharField(max_length=20, choices=CLIMATE_CHOICES, default=CLIMATE_AUTO)
@@ -79,15 +84,26 @@ class Room(models.Model):
     
     @property
     def luminosity_display(self):
-        """Display luminosity as readable text"""
+        """Display luminosity as readable text based on LED states"""
         if self.light_mode == self.LIGHT_AUTO:
             return 'Auto'
-        elif self.luminosity == 0:
-            return 'Off'
-        elif self.luminosity == 1:
+        # Calculate display from LED states
+        if self.led1_status and self.led2_status:
+            return '2 Lights'
+        elif self.led1_status or self.led2_status:
             return '1 Light'
         else:
-            return '2 Lights'
+            return 'Off'
+    
+    @property
+    def led_count(self):
+        """Return the number of LEDs currently on"""
+        count = 0
+        if self.led1_status:
+            count += 1
+        if self.led2_status:
+            count += 1
+        return count
     
     @property
     def temperature_alert(self):
@@ -113,7 +129,10 @@ class Room(models.Model):
             'status': self.status,
             'temperature': self.temperature,
             'humidity': self.humidity,
-            'luminosity': self.luminosity,
+            'luminosity': self.led_count,  # Calculated from LED states
+            'ldr_percentage': self.ldr_percentage,
+            'led1_status': self.led1_status,
+            'led2_status': self.led2_status,
             'luminosity_display': self.luminosity_display,
             'light_mode': self.light_mode,
             'gas_level': self.gas_level,
@@ -151,7 +170,7 @@ class SensorHistory(models.Model):
             room=room,
             temperature=room.temperature,
             humidity=room.humidity,
-            luminosity=room.luminosity,
+            luminosity=room.ldr_percentage,  # Store LDR percentage reading
             gas_level=room.gas_level
         )
     

@@ -3,6 +3,7 @@ Pillow
 whitenoise
 requests
 paho-mqtt
+django-cors-headers
 # MRZ extraction and document generation
 fastmrz
 opencv-python-headless

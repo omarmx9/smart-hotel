@@ -224,5 +224,203 @@ def convert_mrz_to_kiosk_format(mrz_data: dict) -> dict:
         'passport_number': mrz_data.get('document_number', ''),
         'date_of_birth': dob,
         'nationality': mrz_data.get('nationality_code', ''),
+        'nationality_code': mrz_data.get('nationality_code', ''),
         'gender': mrz_data.get('sex', ''),
+        'issuer_country': mrz_data.get('issuer_code', ''),
     }
+
+
+class MRZDocumentClient:
+    """
+    Client for document management operations via MRZ backend.
+    
+    Handles:
+    - Sending edited guest information to MRZ backend
+    - SVG signature submission
+    - Document preview retrieval
+    - Physical signature submission to front desk
+    """
+    
+    def __init__(self, base_url: str = None, timeout: int = 30):
+        """
+        Initialize MRZ Document client.
+        
+        Args:
+            base_url: Base URL of the MRZ service. Defaults to MRZ_SERVICE_URL env var.
+            timeout: Request timeout in seconds.
+        """
+        self.base_url = (base_url or MRZ_SERVICE_URL).rstrip('/')
+        self.timeout = timeout
+        self.session = requests.Session()
+    
+    def update_document(self, session_id: str, guest_data: dict, accompanying_guests: list = None) -> dict:
+        """
+        Send edited guest information to MRZ backend.
+        
+        Args:
+            session_id: Unique session identifier
+            guest_data: Dictionary with edited guest information
+            accompanying_guests: List of accompanying guest dicts
+        
+        Returns:
+            dict: Response with document_preview_html and session info
+        
+        Raises:
+            MRZAPIError: If update fails
+        """
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/document/update",
+                json={
+                    'session_id': session_id,
+                    'guest_data': guest_data,
+                    'accompanying_guests': accompanying_guests or []
+                },
+                timeout=self.timeout
+            )
+            result = response.json()
+            
+            if not result.get('success'):
+                raise MRZAPIError(
+                    result.get('error', 'Update failed'),
+                    result.get('error_code')
+                )
+            
+            return result
+        except requests.RequestException as e:
+            logger.error(f"Failed to update document: {e}")
+            raise MRZAPIError(f"Failed to update document: {e}")
+    
+    def get_document_preview(self, session_id: str, guest_data: dict = None) -> dict:
+        """
+        Get document preview for legal review before signing.
+        
+        Args:
+            session_id: Unique session identifier
+            guest_data: Optional guest data (uses stored data if not provided)
+        
+        Returns:
+            dict: Response with preview_html and fields
+        
+        Raises:
+            MRZAPIError: If preview fails
+        """
+        try:
+            payload = {'session_id': session_id}
+            if guest_data:
+                payload['guest_data'] = guest_data
+            
+            response = self.session.post(
+                f"{self.base_url}/api/document/preview",
+                json=payload,
+                timeout=self.timeout
+            )
+            result = response.json()
+            
+            if not result.get('success'):
+                raise MRZAPIError(
+                    result.get('error', 'Preview failed'),
+                    result.get('error_code')
+                )
+            
+            return result
+        except requests.RequestException as e:
+            logger.error(f"Failed to get document preview: {e}")
+            raise MRZAPIError(f"Failed to get document preview: {e}")
+    
+    def sign_document_digital(self, session_id: str, guest_data: dict, signature_svg: str) -> dict:
+        """
+        Submit digital signature (SVG) and store signed document.
+        
+        Args:
+            session_id: Unique session identifier
+            guest_data: Guest information
+            signature_svg: SVG signature content
+        
+        Returns:
+            dict: Response with document_id and storage confirmation
+        
+        Raises:
+            MRZAPIError: If signing fails
+        """
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/document/sign",
+                json={
+                    'session_id': session_id,
+                    'guest_data': guest_data,
+                    'signature_svg': signature_svg,
+                    'signature_type': 'digital'
+                },
+                timeout=self.timeout
+            )
+            result = response.json()
+            
+            if not result.get('success'):
+                raise MRZAPIError(
+                    result.get('error', 'Signing failed'),
+                    result.get('error_code')
+                )
+            
+            return result
+        except requests.RequestException as e:
+            logger.error(f"Failed to sign document: {e}")
+            raise MRZAPIError(f"Failed to sign document: {e}")
+    
+    def submit_physical_signature(self, session_id: str, guest_data: dict, 
+                                   reservation_id: int = None, room_number: str = None) -> dict:
+        """
+        Submit document for physical signature at front desk.
+        
+        Args:
+            session_id: Unique session identifier
+            guest_data: Guest information
+            reservation_id: Optional reservation ID
+            room_number: Optional room number
+        
+        Returns:
+            dict: Response with submission_id and front desk notification status
+        
+        Raises:
+            MRZAPIError: If submission fails
+        """
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/document/submit-physical",
+                json={
+                    'session_id': session_id,
+                    'guest_data': guest_data,
+                    'reservation_id': reservation_id,
+                    'room_number': room_number
+                },
+                timeout=self.timeout
+            )
+            result = response.json()
+            
+            if not result.get('success'):
+                raise MRZAPIError(
+                    result.get('error', 'Submission failed'),
+                    result.get('error_code')
+                )
+            
+            return result
+        except requests.RequestException as e:
+            logger.error(f"Failed to submit for physical signature: {e}")
+            raise MRZAPIError(f"Failed to submit for physical signature: {e}")
+
+
+# Singleton instance for document client
+_document_client: Optional[MRZDocumentClient] = None
+
+
+def get_document_client() -> MRZDocumentClient:
+    """
+    Get the singleton MRZ Document client instance.
+    
+    Returns:
+        MRZDocumentClient: The client instance.
+    """
+    global _document_client
+    if _document_client is None:
+        _document_client = MRZDocumentClient()
+    return _document_client

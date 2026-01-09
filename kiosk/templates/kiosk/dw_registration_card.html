@@ -28,67 +28,67 @@
         <form method="post" id="registrationForm">
         {% csrf_token %}
         
-            <h4 class="section-title">Personal Information</h4>
+            <h4 class="section-title" data-i18n="personal_information">Personal Information</h4>
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label required" for="surname">Surname</label>
+                    <label class="form-label required" for="surname" data-i18n="surname">Surname</label>
                     <input type="text" class="form-control" id="surname" name="surname" value="{{ initial.surname }}" required>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label required" for="name">First Name</label>
+                    <label class="form-label required" for="name" data-i18n="first_name">First Name</label>
                     <input type="text" class="form-control" id="name" name="name" value="{{ initial.name }}" required>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label required" for="nationality">Nationality</label>
+                    <label class="form-label required" for="nationality" data-i18n="nationality">Nationality</label>
                     <input type="text" class="form-control" id="nationality" name="nationality" value="{{ initial.nationality }}" required>
                     <input type="hidden" name="nationality_code" value="{{ initial.nationality_code }}">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label required" for="passport_number">Passport Number</label>
+                    <label class="form-label required" for="passport_number" data-i18n="passport_number">Passport Number</label>
                     <input type="text" class="form-control" id="passport_number" name="passport_number" value="{{ initial.passport_number }}" required>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label required" for="date_of_birth">Date of Birth</label>
+                    <label class="form-label required" for="date_of_birth" data-i18n="date_of_birth">Date of Birth</label>
                     <input type="date" class="form-control" id="date_of_birth" name="date_of_birth" value="{{ initial.date_of_birth }}" required>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label" for="country">Issuing Country</label>
+                    <label class="form-label" for="country" data-i18n="issuing_country">Issuing Country</label>
                     <input type="text" class="form-control" id="country" name="country" value="{{ initial.country }}">
                 </div>
             </div>
 
-            <h4 class="section-title">Additional Details</h4>
+            <h4 class="section-title" data-i18n="additional_details">Additional Details</h4>
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label" for="profession">Profession</label>
+                    <label class="form-label" for="profession" data-i18n="profession">Profession</label>
                     <input type="text" class="form-control" id="profession" name="profession" value="{{ initial.profession }}">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label" for="hometown">Hometown</label>
+                    <label class="form-label" for="hometown" data-i18n="hometown">Hometown</label>
                     <input type="text" class="form-control" id="hometown" name="hometown" value="{{ initial.hometown }}">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label" for="email">Email Address</label>
+                    <label class="form-label" for="email" data-i18n="email">Email Address</label>
                     <input type="email" class="form-control" id="email" name="email" value="{{ initial.email }}">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label" for="phone">Phone Number</label>
+                    <label class="form-label" for="phone" data-i18n="phone">Phone Number</label>
                     <input type="tel" class="form-control" id="phone" name="phone" value="{{ initial.phone }}">
                 </div>
             </div>
 
-            <h4 class="section-title">Stay Information</h4>
+            <h4 class="section-title" data-i18n="stay_information">Stay Information</h4>
             <div class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label required" for="checkin">Check-in Date</label>
+                    <label class="form-label required" for="checkin" data-i18n="checkin_date">Check-in Date</label>
                     <input type="date" class="form-control" id="checkin" name="checkin" value="{{ initial.checkin }}" required>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label" for="checkout">Check-out Date</label>
+                    <label class="form-label" for="checkout" data-i18n="checkout_date">Check-out Date</label>
                     <input type="date" class="form-control" id="checkout" name="checkout" value="{{ initial.checkout }}">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label" for="people_count">Number of Guests</label>
+                    <label class="form-label" for="people_count" data-i18n="number_of_guests">Number of Guests</label>
                     <input type="number" class="form-control" id="people_count" name="people_count" min="1" max="10" value="{{ initial.people_count|default:1 }}">
                 </div>
             </div>
