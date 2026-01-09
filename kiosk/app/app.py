@@ -372,23 +372,21 @@ def api_status():
             "extract": "/api/extract",
             "detect": "/api/detect",
             "status": "/api/status",
-            "document/update": "/api/document/update",
-            "document/sign": "/api/document/sign",
-            "document/preview": "/api/document/preview",
-            "document/submit-physical": "/api/document/submit-physical"
-        }
+            "mrz/update": "/api/mrz/update"
+        },
     })
 
 
 # ============================================================================
-# Document Management API Endpoints
+# MRZ Update API Endpoint (renamed from document/update)
 # ============================================================================
 
-@app.route("/api/document/update", methods=["POST"])
-def api_document_update():
+@app.route("/api/mrz/update", methods=["POST"])
+def api_mrz_update():
     """
-    Update document with edited guest information.
-    Receives edited information from kiosk and updates the document.
+    Update guest information after MRZ extraction.
+    This is a lightweight endpoint for processing MRZ data updates.
+    Document signing and storage are handled by the kiosk service.
     
     Request (application/json):
         {
@@ -397,31 +395,19 @@ def api_document_update():
                 "surname": "DOE",
                 "name": "JOHN",
                 "nationality": "USA",
-                "nationality_code": "USA",
                 "passport_number": "AB1234567",
-                "date_of_birth": "1990-01-15",
-                "profession": "Engineer",
-                "hometown": "New York",
-                "country": "United States",
-                "email": "john@example.com",
-                "phone": "+1234567890",
-                "checkin": "2026-01-09",
-                "checkout": "2026-01-12"
-            },
-            "accompanying_guests": [
-                {"name": "Jane Doe", "nationality": "USA", "passport": "CD9876543"}
-            ]
+                "date_of_birth": "1990-01-15"
+            }
         }
     
     Response:
         {
             "success": true,
             "session_id": "abc123",
-            "document_preview_html": "<html>...</html>",
             "timestamp": "20260109_120000"
         }
     """
-    logger.info("Document update request received")
+    logger.info("MRZ update request received")
     
     if not request.is_json:
         return jsonify({
@@ -433,7 +419,6 @@ def api_document_update():
     data = request.get_json()
     guest_data = data.get('guest_data', {})
     session_id = data.get('session_id', str(uuid.uuid4()))
-    accompanying = data.get('accompanying_guests', [])
     
     if not guest_data:
         return jsonify({
@@ -442,28 +427,18 @@ def api_document_update():
             "error_code": "MISSING_DATA"
         }), 400
     
-    # TODO: Validate guest data fields
-    # TODO: Store updated guest data in session/database
-    # TODO: Generate document preview HTML
-    
     try:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        
-        # Generate HTML preview for document
-        preview_html = _generate_document_preview_html(guest_data, accompanying)
-        
-        # TODO: Store session data in database/cache for later signing
         
         return jsonify({
             "success": True,
             "session_id": session_id,
-            "document_preview_html": preview_html,
             "timestamp": timestamp,
             "guest_data": guest_data
         })
         
     except Exception as e:
-        logger.error(f"Document update failed: {e}")
+        logger.error(f"MRZ update failed: {e}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -471,11 +446,16 @@ def api_document_update():
         }), 500
 
 
+# ============================================================================
+# Document Preview API Endpoint (for PDF generation only)
+# ============================================================================
+
 @app.route("/api/document/preview", methods=["POST"])
 def api_document_preview():
     """
     Get document preview with current data (before signing).
-    Shows the parsed document for legal review before signing.
+    Returns HTML preview for the kiosk to display.
+    NOTE: Signing and storage are handled by kiosk service.
     
     Request (application/json):
         {
@@ -502,9 +482,6 @@ def api_document_preview():
     guest_data = data.get('guest_data', {})
     session_id = data.get('session_id')
     
-    # TODO: If session_id provided, retrieve stored data
-    # TODO: Generate preview HTML with all fields for legal review
-    
     try:
         accompanying = data.get('accompanying_guests', [])
         preview_html = _generate_document_preview_html(guest_data, accompanying, for_signing=True)
@@ -521,154 +498,6 @@ def api_document_preview():
         return jsonify({
             "success": False,
             "error": str(e)
-        }), 500
-
-
-@app.route("/api/document/sign", methods=["POST"])
-def api_document_sign():
-    """
-    Sign document with SVG signature and store in database.
-    For digital signatures - stored for future reference.
-    
-    Request (application/json):
-        {
-            "session_id": "abc123",
-            "guest_data": { ... },
-            "signature_svg": "<svg>...</svg>",
-            "signature_type": "digital"
-        }
-    
-    Response:
-        {
-            "success": true,
-            "document_id": "doc_123",
-            "document_path": "/path/to/signed_document.pdf",
-            "signature_stored": true
-        }
-    """
-    logger.info("Document sign request received")
-    
-    if not request.is_json:
-        return jsonify({
-            "success": False,
-            "error": "JSON body required"
-        }), 400
-    
-    data = request.get_json()
-    session_id = data.get('session_id')
-    guest_data = data.get('guest_data', {})
-    signature_svg = data.get('signature_svg', '')
-    signature_type = data.get('signature_type', 'digital')
-    
-    if not signature_svg:
-        return jsonify({
-            "success": False,
-            "error": "signature_svg is required for digital signing",
-            "error_code": "MISSING_SIGNATURE"
-        }), 400
-    
-    # TODO: Validate SVG signature
-    # TODO: Convert SVG to image for PDF embedding
-    # TODO: Generate final PDF with signature embedded
-    # TODO: Store document in database with metadata
-    # TODO: Create database record for digital signature
-    
-    try:
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        document_id = f"doc_{session_id}_{timestamp}"
-        
-        # Save SVG signature
-        signature_path = _save_svg_signature(signature_svg, document_id)
-        
-        # TODO: Generate final signed PDF
-        # TODO: Store in database
-        
-        return jsonify({
-            "success": True,
-            "document_id": document_id,
-            "signature_path": signature_path,
-            "signature_stored": True,
-            "signature_type": signature_type,
-            "timestamp": timestamp,
-            "message": "Document signed and stored successfully"
-        })
-        
-    except Exception as e:
-        logger.error(f"Document signing failed: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "error_code": "SIGNING_FAILED"
-        }), 500
-
-
-@app.route("/api/document/submit-physical", methods=["POST"])
-def api_document_submit_physical():
-    """
-    Submit document for physical signature at front desk.
-    Creates a pending document request for front desk staff.
-    
-    Request (application/json):
-        {
-            "session_id": "abc123",
-            "guest_data": { ... },
-            "reservation_id": 123,
-            "room_number": "101"
-        }
-    
-    Response:
-        {
-            "success": true,
-            "submission_id": "sub_123",
-            "status": "pending_signature",
-            "front_desk_notified": true
-        }
-    """
-    logger.info("Physical signature submission request received")
-    
-    if not request.is_json:
-        return jsonify({
-            "success": False,
-            "error": "JSON body required"
-        }), 400
-    
-    data = request.get_json()
-    session_id = data.get('session_id')
-    guest_data = data.get('guest_data', {})
-    reservation_id = data.get('reservation_id')
-    room_number = data.get('room_number')
-    
-    # TODO: Create pending document record in database
-    # TODO: Notify front desk system (MQTT, webhook, etc.)
-    # TODO: Generate printable PDF for front desk
-    # TODO: Store submission with pending status
-    
-    try:
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        submission_id = f"sub_{session_id}_{timestamp}"
-        
-        # Generate PDF for printing
-        if service.document_filler:
-            # TODO: Generate PDF
-            pass
-        
-        # TODO: Notify front desk via MQTT
-        
-        return jsonify({
-            "success": True,
-            "submission_id": submission_id,
-            "status": "pending_signature",
-            "front_desk_notified": True,
-            "message": "Document submitted to front desk. Please proceed to complete your check-in.",
-            "timestamp": timestamp
-        })
-        
-    except Exception as e:
-        logger.error(f"Physical submission failed: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "error_code": "SUBMISSION_FAILED"
         }), 500
 
 
@@ -755,33 +584,6 @@ def _generate_document_preview_html(guest_data: dict, accompanying: list = None,
     return html
 
 
-def _save_svg_signature(svg_content: str, document_id: str) -> str:
-    """
-    Save SVG signature to file.
-    
-    Args:
-        svg_content: SVG string content
-        document_id: Document ID for filename
-    
-    Returns:
-        str: Path to saved signature file
-    """
-    # TODO: Validate SVG content
-    # TODO: Sanitize SVG for security
-    
-    signatures_dir = os.path.join(SAVED_DOCUMENTS_DIR, 'signatures')
-    os.makedirs(signatures_dir, exist_ok=True)
-    
-    filename = f"signature_{document_id}.svg"
-    filepath = os.path.join(signatures_dir, filename)
-    
-    with open(filepath, 'w') as f:
-        f.write(svg_content)
-    
-    logger.info(f"Saved SVG signature: {filepath}")
-    return filepath
-
-
 # ============================================================================
 # Test Frontend (for development/testing only - will be removed)
 # ============================================================================
@@ -809,13 +611,16 @@ if __name__ == '__main__':
     print("MRZ BACKEND MICROSERVICE")
     print("=" * 60)
     print("\n📁 Architecture:")
-    print("  This is a BACKEND-ONLY service.")
+    print("  This is a BACKEND-ONLY service for MRZ extraction.")
     print("  Camera capture is handled by the frontend (browser-based).")
+    print("  Document signing and storage handled by kiosk service.")
     print("\n📡 API Endpoints:")
     print("  GET  /health           - Health check")
     print("  GET  /api/status       - Service status")
     print("  POST /api/extract      - Extract MRZ from uploaded image")
     print("  POST /api/detect       - Detect document in image (for auto-capture)")
+    print("  POST /api/mrz/update   - Update guest info after MRZ extraction")
+    print("  POST /api/document/preview - Get document preview HTML")
     print("\n🧪 Test Frontend:")
     print("  GET  /                 - Test frontend with browser camera")
     print("\n" + "=" * 60)

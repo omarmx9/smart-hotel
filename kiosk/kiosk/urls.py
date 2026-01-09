@@ -40,11 +40,17 @@ urlpatterns = [
     # API endpoints
     path('api/save-passport-data/', views.save_passport_extraction, name='save_passport_extraction'),
     
-    # Document Management API (proxy to MRZ backend)
+    # Document Management API (kiosk handles signatures and storage)
     path('api/document/update/', views.document_update_api, name='document_update_api'),
     path('api/document/preview/', views.document_preview_api, name='document_preview_api'),
     path('api/document/sign/', views.document_sign_api, name='document_sign_api'),
     path('api/document/submit-physical/', views.document_submit_physical_api, name='document_submit_physical_api'),
+    path('api/document/list/', views.list_signed_documents_api, name='list_signed_documents_api'),
+    path('api/document/<str:document_id>/', views.get_signed_document_api, name='get_signed_document_api'),
+    
+    # Passport Image Storage API
+    path('api/passport/list/', views.list_passport_images_api, name='list_passport_images_api'),
+    path('api/passport/<str:passport_image_id>/', views.get_passport_image_api, name='get_passport_image_api'),
     
     # Guest Account API (Dashboard integration)
     path('api/guest/create/', views.create_guest_account_api, name='create_guest_account'),

@@ -1741,14 +1741,95 @@ def dw_generate_pdf(request):
 @csrf_exempt  
 def save_passport_extraction(request):
     """
-    Save extracted passport data to session for use in registration card.
+    Save extracted passport data and passport image to database.
     Called via AJAX after MRZ extraction completes.
+    
+    POST /api/save-passport-data/
+    
+    Request body (JSON):
+        {
+            "first_name": "John",
+            "last_name": "Doe",
+            "passport_number": "AB123456",
+            "date_of_birth": "1990-01-15",
+            "nationality": "USA",
+            "image_base64": "...",           # optional: passport image
+            "image_path": "/path/to/image",  # optional: image file path
+            "guest_id": 1,                   # optional
+            "reservation_id": 123            # optional
+        }
+    
+    Response:
+        {
+            "success": true,
+            "passport_image_stored": true,
+            "passport_image_id": "passport_1_20260109_120000"
+        }
     """
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
+            
+            # Save to session
             request.session['extracted_passport_data'] = data
-            return JsonResponse({'success': True})
+            
+            # Store passport image in database if provided
+            passport_image_record = None
+            guest_id = data.get('guest_id')
+            reservation_id = data.get('reservation_id')
+            image_path = data.get('image_path')
+            image_base64 = data.get('image_base64')
+            
+            # Save image file if base64 provided
+            if image_base64 and not image_path:
+                try:
+                    import base64 as b64
+                    img_dir = os.path.join(settings.BASE_DIR, 'media', 'passport_scans')
+                    os.makedirs(img_dir, exist_ok=True)
+                    
+                    timestamp = int(time.time())
+                    img_filename = f"passport_{timestamp}.jpg"
+                    image_path = os.path.join(img_dir, img_filename)
+                    
+                    # Decode and save image
+                    img_data = b64.b64decode(image_base64)
+                    with open(image_path, 'wb') as f:
+                        f.write(img_data)
+                    
+                    logger.info(f"Saved passport image: {image_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to save passport image file: {e}")
+                    image_path = None
+            
+            # Store passport image record in database
+            if image_path or image_base64:
+                mrz_data = {
+                    'first_name': data.get('first_name'),
+                    'last_name': data.get('last_name'),
+                    'passport_number': data.get('passport_number'),
+                    'date_of_birth': data.get('date_of_birth'),
+                    'nationality': data.get('nationality'),
+                    'sex': data.get('sex'),
+                    'expiry_date': data.get('expiry_date'),
+                }
+                
+                passport_image_record = db.store_passport_image(
+                    guest_id=guest_id,
+                    reservation_id=reservation_id,
+                    image_path=image_path,
+                    image_data_base64=image_base64 if not image_path else None,
+                    mrz_data=mrz_data
+                )
+                
+                logger.info(f"Stored passport image in database: {passport_image_record.get('passport_image_id')}")
+            
+            response = {'success': True}
+            if passport_image_record:
+                response['passport_image_stored'] = True
+                response['passport_image_id'] = passport_image_record.get('passport_image_id')
+                response['database_record_id'] = passport_image_record.get('id')
+            
+            return JsonResponse(response)
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
     return JsonResponse({'error': 'POST only'}, status=400)
@@ -2116,7 +2197,7 @@ def document_preview_api(request):
 def document_sign_api(request):
     """
     API endpoint to sign document digitally with SVG signature.
-    Signature is stored in database for digital records.
+    Signature and signed document are stored in kiosk database.
     
     POST /api/document/sign/
     
@@ -2124,14 +2205,17 @@ def document_sign_api(request):
         {
             "session_id": "abc123",
             "guest_data": { ... },
-            "signature_svg": "<svg>...</svg>"
+            "signature_svg": "<svg>...</svg>",
+            "guest_id": 1,           # optional
+            "reservation_id": 123    # optional
         }
     
     Response:
         {
             "success": true,
             "document_id": "doc_123",
-            "signature_stored": true
+            "signature_stored": true,
+            "stored_in_database": true
         }
     """
     if request.method != 'POST':
@@ -2142,6 +2226,8 @@ def document_sign_api(request):
         session_id = data.get('session_id')
         guest_data = data.get('guest_data')
         signature_svg = data.get('signature_svg', '')
+        guest_id = data.get('guest_id')
+        reservation_id = data.get('reservation_id')
         
         if not guest_data:
             guest_data = request.session.get('dw_registration_data', {})
@@ -2152,7 +2238,8 @@ def document_sign_api(request):
                 'error': 'signature_svg is required'
             }, status=400)
         
-        # Save signature locally as SVG
+        # Save signature locally as SVG file
+        sig_path = None
         try:
             sig_dir = os.path.join(settings.BASE_DIR, 'media', 'signatures')
             os.makedirs(sig_dir, exist_ok=True)
@@ -2163,35 +2250,30 @@ def document_sign_api(request):
             with open(sig_path, 'w', encoding='utf-8') as f:
                 f.write(signature_svg)
             
-            logger.info(f"Saved SVG signature: {sig_path}")
+            logger.info(f"Saved SVG signature file: {sig_path}")
         except Exception as e:
-            logger.warning(f"Failed to save signature locally: {e}")
-            sig_path = None
+            logger.warning(f"Failed to save signature file: {e}")
         
-        # Try MRZ backend for storage
-        document_id = None
-        if USE_MRZ_SERVICE:
-            try:
-                doc_client = get_document_client()
-                result = doc_client.sign_document_digital(
-                    session_id=session_id,
-                    guest_data=guest_data,
-                    signature_svg=signature_svg
-                )
-                document_id = result.get('document_id')
-                
-                # Update session
-                request.session['signed_document_id'] = document_id
-                guest_data['document_signed'] = True
-                guest_data['signature_stored_in_db'] = True
-                request.session['dw_registration_data'] = guest_data
-                
-                return JsonResponse(result)
-            except MRZAPIError as e:
-                logger.warning(f"MRZ sign API failed, using local: {e}")
+        # Generate PDF with signature (optional)
+        pdf_path = None
+        try:
+            result = fill_registration_card(guest_data)
+            if result.get('pdf_path'):
+                pdf_path = result.get('pdf_path')
+        except Exception as e:
+            logger.warning(f"Failed to generate PDF: {e}")
         
-        # Local fallback - generate document ID
-        document_id = f"doc_local_{session_id}_{int(time.time())}"
+        # Store signed document in kiosk database
+        document_record = db.store_signed_document(
+            guest_id=guest_id,
+            reservation_id=reservation_id,
+            guest_data=guest_data,
+            signature_svg=signature_svg,
+            signature_path=sig_path,
+            pdf_path=pdf_path
+        )
+        
+        document_id = document_record.get('document_id')
         
         # Update session
         request.session['signed_document_id'] = document_id
@@ -2199,14 +2281,19 @@ def document_sign_api(request):
         guest_data['signature_type'] = 'digital'
         guest_data['signature_format'] = 'svg'
         guest_data['document_signed'] = True
+        guest_data['signature_stored_in_db'] = True
         request.session['dw_registration_data'] = guest_data
+        
+        logger.info(f"Stored signed document in database: {document_id}")
         
         return JsonResponse({
             'success': True,
             'document_id': document_id,
             'signature_path': sig_path,
+            'pdf_path': pdf_path,
             'signature_stored': True,
-            'storage': 'local'
+            'stored_in_database': True,
+            'database_record_id': document_record.get('id')
         })
         
     except json.JSONDecodeError:
@@ -2490,4 +2577,215 @@ def deactivate_guest_account_api(request):
         return JsonResponse({
             'success': False,
             'error': f'Internal error: {str(e)}'
+        }, status=500)
+
+
+# ============================================================================
+# DOCUMENT AND PASSPORT IMAGE RETRIEVAL API
+# ============================================================================
+
+def list_signed_documents_api(request):
+    """
+    List signed documents, optionally filtered by guest or reservation.
+    
+    GET /api/document/list/?guest_id=1&reservation_id=123
+    
+    Response:
+        {
+            "success": true,
+            "documents": [
+                {
+                    "document_id": "doc_1_20260109_120000",
+                    "guest_id": 1,
+                    "reservation_id": 123,
+                    "signed_at": "20260109_120000",
+                    "status": "signed"
+                }
+            ]
+        }
+    """
+    try:
+        guest_id = request.GET.get('guest_id')
+        reservation_id = request.GET.get('reservation_id')
+        
+        if reservation_id:
+            documents = db.get_signed_documents_by_reservation(int(reservation_id))
+        elif guest_id:
+            documents = db.get_signed_documents_by_guest(int(guest_id))
+        else:
+            # Return all documents (for admin purposes)
+            documents = list(db.signed_documents.values())
+        
+        # Remove large fields for listing
+        doc_list = []
+        for doc in documents:
+            doc_list.append({
+                'id': doc.get('id'),
+                'document_id': doc.get('document_id'),
+                'guest_id': doc.get('guest_id'),
+                'reservation_id': doc.get('reservation_id'),
+                'signed_at': doc.get('signed_at'),
+                'status': doc.get('status'),
+                'signature_type': doc.get('signature_type'),
+                'has_pdf': bool(doc.get('pdf_path')),
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'documents': doc_list,
+            'count': len(doc_list)
+        })
+        
+    except Exception as e:
+        logger.error(f"List signed documents API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+def get_signed_document_api(request, document_id):
+    """
+    Get a specific signed document by document_id.
+    
+    GET /api/document/<document_id>/
+    
+    Response:
+        {
+            "success": true,
+            "document": {
+                "document_id": "doc_1_20260109_120000",
+                "guest_id": 1,
+                "guest_data": { ... },
+                "signature_svg": "<svg>...</svg>",
+                "signed_at": "20260109_120000"
+            }
+        }
+    """
+    try:
+        document = db.get_signed_document_by_document_id(document_id)
+        
+        if not document:
+            return JsonResponse({
+                'success': False,
+                'error': 'Document not found'
+            }, status=404)
+        
+        return JsonResponse({
+            'success': True,
+            'document': document
+        })
+        
+    except Exception as e:
+        logger.error(f"Get signed document API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+def list_passport_images_api(request):
+    """
+    List passport images, optionally filtered by guest or reservation.
+    
+    GET /api/passport/list/?guest_id=1&reservation_id=123
+    
+    Response:
+        {
+            "success": true,
+            "passport_images": [
+                {
+                    "passport_image_id": "passport_1_20260109_120000",
+                    "guest_id": 1,
+                    "reservation_id": 123,
+                    "captured_at": "20260109_120000"
+                }
+            ]
+        }
+    """
+    try:
+        guest_id = request.GET.get('guest_id')
+        reservation_id = request.GET.get('reservation_id')
+        
+        if reservation_id:
+            images = db.get_passport_images_by_reservation(int(reservation_id))
+        elif guest_id:
+            images = db.get_passport_images_by_guest(int(guest_id))
+        else:
+            # Return all images (for admin purposes)
+            images = list(db.passport_images.values())
+        
+        # Remove large fields for listing
+        img_list = []
+        for img in images:
+            img_list.append({
+                'id': img.get('id'),
+                'passport_image_id': img.get('passport_image_id'),
+                'guest_id': img.get('guest_id'),
+                'reservation_id': img.get('reservation_id'),
+                'captured_at': img.get('captured_at'),
+                'status': img.get('status'),
+                'has_mrz_data': bool(img.get('mrz_data')),
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'passport_images': img_list,
+            'count': len(img_list)
+        })
+        
+    except Exception as e:
+        logger.error(f"List passport images API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+def get_passport_image_api(request, passport_image_id):
+    """
+    Get a specific passport image by passport_image_id.
+    
+    GET /api/passport/<passport_image_id>/
+    
+    Response:
+        {
+            "success": true,
+            "passport_image": {
+                "passport_image_id": "passport_1_20260109_120000",
+                "guest_id": 1,
+                "image_path": "/path/to/image.jpg",
+                "mrz_data": { ... },
+                "captured_at": "20260109_120000"
+            }
+        }
+    """
+    try:
+        # Search by passport_image_id
+        passport_image = None
+        for img in db.passport_images.values():
+            if img.get('passport_image_id') == passport_image_id:
+                passport_image = img
+                break
+        
+        if not passport_image:
+            return JsonResponse({
+                'success': False,
+                'error': 'Passport image not found'
+            }, status=404)
+        
+        # Remove base64 data for response (can be large)
+        response_data = dict(passport_image)
+        response_data.pop('image_data_base64', None)
+        
+        return JsonResponse({
+            'success': True,
+            'passport_image': response_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Get passport image API error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
         }, status=500)

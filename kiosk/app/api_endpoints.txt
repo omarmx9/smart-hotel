@@ -1,0 +1,139 @@
+Smart Hotel API Endpoints Documentation
+========================================
+Last Updated: 2026-01-09
+
+================================================================================
+MRZ BACKEND SERVICE (Flask - Port 5000)
+================================================================================
+Pure API service for MRZ extraction from uploaded images.
+Document signing and storage are handled by the Kiosk service.
+
+1. /health [GET]
+   - Health check endpoint for service discovery and load balancers.
+   - Returns: service status, version, and capabilities.
+
+2. /api/extract [POST]
+   - Extract MRZ data from an uploaded image.
+   - Accepts: multipart/form-data (image file) or JSON (base64 image).
+   - Returns: extracted MRZ fields, image path, and timestamp.
+
+3. /api/detect [POST]
+   - Detect if a document is present in the image (for auto-capture).
+   - Accepts: JSON (base64 image) or multipart/form-data (image file).
+   - Returns: detection status, confidence, and readiness for capture.
+
+4. /api/status [GET]
+   - Get service status and capabilities.
+   - Returns: service info, document filler availability, and endpoint list.
+
+5. /api/mrz/update [POST]
+   - Update guest information after MRZ extraction.
+   - Accepts: JSON with session_id and guest_data.
+   - Returns: session_id, timestamp, and updated guest_data.
+
+6. /api/document/preview [POST]
+   - Get document preview HTML with current data.
+   - Accepts: JSON with guest_data and optional session_id.
+   - Returns: preview HTML for display in kiosk.
+
+
+================================================================================
+KIOSK SERVICE (Django - Port 8000)
+================================================================================
+Main kiosk application handling user interface, signature capture,
+document signing, and database storage.
+
+DOCUMENT MANAGEMENT API
+-----------------------
+7. /api/document/update/ [POST]
+   - Update guest information and generate preview.
+   - Accepts: JSON with session_id, guest_data, accompanying_guests.
+   - Returns: session_id, document_preview_html, timestamp.
+
+8. /api/document/preview/ [POST]
+   - Get document preview for legal review before signing.
+   - Accepts: JSON with session_id and/or guest_data.
+   - Returns: preview_html, fields.
+
+9. /api/document/sign/ [POST]
+   - Sign document digitally with SVG signature.
+   - Signature and document stored in kiosk database.
+   - Accepts: JSON with session_id, guest_data, signature_svg, guest_id, reservation_id.
+   - Returns: document_id, signature_path, pdf_path, stored_in_database=true.
+
+10. /api/document/submit-physical/ [POST]
+    - Submit document for physical signature at front desk.
+    - Creates pending document request for front desk staff.
+    - Accepts: JSON with session_id, guest_data, reservation_id, room_number.
+    - Returns: submission_id, status, front_desk_notified.
+
+11. /api/document/list/ [GET]
+    - List signed documents, optionally filtered.
+    - Query params: guest_id, reservation_id (optional).
+    - Returns: list of documents with metadata.
+
+12. /api/document/<document_id>/ [GET]
+    - Get a specific signed document by document_id.
+    - Returns: full document record including guest_data and signature_svg.
+
+
+PASSPORT IMAGE STORAGE API
+--------------------------
+13. /api/save-passport-data/ [POST]
+    - Save extracted passport data and image to database.
+    - Accepts: JSON with MRZ fields, image_base64 or image_path, guest_id, reservation_id.
+    - Returns: passport_image_stored, passport_image_id.
+
+14. /api/passport/list/ [GET]
+    - List passport images, optionally filtered.
+    - Query params: guest_id, reservation_id (optional).
+    - Returns: list of passport images with metadata.
+
+15. /api/passport/<passport_image_id>/ [GET]
+    - Get a specific passport image by passport_image_id.
+    - Returns: passport image record including mrz_data and image_path.
+
+
+MRZ SERVICE PROXY API
+---------------------
+16. /api/mrz/detect/ [POST]
+    - Proxy document detection request to MRZ backend.
+    - Used for auto-capture with browser camera.
+
+17. /api/mrz/extract/ [POST]
+    - Proxy MRZ extraction request to MRZ backend.
+    - Used for browser-based passport scanning.
+
+18. /api/mrz/health/ [GET]
+    - Check if MRZ microservice is healthy.
+
+
+GUEST ACCOUNT API (Dashboard Integration)
+-----------------------------------------
+19. /api/guest/create/ [POST]
+    - Create a guest account in the Dashboard for room access.
+    - Accepts: JSON with first_name, last_name, email, room_number, checkout_date.
+    - Returns: username, password, room_number.
+
+20. /api/guest/deactivate/ [POST]
+    - Deactivate a guest account on checkout.
+    - Accepts: JSON with username.
+    - Returns: success message.
+
+
+RFID CARD API
+-------------
+21. /api/rfid/revoke/ [POST]
+    - Revoke/deactivate an RFID card.
+
+
+================================================================================
+ARCHITECTURE NOTES
+================================================================================
+- MRZ Backend: Handles MRZ extraction and document preview generation only.
+- Kiosk Service: Handles all user interaction, signature capture, and database
+  storage for signed documents and passport images.
+- Signatures are stored as SVG files in media/signatures/.
+- Passport images are stored in media/passport_scans/.
+- Database records stored in kiosk emulator (in-memory for demo, replace with
+  proper database in production).
