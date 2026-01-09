@@ -798,3 +798,48 @@ class GuestDeactivateAPIView(KioskAPITokenMixin, View):
         except Room.DoesNotExist:
             return JsonResponse({'error': f'Room {room_number} not found'}, status=404)
 
+
+# ============================================================================
+# ACCESS LOG API
+# ============================================================================
+
+class AccessLogListAPIView(LoginRequiredMixin, AdminOrMonitorRequiredMixin, View):
+    """API to list all access logs for admin/monitor users"""
+    
+    def get(self, request):
+        from rooms.models import AccessLog
+        
+        limit = int(request.GET.get('limit', 50))
+        logs = AccessLog.get_recent_logs(limit=limit)
+        
+        return JsonResponse({
+            'success': True,
+            'access_logs': [log.to_dict() for log in logs],
+            'count': len(logs)
+        })
+
+
+class RoomAccessLogAPIView(LoginRequiredMixin, View):
+    """API to list access logs for a specific room"""
+    
+    def get(self, request, room_id):
+        from rooms.models import AccessLog
+        
+        user = request.user
+        room = get_object_or_404(Room, pk=room_id)
+        
+        # Check access permission
+        accessible_rooms = user.get_accessible_rooms()
+        if room not in accessible_rooms:
+            return JsonResponse({'error': 'Access denied'}, status=403)
+        
+        limit = int(request.GET.get('limit', 50))
+        logs = AccessLog.get_recent_logs(room=room, limit=limit)
+        
+        return JsonResponse({
+            'success': True,
+            'room_number': room.room_number,
+            'access_logs': [log.to_dict() for log in logs],
+            'count': len(logs)
+        })
+

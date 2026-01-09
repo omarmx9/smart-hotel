@@ -24,4 +24,7 @@ urlpatterns = [
     # Kiosk Integration API (for guest account creation/deactivation)
     path('api/guests/create/', views.GuestCreateAPIView.as_view(), name='api_guest_create'),
     path('api/guests/deactivate/', views.GuestDeactivateAPIView.as_view(), name='api_guest_deactivate'),
+    # Access Log API
+    path('api/access-logs/', views.AccessLogListAPIView.as_view(), name='api_access_logs'),
+    path('api/room/<int:room_id>/access-logs/', views.RoomAccessLogAPIView.as_view(), name='api_room_access_logs'),
 ]

@@ -41,6 +41,40 @@
     .room-badge.occupied { background-color: rgba(66, 133, 244, 0.15); color: var(--color-accent-blue); }
     .room-badge.vacant { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
     .room-badge.maintenance { background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange); }
+    
+    /* Sensor and Door Status Badges */
+    .sensor-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .sensor-status.online { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .sensor-status.offline { background-color: rgba(234, 67, 53, 0.15); color: var(--color-accent-red); }
+    
+    .door-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .door-status.open { background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange); }
+    .door-status.closed { background-color: rgba(66, 133, 244, 0.15); color: var(--color-accent-blue); }
+    
+    .status-badges {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-left: 12px;
+    }
 
     .dashboard-grid {
         display: grid;
@@ -204,6 +238,73 @@
 
     .chart-wrapper {
         height: 300px;
+    }
+    
+    /* Access Logs Card */
+    .access-logs-card {
+        grid-column: span 12;
+    }
+    
+    .access-logs-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .access-logs-table th,
+    .access-logs-table td {
+        padding: 12px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--color-border);
+    }
+    
+    .access-logs-table th {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        background-color: var(--color-bg-elevated);
+    }
+    
+    .access-logs-table td {
+        font-size: 13px;
+        color: var(--color-text-secondary);
+    }
+    
+    .access-logs-table tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .access-result {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .access-result.granted { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .access-result.denied { background-color: rgba(234, 67, 53, 0.15); color: var(--color-accent-red); }
+    
+    .door-opened-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .door-opened-badge.yes { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .door-opened-badge.no { background-color: rgba(100, 100, 100, 0.15); color: var(--color-text-muted); }
+    
+    .no-logs-message {
+        text-align: center;
+        padding: 32px;
+        color: var(--color-text-muted);
+        font-size: 13px;
     }
 
     .no-control-notice {
@@ -413,6 +514,24 @@
     <div class="room-title">
         <h1 class="header-title">Room {{ room.room_number }}</h1>
         <span class="room-badge {{ room.status }}">{{ room.get_status_display }}</span>
+        <div class="status-badges">
+            <span class="sensor-status {% if room.is_sensor_online %}online{% else %}offline{% endif %}" id="sensor-status">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
+                </svg>
+                {% if room.is_sensor_online %}Online{% else %}Offline{% endif %}
+            </span>
+            <span class="door-status {% if room.door_open %}open{% else %}closed{% endif %}" id="door-status">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                    {% if room.door_open %}
+                    <path d="M3 21h18M6 3v18l12-3V6L6 3z"/><circle cx="14" cy="12" r="1" fill="currentColor"/>
+                    {% else %}
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M9 3v18"/><circle cx="6" cy="12" r="1" fill="currentColor"/>
+                    {% endif %}
+                </svg>
+                {% if room.door_open %}Open{% else %}Closed{% endif %}
+            </span>
+        </div>
     </div>
 </div>
 
@@ -659,6 +778,34 @@
             </div>
         </div>
     </div>
+    
+    <!-- Access Logs Card -->
+    <div class="card access-logs-card">
+        <div class="card-header">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+                Access Logs
+            </div>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <table class="access-logs-table" id="access-logs-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Name</th>
+                        <th>Confidence</th>
+                        <th>Result</th>
+                        <th>Door</th>
+                    </tr>
+                </thead>
+                <tbody id="access-logs-body">
+                    <tr>
+                        <td colspan="5" class="no-logs-message">Loading access logs...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endif %}
 {% endblock %}
@@ -815,6 +962,41 @@
             chart.data.datasets[0].data = data.history.map(h => h.temperature);
             chart.data.datasets[1].data = data.history.map(h => h.humidity);
             chart.update('none');
+        }
+        
+        // Update sensor status
+        const sensorStatus = document.getElementById('sensor-status');
+        if (sensorStatus && data.sensor_online !== undefined) {
+            const isOnline = data.sensor_online;
+            sensorStatus.className = 'sensor-status ' + (isOnline ? 'online' : 'offline');
+            sensorStatus.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
+                </svg>
+                ${isOnline ? 'Online' : 'Offline'}
+            `;
+        }
+        
+        // Update door status
+        const doorStatus = document.getElementById('door-status');
+        if (doorStatus && data.door_open !== undefined) {
+            const isOpen = data.door_open;
+            doorStatus.className = 'door-status ' + (isOpen ? 'open' : 'closed');
+            if (isOpen) {
+                doorStatus.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                        <path d="M3 21h18M6 3v18l12-3V6L6 3z"/><circle cx="14" cy="12" r="1" fill="currentColor"/>
+                    </svg>
+                    Open
+                `;
+            } else {
+                doorStatus.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M9 3v18"/><circle cx="6" cy="12" r="1" fill="currentColor"/>
+                    </svg>
+                    Closed
+                `;
+            }
         }
     }
 
@@ -1022,5 +1204,58 @@
             .then(updateUI)
             .catch(() => {});
     }, 5000);
+    
+    // Access Logs functions
+    function formatTimestamp(isoString) {
+        const date = new Date(isoString);
+        return date.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+    
+    function renderAccessLogs(logs) {
+        const tbody = document.getElementById('access-logs-body');
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="no-logs-message">No access logs found</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = logs.map(log => `
+            <tr>
+                <td>${formatTimestamp(log.timestamp)}</td>
+                <td>${log.name || 'Unknown'}</td>
+                <td>${log.confidence !== null ? (log.confidence * 100).toFixed(1) + '%' : 'N/A'}</td>
+                <td><span class="access-result ${log.result === 'success' ? 'granted' : 'denied'}">${log.result === 'success' ? '✓ Granted' : '✕ Denied'}</span></td>
+                <td><span class="door-opened-badge ${log.door_opened ? 'yes' : 'no'}">${log.door_opened ? 'Opened' : 'Not Opened'}</span></td>
+            </tr>
+        `).join('');
+    }
+    
+    function fetchAccessLogs() {
+        fetch(`/api/room/${roomId}/access-logs/`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.access_logs) {
+                    renderAccessLogs(data.access_logs);
+                } else if (data.results) {
+                    renderAccessLogs(data.results);
+                } else if (Array.isArray(data)) {
+                    renderAccessLogs(data);
+                }
+            })
+            .catch(err => {
+                console.error('Failed to fetch access logs:', err);
+                document.getElementById('access-logs-body').innerHTML = 
+                    '<tr><td colspan="5" class="no-logs-message">Failed to load access logs</td></tr>';
+            });
+    }
+    
+    // Fetch access logs on page load and every 10 seconds
+    fetchAccessLogs();
+    setInterval(fetchAccessLogs, 10000);
 </script>
 {% endblock %}

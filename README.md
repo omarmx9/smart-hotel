@@ -30,7 +30,7 @@ Smart Hotel is a full-stack IoT solution for modern hotel management. The system
 ### Key Features
 
 | Feature | Description |
-|---------|-------------|
+| -------- | ------------- |
 | **Real-time Monitoring** | Temperature, humidity, luminosity, and gas sensors per room |
 | **Climate Control** | Remote temperature and lighting management |
 | **Self Check-in Kiosk** | Passport scanning with MRZ extraction |
@@ -113,7 +113,7 @@ flowchart TB
 ### Data Flow Summary
 
 | Flow | Path | Protocol |
-|------|------|----------|
+| ------ | ------ | ---------- |
 | Sensor → Cloud | ESP32 → Mosquitto → Telegraf → InfluxDB | MQTT |
 | Cloud → Actuator | Dashboard → Mosquitto → ESP32 | MQTT |
 | User Authentication | Browser → Dashboard (Django) | HTTP |
@@ -125,7 +125,7 @@ flowchart TB
 ## Components
 
 | Component | Description | Status | Documentation |
-|-----------|-------------|--------|---------------|
+| ----------- | ------------- | -------- | --------------- |
 | **Cloud Infrastructure** | Docker Compose stack with all backend services | ✅ Production | [cloud/README.md](cloud/README.md) |
 | **Dashboard** | Django-based management interface | ✅ Production | [dashboards/README.md](dashboards/README.md) |
 | **Guest Kiosk** | Self-service check-in system | ✅ Production | [kiosk/README.md](kiosk/README.md) |
@@ -161,6 +161,7 @@ docker compose ps
 ```
 
 The setup wizard will:
+
 - Detect and resolve port conflicts (remap to available ports)
 - Configure external URLs for your server
 - Set up optional MQTT authentication and TLS
@@ -169,6 +170,7 @@ The setup wizard will:
 ### Initial Setup
 
 After starting, all core services are pre-configured:
+
 - **Dashboard**: Admin user created (admin/SmartHotel2026!)
 - **InfluxDB**: Pre-configured with sensor buckets and retention policies
 - **Grafana**: Connected to InfluxDB with default dashboards
@@ -176,7 +178,7 @@ After starting, all core services are pre-configured:
 ### Default Credentials
 
 | Service | Username | Password |
-|---------|----------|----------|
+| -------- | ---------- | ---------- |
 | **Dashboard Admin** | `admin` | `SmartHotel2026!` |
 | **Grafana** | `admin` | See `.env` |
 | **InfluxDB** | `admin` | See `.env` |
@@ -186,12 +188,12 @@ After starting, all core services are pre-configured:
 ### Access Points
 
 | Service | URL | Credentials |
-|---------|-----|-------------|
-| **Staff Dashboard** | http://localhost:8001 | admin / SmartHotel2026! |
-| **Guest Kiosk** | http://localhost:8002 | (no auth) |
-| **Grafana** | http://localhost:3000 | From `.env` |
-| **InfluxDB** | http://localhost:8086 | From `.env` |
-| **Node-RED** | http://localhost:1880/api/health | Headless (no UI) |
+| -------- | ----- | ------------- |
+| **Staff Dashboard** | <http://localhost:8001> | admin / SmartHotel2026! |
+| **Guest Kiosk** | <http://localhost:8002> | (no auth) |
+| **Grafana** | <http://localhost:3000> | From `.env` |
+| **InfluxDB** | <http://localhost:8086> | From `.env` |
+| **Node-RED** | <http://localhost:1880/api/health> | Headless (no UI) |
 
 ### Development Mode
 
@@ -202,29 +204,35 @@ docker compose -f docker-compose.yml -f docker-compose-dev.yml up --build -d
 ```
 
 This exposes:
-- MRZ Test Frontend at http://localhost:5000
+
+- MRZ Test Frontend at <http://localhost:5000>
 - Django/Flask debug modes enabled
 - Hot reload for code changes
 
 ## Screenshots
 
 ### Admin Dashboard
+
 ![Admin Dashboard](images/dashboard-admin.png)
 *Full room overview with real-time sensor data and control options*
 
 ### Guest Management
+
 ![Guest Management](images/dashboard-admin-management.png)
 *Generate temporary guest accounts and manage access*
 
 ### Monitor View
+
 ![Monitor View](images/dashboard-monitor.png)
 *View-only access for monitoring staff*
 
 ### Guest Dashboard
+
 ![Guest Dashboard](images/dashboard-guest.png)
 *Limited access for guests to control their assigned room*
 
 ### Login Page
+
 ![Login Page](images/dashboard-login.png)
 *Secure role-based authentication*
 
@@ -233,26 +241,31 @@ This exposes:
 Detailed documentation for each component:
 
 ### Cloud Infrastructure
+
 Complete Docker Compose orchestration with InfluxDB, Grafana, Mosquitto, PostgreSQL, and all application services.
 
 📖 **[Cloud Documentation](cloud/README.md)** - Architecture, configuration, networking, volumes, troubleshooting
 
 ### Staff Dashboard
+
 Django-based management interface with real-time WebSocket updates, MQTT integration, and role-based access control.
 
 📖 **[Dashboard Documentation](dashboards/django_app/README.md)** - Features, API reference, WebSocket endpoints, deployment
 
 ### Guest Kiosk
+
 Self-service check-in system with passport scanning, multi-language support, and document generation.
 
 📖 **[Kiosk Documentation](kiosk/README.md)** - Guest flow, i18n, theming, MRZ integration
 
 ### MRZ Automation AI
+
 Production-ready passport scanning with layered architecture for capture, correction, extraction, and document filling.
 
 📖 **[MRZ Documentation](kiosk/app/README.md)** - Pipeline architecture, API, configuration, debugging
 
 ### ESP32-CAM AI Pipeline
+
 End-to-end facial recognition pipeline: model training, quantization, deployment, and ESP32-CAM firmware integration.
 
 📖 **[ESP32-CAM AI Pipeline](esp32-cam/AI/README.md)** - Model training, quantization, deployment, and technical deep dive
@@ -264,12 +277,13 @@ End-to-end facial recognition pipeline: model training, quantization, deployment
 The sensor nodes use ESP32-S modules running FreeRTOS firmware with:
 
 | Sensor | Model | Function |
-|--------|-------|----------|
+| -------- | ------- | ---------- |
 | **Temperature/Humidity** | DHT22 | Climate monitoring |
 | **Luminosity** | LDR (photoresistor) | Ambient light detection |
 | **Gas Detection** | MQ-5 | Combustible gas monitoring |
 
 **Features:**
+
 - Real-time MQTT publishing to cloud backend
 - Remote control via MQTT subscriptions
 - Automatic WiFi reconnection
@@ -285,6 +299,7 @@ PCB designs available in the [hardware/ESP-32S PCB](hardware/ESP-32S%20PCB) dire
 ✅ **Production Ready** - On-device face recognition with MQTT cloud integration.
 
 Capabilities:
+
 - **TensorFlow Lite Micro** for on-device inference (~80-100ms)
 - **MobileNetV2** model (96x96 input, configurable classes)
 - **Real-time MQTT publishing** of recognition events
@@ -323,7 +338,7 @@ python app.py
 
 ### Project Structure
 
-```
+```text
 smart-hotel/
 ├── README.md                 # This file
 ├── Dockerfile                # Base container image
@@ -344,4 +359,3 @@ smart-hotel/
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-

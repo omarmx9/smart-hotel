@@ -31,6 +31,7 @@ Built with Django and modern web technologies, the kiosk provides a touch-friend
 ## Features
 
 ### Passport Scanning & MRZ Extraction
+
 - **Browser-based camera capture** - No hardware drivers required
 - **Real-time document detection** - Visual feedback for positioning
 - **Manual capture with automatic extraction** - Guests press a `Capture` button to take a high-quality frame; MRZ parsing is then performed via the microservice. An `Enter Manually` option is also available to type passport details when scanning is not possible.
@@ -38,6 +39,7 @@ Built with Django and modern web technologies, the kiosk provides a touch-friend
 - **Multi-document support** - TD1, TD2, TD3 formats (passports, ID cards)
 
 ### Guest Check-in Flow
+
 - **Multi-language support** - English, German, Polish, Ukrainian, Russian
 - **Automatic form population** - MRZ data fills registration fields
 - **Digital signatures** - Touch-enabled signature capture
@@ -45,12 +47,14 @@ Built with Django and modern web technologies, the kiosk provides a touch-friend
 - **Reservation lookup** - Find booking by number or guest details
 
 ### Access Methods
+
 - **Keycard encoding** - Traditional magnetic/RFID keycards
 - **Facial recognition** - Camera-based enrollment for room access
 - **PIN codes** - Backup access method
 - **Multi-person support** - Register multiple guests per room
 
 ### Professional Theming
+
 - **Seasonal themes** - Winter holiday theme with CSS decorations
 - **Responsive design** - Optimized for kiosk displays (1080p+)
 - **Accessibility** - High contrast, large touch targets
@@ -106,7 +110,7 @@ flowchart TB
 ### Component Responsibilities
 
 | Component | Purpose |
-|-----------|---------|
+| ----------- | --------- |
 | **Kiosk (Django)** | Guest-facing web interface, session management, business logic |
 | **MRZ Backend (Flask)** | Passport image processing, OCR, document generation |
 | **Emulator Module** | In-memory/SQLite data store for demo mode |
@@ -163,13 +167,17 @@ flowchart TD
 ```
 
 ### Step 1: Advertisement & Language Selection
+
 Guest approaches the kiosk and sees a welcome screen. They select their preferred language from 5 options: English, German, Polish, Ukrainian, or Russian.
 
 ### Step 2: Check-in Start
+
 Guest chooses to begin the check-in process. Clear instructions guide them through each step.
 
 ### Step 3: Passport Scanning
+
 The kiosk activates the camera for passport scanning:
+
 - Real-time preview shows camera feed
 - Green overlay indicates document detection
 - Guest holds passport steady and presses **Capture** when positioned correctly
@@ -177,29 +185,38 @@ The kiosk activates the camera for passport scanning:
 - **Access method selection** (Keycard, Face ID, or both) happens during this step
 
 ### Step 4: Information Verification
+
 Extracted passport data is displayed for verification:
+
 - First name, last name, date of birth
 - Passport number and nationality
 - Guest can edit any incorrect fields
 - System looks up reservation by passport details
 
 ### Step 5: Walk-in or Reservation Found
+
 - **Reservation Found**: Proceeds directly to document signing
 - **Walk-in (No Reservation)**: Guest creates a new reservation with dates and room preferences
 
 ### Step 6: Document Signing
+
 Guest signs the registration document:
+
 - Digital signature via touch canvas
 - Room is automatically assigned
 - RFID keycard token is generated (if keycard selected)
 
 ### Step 7: Face Enrollment (Optional)
+
 If guest selected Face ID access:
+
 - Camera captures face images
 - Images are enrolled for room access
 
 ### Step 8: Finalization
+
 Check-in completes with:
+
 - Room number and keycard details displayed
 - Welcome information
 - Option to report lost/stolen card
@@ -250,7 +267,7 @@ docker compose -f docker-compose-dev.yml up kiosk mrz-backend
 ### Environment Variables
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| ----------- | ------------- | --------- |
 | `DEBUG` | Django debug mode | `0` |
 | `SECRET_KEY` | Django secret key | `replace-me-in-production` |
 | `ALLOWED_HOSTS` | Allowed hostnames | `*` |
@@ -275,7 +292,7 @@ FILLED_DOCS_DIR = os.path.join(MEDIA_ROOT, 'filled_documents')
 ### Passport Processing
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/upload-scan/` | POST | Upload passport image for MRZ extraction |
 | `/extract/status/<task_id>/` | GET | Check extraction task status |
 | `/api/save-passport-data/` | POST | Save verified passport data |
@@ -283,7 +300,7 @@ FILLED_DOCS_DIR = os.path.join(MEDIA_ROOT, 'filled_documents')
 ### MRZ Proxy Endpoints
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/api/mrz/detect/` | POST | Detect document in image |
 | `/api/mrz/extract/` | POST | Extract MRZ from image |
 | `/api/mrz/health/` | GET | MRZ service health check |
@@ -291,7 +308,7 @@ FILLED_DOCS_DIR = os.path.join(MEDIA_ROOT, 'filled_documents')
 ### Registration Flow
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/verify/` | POST | Submit verified guest information |
 | `/dw-registration/` | GET | Display registration card form |
 | `/dw-registration/sign/` | POST | Submit signed registration |
@@ -300,7 +317,7 @@ FILLED_DOCS_DIR = os.path.join(MEDIA_ROOT, 'filled_documents')
 ### Access Management
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/choose-access/<res_id>/` | GET | Access method selection |
 | `/enroll-face/<res_id>/` | GET | Facial recognition enrollment |
 | `/face-capture/<res_id>/` | POST | Capture face images |
@@ -309,7 +326,7 @@ FILLED_DOCS_DIR = os.path.join(MEDIA_ROOT, 'filled_documents')
 
 ## Project Structure
 
-```
+```text
 kiosk/
 ├── manage.py                   # Django management script
 ├── requirements.txt            # Python dependencies
@@ -365,7 +382,7 @@ kiosk/
 The kiosk supports 5 languages with client-side translation:
 
 | Language | Code | Flag |
-|----------|------|------|
+| ----------- | ------ | ------ |
 | English | `en` | 🇬🇧 |
 | German | `de` | 🇩🇪 |
 | Polish | `pl` | 🇵🇱 |
@@ -389,6 +406,7 @@ Language selection persists in browser session storage.
 ### Current Theme: Winter Holiday 🎄
 
 The kiosk features a professional winter holiday theme with:
+
 - Animated snowfall (CSS-only, no JavaScript)
 - Frosted glass card effects
 - Winter color palette (deep blue, evergreen, gold accents)
@@ -410,6 +428,7 @@ Themes are controlled via CSS files in `static/css/`:
 ```
 
 To create a new theme:
+
 1. Copy `christmas-theme.css` as template
 2. Modify CSS variables for your colors
 3. Update decorative elements (snowfall, trees, etc.)

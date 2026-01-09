@@ -63,9 +63,19 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe("hotel/kiosk/+/status")
         client.subscribe("hotel/kiosk/+/heartbeat")
         
+        # Subscribe to door control events from ESP32-CAM
+        # Topic: hotel/<room_id>/door/open
+        client.subscribe("hotel/+/door/open")
+        client.subscribe("hotel/+/door/close")
+        
+        # Subscribe to access log events (JSON format)
+        # Topic: hotel/<room_id>/access/log
+        client.subscribe("hotel/+/access/log")
+        
         logger.info("[MQTT] Subscribed to JSON telemetry topic (hotel/+/telemetry/json)")
         logger.info("[MQTT] Subscribed to legacy telemetry topics (backward compatibility)")
         logger.info("[MQTT] Subscribed to ESP32-CAM face recognition topics")
+        logger.info("[MQTT] Subscribed to door control and access log topics")
     else:
         logger.error(f"[MQTT] Connection failed with code {rc}")
         mqtt_connected = False
@@ -81,6 +91,26 @@ def on_message(client, userdata, msg):
     """Handle incoming MQTT messages and update room data"""
     try:
         topic_parts = msg.topic.split('/')
+        
+        # Handle door control events
+        # Topic structure: hotel/<room_id>/door/<action>
+        if (len(topic_parts) >= 4 and 
+            topic_parts[0] == 'hotel' and 
+            topic_parts[2] == 'door'):
+            room_number = topic_parts[1]
+            action = topic_parts[3]
+            handle_door_control(room_number, action, msg.payload.decode())
+            return
+        
+        # Handle access log events (JSON format)
+        # Topic: hotel/<room_id>/access/log
+        if (len(topic_parts) >= 4 and 
+            topic_parts[0] == 'hotel' and 
+            topic_parts[2] == 'access' and
+            topic_parts[3] == 'log'):
+            room_number = topic_parts[1]
+            handle_access_log(room_number, msg.payload.decode())
+            return
         
         # Handle ESP32-CAM face recognition topic
         # Topic structure: hotel/kiosk/<room_id>/FaceRecognition/Authentication
@@ -139,6 +169,9 @@ def on_message(client, userdata, msg):
             except Room.DoesNotExist:
                 logger.warning(f"[MQTT] Room {room_number} not found")
                 return
+            
+            # Update sensor timestamp for online/offline detection
+            room.update_sensor_timestamp()
             
             # Update sensor value
             if sensor_type == 'temperature':
@@ -254,6 +287,9 @@ def handle_json_telemetry(room_number, payload):
         sensors = data.get('sensors', {})
         state = data.get('state', {})
         
+        # Update sensor timestamp for online/offline detection
+        room.update_sensor_timestamp()
+        
         # Update sensor values
         if 'temperature' in sensors:
             room.temperature = float(sensors['temperature'])
@@ -341,13 +377,23 @@ def handle_face_recognition_auth(room_id, payload):
         
         logger.info(f"[FaceRecog] Room {room_id}: {name} - {result} ({confidence*100:.1f}%)")
         
-        # Store recognition event
+        # Store recognition event and create access log
         store_face_recognition_event(room_id, name, confidence, result)
         
         # Handle different results
         if result == 'success':
-            # Guest authenticated successfully - could trigger room unlock
+            # Guest authenticated successfully - trigger room unlock for 5 seconds
             logger.info(f"[FaceRecog] Guest '{name}' authenticated for room {room_id}")
+            
+            # Open door for 5 seconds
+            try:
+                from rooms.models import Room
+                room = Room.objects.get(room_number=room_id)
+                room.open_door(duration_seconds=5)
+                logger.info(f"[FaceRecog] Door opened for {name} at room {room_id}")
+            except Exception as e:
+                logger.warning(f"[FaceRecog] Could not open door: {e}")
+                
         elif result == 'denied':
             # Access denied - possible security event
             logger.warning(f"[FaceRecog] Access denied for '{name}' at room {room_id}")
@@ -459,22 +505,156 @@ def handle_espcam_heartbeat(device_id, payload):
         logger.error(f"[ESP32-CAM] Error handling heartbeat: {e}")
 
 
-def store_face_recognition_event(device_id, name, confidence):
-    """Store face recognition event for kiosk integration."""
-    # This can be extended to:
-    # 1. Store in database for analytics
-    # 2. Trigger kiosk auto-fill if guest profile exists
-    # 3. Update real-time dashboard via WebSocket
+# ==================== DOOR CONTROL HANDLERS ====================
+
+def handle_door_control(room_number, action, payload):
+    """
+    Handle door control commands from ESP32-CAM.
+    Door opens for 5 seconds then auto-closes.
+    
+    Topic: hotel/<room_id>/door/open or hotel/<room_id>/door/close
+    
+    Payload (optional JSON):
+        {
+            "name": "person_name",
+            "reason": "face_recognized"
+        }
+    """
+    try:
+        from rooms.models import Room, AccessLog
+        
+        try:
+            room = Room.objects.get(room_number=room_number)
+        except Room.DoesNotExist:
+            logger.warning(f"[Door] Room {room_number} not found")
+            return
+        
+        if action == 'open':
+            # Open door for 5 seconds
+            room.open_door(duration_seconds=5)
+            logger.info(f"[Door] Room {room_number} door OPENED (auto-close in 5s)")
+            
+            # Parse optional payload for access log
+            name = 'Unknown'
+            reason = 'mqtt_command'
+            try:
+                if payload:
+                    data = json.loads(payload)
+                    name = data.get('name', 'Unknown')
+                    reason = data.get('reason', 'mqtt_command')
+            except json.JSONDecodeError:
+                pass
+            
+            # Log access event
+            AccessLog.log_access(
+                room=room,
+                device_id=f"door_{room_number}",
+                name=name,
+                confidence=1.0,
+                result='success',
+                door_opened=True
+            )
+            
+        elif action == 'close':
+            room.close_door()
+            logger.info(f"[Door] Room {room_number} door CLOSED")
+            
+    except Exception as e:
+        logger.error(f"[Door] Error handling door control: {e}")
+
+
+def handle_access_log(room_number, payload):
+    """
+    Handle access log events sent as JSON via MQTT.
+    
+    Topic: hotel/<room_id>/access/log
+    
+    Payload format (JSON):
+        {
+            "name": "John Doe",
+            "timestamp": "2026-01-09T12:00:00",
+            "result": "success" | "denied" | "unknown",
+            "confidence": 0.95,
+            "door_opened": true
+        }
+    """
+    try:
+        data = json.loads(payload)
+        
+        from rooms.models import Room, AccessLog
+        from django.utils import timezone
+        from datetime import datetime
+        
+        # Get room (optional - might be device-based)
+        room = None
+        try:
+            room = Room.objects.get(room_number=room_number)
+        except Room.DoesNotExist:
+            logger.warning(f"[AccessLog] Room {room_number} not found, logging without room")
+        
+        # Extract fields
+        name = data.get('name', 'Unknown')
+        result = data.get('result', 'unknown')
+        confidence = float(data.get('confidence', 0.0))
+        door_opened = bool(data.get('door_opened', False))
+        
+        # Create access log entry
+        access_log = AccessLog.log_access(
+            room=room,
+            device_id=f"espcam_{room_number}",
+            name=name,
+            confidence=confidence,
+            result=result,
+            door_opened=door_opened
+        )
+        
+        logger.info(f"[AccessLog] {room_number}: {name} - {result} (door_opened={door_opened})")
+        
+        # If door should open on successful access
+        if door_opened and room and result == 'success':
+            room.open_door(duration_seconds=5)
+            logger.info(f"[AccessLog] Room {room_number} door opened for {name}")
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"[AccessLog] Invalid JSON payload: {e}")
+    except Exception as e:
+        logger.error(f"[AccessLog] Error handling access log: {e}")
+
+
+def store_face_recognition_event(device_id, name, confidence, result='success'):
+    """Store face recognition event for kiosk integration and access log."""
     try:
         from django.core.cache import cache
+        from rooms.models import Room, AccessLog
         
-        # Store latest recognition for quick lookup
+        # Store latest recognition for quick lookup in cache
         cache_key = f"espcam_recognition_{device_id}"
         cache.set(cache_key, {
             'name': name,
             'confidence': confidence,
-            'timestamp': json.dumps({}),  # Would be actual timestamp
+            'result': result,
         }, timeout=300)  # 5 minute TTL
+        
+        # Also store in database as access log
+        # Try to find room from device_id (e.g., "Room101" or "espcam_Room101")
+        room = None
+        room_number = device_id.replace('espcam_', '').replace('kiosk_', '')
+        try:
+            room = Room.objects.get(room_number=room_number)
+        except Room.DoesNotExist:
+            pass
+        
+        # Create access log entry
+        AccessLog.log_access(
+            room=room,
+            device_id=device_id,
+            name=name,
+            confidence=confidence,
+            result=result,
+            door_opened=(result == 'success')
+        )
+        
+        logger.info(f"[FaceRecog] Stored access log: {name} at {device_id} - {result}")
         
     except Exception as e:
         logger.error(f"[ESP32-CAM] Error storing recognition: {e}")

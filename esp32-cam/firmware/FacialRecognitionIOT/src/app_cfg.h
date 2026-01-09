@@ -48,7 +48,7 @@
 #define MQTT_BROKER                 "mqtt.saddevastator.qzz.io"  // Update with your broker IP
 #define MQTT_PORT                   1883
 #define MQTT_CLIENT_ID              "esp32cam_face_recognition"
-#define MQTT_TOPIC_BASE             "/hotel/kiosk/Room1/FaceRecognition/Authentication"
+#define MQTT_TOPIC_BASE             "/hotel/Room101/Authentication/FaceRecognition"
 #define MQTT_LOCATION               "main_lobby"  // Change per location
 #define MQTT_RECONNECT_INTERVAL_MS  5000
 #define PUBLISH_ONLY_RECOGNIZED     true  // Only publish recognized faces
