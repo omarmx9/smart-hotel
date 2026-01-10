@@ -8,5 +8,6 @@ django-cors-headers
 fastmrz
 opencv-python-headless
 python-docx
+reportlab
 # Optional: only needed if using camera capture directly
 # opencv-python-headless can be used as lighter alternative

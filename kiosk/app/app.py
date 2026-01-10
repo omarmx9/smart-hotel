@@ -6,7 +6,7 @@ Provides REST API for:
 - MRZ extraction from uploaded images (base64 or multipart)
 - Document detection for auto-capture
 - Document processing and perspective correction
-- Document filling (PDF)
+- Document filling (PDF) - triggered after MRZ update
 
 NOTE: This is a backend-only service. Camera capture is handled by the frontend
 (browser-based using WebRTC/getUserMedia).
@@ -21,6 +21,8 @@ import os
 import tempfile
 import uuid
 import base64
+import json
+import glob
 
 # Import layers (no camera layer needed for backend)
 from layer2_readjustment import DocumentProcessor
@@ -50,8 +52,18 @@ CORS(app, origins=["*"])
 # Configuration
 TESSDATA_PATH = "models/"  # Directory containing mrz.traineddata
 TEMPLATE_PATH = "templates/DWA_Registration_Card.pdf"  # Registration card template (PDF)
-SAVE_DIR = "Logs/captured_passports"  # Base directory for outputs
-SAVED_DOCUMENTS_DIR = "Logs/filled_documents"  # Directory for saved filled documents
+
+# New directory structure
+CAPTURED_PASSPORTS_DIR = "Logs/captured_passports"
+CAPTURED_IMAGES_DIR = os.path.join(CAPTURED_PASSPORTS_DIR, "captured_images")
+CAPTURED_JSON_DIR = os.path.join(CAPTURED_PASSPORTS_DIR, "captured_json")
+DOCUMENT_FILLING_DIR = "Logs/document_filling"
+DOCUMENT_MRZ_DIR = os.path.join(DOCUMENT_FILLING_DIR, "document_mrz")
+DOCUMENT_FILLED_DIR = os.path.join(DOCUMENT_FILLING_DIR, "document_filled")
+
+# Ensure directories exist
+for dir_path in [CAPTURED_IMAGES_DIR, CAPTURED_JSON_DIR, DOCUMENT_MRZ_DIR, DOCUMENT_FILLED_DIR]:
+    os.makedirs(dir_path, exist_ok=True)
 
 
 class MRZBackendService:
@@ -59,9 +71,14 @@ class MRZBackendService:
     Backend service for MRZ extraction.
     Handles image processing and MRZ extraction from uploaded images.
     No camera hardware dependencies.
+    
+    Flow:
+    1. /api/extract - Extract MRZ, save to captured_passports (no document filling yet)
+    2. /api/mrz/update - Receive final/edited MRZ, trigger document filling
     """
     
-    def __init__(self, tessdata_path, save_dir, template_path, saved_documents_dir):
+    def __init__(self, tessdata_path, captured_images_dir, captured_json_dir, 
+                 template_path, document_mrz_dir, document_filled_dir):
         logger.info("Initializing MRZBackendService")
         
         # Layer 2: Image Readjustment
@@ -69,13 +86,19 @@ class MRZBackendService:
         
         # Layer 3: MRZ Extraction
         self.mrz_extractor = MRZExtractor(tessdata_path=tessdata_path)
-        self.image_saver = ImageSaver(base_dir=save_dir)
+        self.image_saver = ImageSaver(base_dir=captured_images_dir)
+        
+        # Directory paths
+        self.captured_images_dir = captured_images_dir
+        self.captured_json_dir = captured_json_dir
+        self.document_mrz_dir = document_mrz_dir
+        self.document_filled_dir = document_filled_dir
         
         # Layer 4: Document Filling (PDF)
         try:
             self.document_filler = DocumentFiller(
                 template_path=template_path,
-                saved_documents_dir=saved_documents_dir
+                saved_documents_dir=document_filled_dir
             )
         except Exception as e:
             logger.warning(f"Document filler initialization failed: {e}")
@@ -87,13 +110,14 @@ class MRZBackendService:
     def process_image(self, image_data, filename="upload.jpg"):
         """
         Process an uploaded image and extract MRZ data.
+        NOTE: Document filling is NOT done here. It waits for /api/mrz/update.
         
         Args:
             image_data: Raw image bytes or base64 encoded string
             filename: Original filename for logging
             
         Returns:
-            dict: Extraction result with MRZ data
+            dict: Extraction result with MRZ data and session_id
         """
         logger.info("=" * 60)
         logger.info(f"Processing uploaded image: {filename}")
@@ -119,71 +143,60 @@ class MRZBackendService:
             
             logger.info(f"Image decoded - Shape: {raw_frame.shape}")
             
+            # Generate session_id for tracking through the flow
+            session_id = str(uuid.uuid4())
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            
             # Layer 2: Process image
             logger.info("[Layer 2] Processing image...")
             processed_frame = self.processor.process(raw_frame)
             logger.info("[Layer 2] Processing complete")
             
-            # Layer 3: Save and extract MRZ
+            # Layer 3: Save image and extract MRZ
             logger.info("[Layer 3] Saving image...")
-            save_result = self.image_saver.save_image(processed_frame)
             
-            timestamp = save_result["timestamp"]
-            filepath = save_result["filepath"]
+            # Save to captured_images with session_id in filename
+            image_filename = f"{timestamp}_{session_id}.jpg"
+            image_path = os.path.join(self.captured_images_dir, image_filename)
+            cv2.imwrite(image_path, processed_frame)
+            logger.info(f"[Layer 3] Image saved to: {image_path}")
             
             logger.info("[Layer 3] Extracting MRZ...")
-            mrz_data = self.mrz_extractor.extract(filepath)
-            # Prepare result data
+            mrz_data = self.mrz_extractor.extract(image_path)
+            
+            # Prepare result data (initial extraction - before any edits)
             result_data = {
+                "session_id": session_id,
                 "timestamp": timestamp,
-                "image_path": filepath,
+                "image_path": image_path,
                 "image_filename": filename,
-                "status": "success",
+                "status": "extracted",  # Status: extracted (not yet finalized)
                 "mrz_data": mrz_data,
+                "is_edited": False
             }
             
-            # Save JSON (Layer 3)
-            logger.info("[Pipeline] Saving result JSON...")
-            self.image_saver.save_result_json(result_data, timestamp)
-
+            # Save initial JSON to captured_json
+            json_filename = f"{timestamp}_{session_id}.json"
+            json_path = os.path.join(self.captured_json_dir, json_filename)
+            with open(json_path, 'w') as f:
+                json.dump(result_data, f, indent=2)
+            logger.info(f"[Layer 3] JSON saved to: {json_path}")
+            
             logger.info("[Layer 3] MRZ extraction successful")
-
-            # Note: Manual edit option and signature handling are implemented
-            # in the Django kiosk frontend (passport_scan.html, views.py)
-
-            # Layer 4: Fill document template (optional)
-            fill_result = None
-            if self.document_filler is not None:
-                try:
-                    logger.info("[Layer 4] Filling registration card (PDF)...")
-                    fill_result = self.document_filler.fill_registration_card(mrz_data, timestamp)
-                    logger.info(f"[Layer 4] ✓ Document saved: {fill_result['output_filename']}")
-                except DocumentFillingError as e:
-                    logger.warning(f"[Layer 4] Document filling failed: {e.message}")
-                except Exception as e:
-                    logger.error(f"[Layer 4] Unexpected error: {e}")
-            
-
-
-
-            
-            logger.info("[Pipeline] Success!")
+            logger.info("[Pipeline] Waiting for /api/mrz/update to finalize and fill document")
             logger.info("=" * 60)
             
-            response = {
+            # NOTE: Document filling is NOT done here
+            # It will be triggered by /api/mrz/update after user confirms/edits
+            
+            return {
                 "success": True,
+                "session_id": session_id,
                 "data": mrz_data,
-                "image_path": filepath,
-                "timestamp": timestamp
+                "image_path": image_path,
+                "timestamp": timestamp,
+                "message": "MRZ extracted. Call /api/mrz/update to finalize and generate document."
             }
-            
-            if fill_result:
-                response["filled_document"] = {
-                    "path": fill_result['output_path'],
-                    "filename": fill_result['output_filename']
-                }
-            
-            return response
             
         except ScannerError as e:
             logger.info("[Pipeline] Failed with known error")
@@ -194,6 +207,200 @@ class MRZBackendService:
             logger.error(f"[Pipeline] Failed with unexpected error: {e}")
             logger.info("=" * 60)
             return handle_error(e)
+    
+    def _find_original_extraction(self, session_id: str) -> dict:
+        """
+        Find the original MRZ extraction data by session_id.
+        Searches in captured_json directory for matching session.
+        
+        Args:
+            session_id: The session ID to search for
+            
+        Returns:
+            dict: Original extraction data, or None if not found
+        """
+        # Search for JSON files containing this session_id
+        pattern = os.path.join(self.captured_json_dir, f"*_{session_id}.json")
+        matching_files = glob.glob(pattern)
+        
+        if matching_files:
+            try:
+                with open(matching_files[0], 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning(f"Could not load original extraction: {e}")
+        
+        return None
+    
+    def _compare_mrz_data(self, original_mrz: dict, new_guest_data: dict) -> dict:
+        """
+        Compare original MRZ extraction with new guest data to detect edits.
+        
+        Args:
+            original_mrz: Original MRZ data from extraction
+            new_guest_data: New guest data from update request
+            
+        Returns:
+            dict: Comparison result with is_edited flag and changed_fields list
+        """
+        # Fields to compare (map MRZ field names to guest_data field names)
+        field_mapping = {
+            'surname': 'surname',
+            'name': 'name',
+            'first_name': 'first_name',
+            'nationality': 'nationality',
+            'passport_number': 'passport_number',
+            'date_of_birth': 'date_of_birth',
+            'sex': 'sex',
+            'expiry_date': 'expiry_date',
+            'country': 'country',
+        }
+        
+        changed_fields = []
+        
+        for mrz_field, guest_field in field_mapping.items():
+            original_value = original_mrz.get(mrz_field, '').strip().upper() if original_mrz.get(mrz_field) else ''
+            new_value = new_guest_data.get(guest_field, '').strip().upper() if new_guest_data.get(guest_field) else ''
+            
+            if original_value != new_value:
+                changed_fields.append({
+                    'field': guest_field,
+                    'original': original_mrz.get(mrz_field, ''),
+                    'new': new_guest_data.get(guest_field, '')
+                })
+                logger.info(f"[MRZ Compare] Field '{guest_field}' changed: '{original_mrz.get(mrz_field, '')}' -> '{new_guest_data.get(guest_field, '')}'")
+        
+        is_edited = len(changed_fields) > 0
+        
+        return {
+            'is_edited': is_edited,
+            'changed_fields': changed_fields,
+            'total_changes': len(changed_fields)
+        }
+    
+    def update_mrz_and_fill_document(self, session_id: str, guest_data: dict) -> dict:
+        """
+        Update MRZ data (potentially edited) and trigger document filling.
+        
+        This method:
+        1. Loads the original MRZ extraction from captured_json (using session_id)
+        2. Compares original vs new guest_data to detect edits
+        3. Logs whether data was edited and which fields changed
+        4. Saves finalized data to document_mrz
+        5. Triggers document filling (PDF generation)
+        
+        Args:
+            session_id: Session ID from initial extraction
+            guest_data: Final guest data (may be edited by user)
+            
+        Returns:
+            dict: Result with document filling info and edit detection
+        """
+        logger.info("=" * 60)
+        logger.info(f"[MRZ Update] Processing session: {session_id}")
+        
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        
+        try:
+            # Step 1: Find original extraction data
+            original_extraction = self._find_original_extraction(session_id)
+            
+            # Step 2: Compare to detect edits (don't trust frontend is_edited flag)
+            comparison_result = {'is_edited': False, 'changed_fields': [], 'total_changes': 0}
+            
+            if original_extraction and original_extraction.get('mrz_data'):
+                original_mrz = original_extraction['mrz_data']
+                comparison_result = self._compare_mrz_data(original_mrz, guest_data)
+                
+                if comparison_result['is_edited']:
+                    logger.info(f"[MRZ Update] ⚠️  DATA WAS EDITED - {comparison_result['total_changes']} field(s) changed")
+                    for change in comparison_result['changed_fields']:
+                        logger.info(f"[MRZ Update]   └─ {change['field']}: '{change['original']}' → '{change['new']}'")
+                else:
+                    logger.info("[MRZ Update] ✓ Data confirmed without changes")
+            else:
+                logger.warning(f"[MRZ Update] Original extraction not found for session {session_id}")
+                logger.warning("[MRZ Update] Cannot determine if data was edited (treating as new)")
+            
+            is_edited = comparison_result['is_edited']
+            
+            # Step 3: Save finalized MRZ data to document_mrz directory
+            mrz_filename = f"{timestamp}_{session_id}_final.json"
+            mrz_path = os.path.join(self.document_mrz_dir, mrz_filename)
+            
+            finalized_data = {
+                "session_id": session_id,
+                "timestamp": timestamp,
+                "status": "finalized",
+                "is_edited": is_edited,
+                "edit_details": comparison_result,  # Include what changed
+                "guest_data": guest_data
+            }
+            
+            with open(mrz_path, 'w') as f:
+                json.dump(finalized_data, f, indent=2)
+            logger.info(f"[Layer 3+] Finalized MRZ saved to: {mrz_path}")
+            
+            # Layer 4: Now fill the document with finalized data
+            fill_result = None
+            if self.document_filler is not None:
+                try:
+                    logger.info("[Layer 4] Filling registration card (PDF) with finalized data...")
+                    # Convert guest_data format to MRZ format expected by DocumentFiller
+                    mrz_format_data = _convert_guest_data_to_mrz(guest_data)
+                    fill_result = self.document_filler.fill_registration_card(
+                        mrz_format_data, 
+                        f"{timestamp}_{session_id}"
+                    )
+                    logger.info(f"[Layer 4] ✓ Document saved: {fill_result['output_filename']}")
+                except DocumentFillingError as e:
+                    logger.warning(f"[Layer 4] Document filling failed: {e.message}")
+                    return {
+                        "success": False,
+                        "error": f"Document filling failed: {e.message}",
+                        "error_code": "DOCUMENT_FILLING_ERROR",
+                        "session_id": session_id
+                    }
+                except Exception as e:
+                    logger.error(f"[Layer 4] Unexpected error: {e}")
+                    return {
+                        "success": False,
+                        "error": f"Document filling failed: {str(e)}",
+                        "error_code": "DOCUMENT_FILLING_ERROR",
+                        "session_id": session_id
+                    }
+            else:
+                logger.warning("[Layer 4] Document filler not available, skipping")
+            
+            logger.info("[Pipeline] MRZ update and document filling complete!")
+            logger.info("=" * 60)
+            
+            response = {
+                "success": True,
+                "session_id": session_id,
+                "timestamp": timestamp,
+                "guest_data": guest_data,
+                "is_edited": is_edited,
+                "edit_details": comparison_result,  # What fields were changed
+                "mrz_saved_path": mrz_path
+            }
+            
+            if fill_result:
+                response["filled_document"] = {
+                    "path": fill_result['output_path'],
+                    "filename": fill_result['output_filename']
+                }
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"[MRZ Update] Failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_code": "UPDATE_FAILED",
+                "session_id": session_id
+            }
     
     def detect_document(self, image_data):
         """
@@ -241,9 +448,11 @@ logger.info("Starting MRZ Backend Service initialization")
 
 service = MRZBackendService(
     tessdata_path=TESSDATA_PATH,
-    save_dir=SAVE_DIR,
+    captured_images_dir=CAPTURED_IMAGES_DIR,
+    captured_json_dir=CAPTURED_JSON_DIR,
     template_path=TEMPLATE_PATH,
-    saved_documents_dir=SAVED_DOCUMENTS_DIR
+    document_mrz_dir=DOCUMENT_MRZ_DIR,
+    document_filled_dir=DOCUMENT_FILLED_DIR
 )
 
 
@@ -257,7 +466,7 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "service": "mrz-backend",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "capabilities": ["mrz_extraction", "document_detection", "document_filling"]
     })
 
@@ -266,6 +475,7 @@ def health_check():
 def api_extract_from_image():
     """
     Extract MRZ data from an uploaded image.
+    NOTE: This only extracts MRZ. Document filling happens after /api/mrz/update.
     
     Request (multipart/form-data):
         - 'image': Image file
@@ -277,8 +487,10 @@ def api_extract_from_image():
     Response:
         {
             "success": true,
+            "session_id": "uuid-here",
             "data": { ... MRZ fields ... },
-            "timestamp": "20231231_120000"
+            "timestamp": "20231231_120000",
+            "message": "MRZ extracted. Call /api/mrz/update to finalize."
         }
     """
     logger.info("API extract request received")
@@ -365,38 +577,50 @@ def api_status():
     return jsonify({
         "success": True,
         "service": "mrz-backend",
+        "version": "2.1.0",
         "document_filler_available": service.document_filler is not None,
         "tessdata_path": TESSDATA_PATH,
+        "directories": {
+            "captured_images": CAPTURED_IMAGES_DIR,
+            "captured_json": CAPTURED_JSON_DIR,
+            "document_mrz": DOCUMENT_MRZ_DIR,
+            "document_filled": DOCUMENT_FILLED_DIR
+        },
         "endpoints": {
             "health": "/health",
             "extract": "/api/extract",
             "detect": "/api/detect",
             "status": "/api/status",
-            "mrz/update": "/api/mrz/update"
+            "mrz_update": "/api/mrz/update",
+            "document_preview": "/api/document/preview"
         },
     })
 
 
 # ============================================================================
-# MRZ Update API Endpoint (renamed from document/update)
+# MRZ Update API Endpoint - Triggers Document Filling
 # ============================================================================
 
 @app.route("/api/mrz/update", methods=["POST"])
 def api_mrz_update():
     """
-    Update guest information after MRZ extraction.
-    This is a lightweight endpoint for processing MRZ data updates.
-    Document signing and storage are handled by the kiosk service.
+    Update guest information after MRZ extraction and trigger document filling.
+    This is called after user confirms or edits the extracted MRZ data.
+    
+    IMPORTANT: The backend automatically detects if data was edited by comparing
+    the incoming guest_data with the original MRZ extraction (stored in captured_json).
+    No need to send is_edited from frontend - it's determined server-side.
     
     Request (application/json):
         {
-            "session_id": "abc123",
+            "session_id": "abc123",  // Required: from /api/extract response
             "guest_data": {
                 "surname": "DOE",
                 "name": "JOHN",
                 "nationality": "USA",
                 "passport_number": "AB1234567",
-                "date_of_birth": "1990-01-15"
+                "date_of_birth": "1990-01-15",
+                ...
             }
         }
     
@@ -404,7 +628,21 @@ def api_mrz_update():
         {
             "success": true,
             "session_id": "abc123",
-            "timestamp": "20260109_120000"
+            "timestamp": "20260109_120000",
+            "guest_data": { ... },
+            "is_edited": true,  // Auto-detected by backend
+            "edit_details": {
+                "is_edited": true,
+                "changed_fields": [
+                    {"field": "surname", "original": "DOE", "new": "DOEE"}
+                ],
+                "total_changes": 1
+            },
+            "mrz_saved_path": "Logs/document_filling/document_mrz/...",
+            "filled_document": {
+                "path": "Logs/document_filling/document_filled/...",
+                "filename": "..."
+            }
         }
     """
     logger.info("MRZ update request received")
@@ -418,7 +656,15 @@ def api_mrz_update():
     
     data = request.get_json()
     guest_data = data.get('guest_data', {})
-    session_id = data.get('session_id', str(uuid.uuid4()))
+    session_id = data.get('session_id')
+    
+    # Validate required fields
+    if not session_id:
+        return jsonify({
+            "success": False,
+            "error": "session_id is required (from /api/extract response)",
+            "error_code": "MISSING_SESSION_ID"
+        }), 400
     
     if not guest_data:
         return jsonify({
@@ -427,23 +673,16 @@ def api_mrz_update():
             "error_code": "MISSING_DATA"
         }), 400
     
-    try:
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        
-        return jsonify({
-            "success": True,
-            "session_id": session_id,
-            "timestamp": timestamp,
-            "guest_data": guest_data
-        })
-        
-    except Exception as e:
-        logger.error(f"MRZ update failed: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "error_code": "UPDATE_FAILED"
-        }), 500
+    # Process the update - is_edited is auto-detected by comparing with original
+    result = service.update_mrz_and_fill_document(
+        session_id=session_id,
+        guest_data=guest_data
+    )
+    
+    if result.get('success'):
+        return jsonify(result)
+    else:
+        return jsonify(result), 500
 
 
 # ============================================================================
@@ -499,6 +738,54 @@ def api_document_preview():
             "success": False,
             "error": str(e)
         }), 500
+
+
+@app.route("/api/document/pdf/<session_id>", methods=["GET"])
+def api_serve_pdf(session_id):
+    """
+    Serve a generated PDF file for preview.
+    
+    GET /api/document/pdf/<session_id>?file=<filename>
+    
+    Returns:
+        PDF binary file
+    """
+    filename = request.args.get('file')
+    if not filename:
+        return jsonify({"error": "Filename required"}), 400
+    
+    # Security: ensure filename is safe
+    safe_filename = os.path.basename(filename)
+    pdf_path = os.path.join(DOCUMENT_FILLED_DIR, safe_filename)
+    
+    if not os.path.exists(pdf_path):
+        return jsonify({"error": "PDF not found"}), 404
+    
+    try:
+        return send_from_directory(
+            DOCUMENT_FILLED_DIR, 
+            safe_filename, 
+            mimetype='application/pdf',
+            as_attachment=False
+        )
+    except Exception as e:
+        logger.error(f"Error serving PDF: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+def _convert_guest_data_to_mrz(guest_data: dict) -> dict:
+    """
+    Convert guest_data format to MRZ format expected by DocumentFiller.
+    """
+    return {
+        'surname': guest_data.get('surname', ''),
+        'given_name': guest_data.get('name', guest_data.get('first_name', '')),
+        'nationality_code': guest_data.get('nationality_code', guest_data.get('nationality', '')[:3].upper() if guest_data.get('nationality') else ''),
+        'document_number': guest_data.get('passport_number', ''),
+        'birth_date': guest_data.get('date_of_birth', ''),
+        'expiry_date': guest_data.get('expiry_date', ''),
+        'issuer_code': guest_data.get('country', guest_data.get('issuing_country', ''))[:3].upper() if guest_data.get('country') or guest_data.get('issuing_country') else '',
+    }
 
 
 # ============================================================================
@@ -608,21 +895,32 @@ def serve_static(filename):
 
 if __name__ == '__main__':
     print("\n" + "=" * 60)
-    print("MRZ BACKEND MICROSERVICE")
+    print("MRZ BACKEND MICROSERVICE v2.1.0")
     print("=" * 60)
     print("\n📁 Architecture:")
     print("  This is a BACKEND-ONLY service for MRZ extraction.")
     print("  Camera capture is handled by the frontend (browser-based).")
     print("  Document signing and storage handled by kiosk service.")
-    print("\n📡 API Endpoints:")
-    print("  GET  /health           - Health check")
-    print("  GET  /api/status       - Service status")
-    print("  POST /api/extract      - Extract MRZ from uploaded image")
-    print("  POST /api/detect       - Detect document in image (for auto-capture)")
-    print("  POST /api/mrz/update   - Update guest info after MRZ extraction")
-    print("  POST /api/document/preview - Get document preview HTML")
+    print("\n📂 Directory Structure:")
+    print(f"  Logs/captured_passports/")
+    print(f"    ├── captured_images/  - Processed passport images")
+    print(f"    └── captured_json/    - Initial MRZ extraction JSON")
+    print(f"  Logs/document_filling/")
+    print(f"    ├── document_mrz/     - Finalized MRZ data (after edit)")
+    print(f"    └── document_filled/  - Filled PDF documents")
+    print("\n📡 API Flow:")
+    print("  1. POST /api/extract      - Extract MRZ (saves to captured_*)")
+    print("  2. [User can edit MRZ in frontend]")
+    print("  3. POST /api/mrz/update   - Finalize MRZ & fill document")
+    print("\n📡 All Endpoints:")
+    print("  GET  /health              - Health check")
+    print("  GET  /api/status          - Service status")
+    print("  POST /api/extract         - Extract MRZ from uploaded image")
+    print("  POST /api/detect          - Detect document in image")
+    print("  POST /api/mrz/update      - Update MRZ & trigger doc filling")
+    print("  POST /api/document/preview- Get document preview HTML")
     print("\n🧪 Test Frontend:")
-    print("  GET  /                 - Test frontend with browser camera")
+    print("  GET  /                    - Test frontend with browser camera")
     print("\n" + "=" * 60)
     print("Server starting... Press Ctrl+C to stop")
     print("=" * 60 + "\n")

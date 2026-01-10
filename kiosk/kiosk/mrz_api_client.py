@@ -255,27 +255,35 @@ class MRZDocumentClient:
     
     def update_document(self, session_id: str, guest_data: dict, accompanying_guests: list = None) -> dict:
         """
-        Send edited guest information to MRZ backend.
+        Send guest information to MRZ backend and trigger document filling.
+        Calls /api/mrz/update endpoint which generates the PDF.
         
         Args:
             session_id: Unique session identifier
-            guest_data: Dictionary with edited guest information
-            accompanying_guests: List of accompanying guest dicts
+            guest_data: Dictionary with guest information
+            accompanying_guests: List of accompanying guest dicts (optional)
         
         Returns:
-            dict: Response with document_preview_html and session info
+            dict: Response with:
+                - success: bool
+                - session_id: str
+                - filled_document: {path, filename}
+                - guest_data: dict
         
         Raises:
             MRZAPIError: If update fails
         """
         try:
+            payload = {
+                'session_id': session_id,
+                'guest_data': guest_data
+            }
+            if accompanying_guests:
+                payload['accompanying_guests'] = accompanying_guests
+            
             response = self.session.post(
-                f"{self.base_url}/api/document/update",
-                json={
-                    'session_id': session_id,
-                    'guest_data': guest_data,
-                    'accompanying_guests': accompanying_guests or []
-                },
+                f"{self.base_url}/api/mrz/update",
+                json=payload,
                 timeout=self.timeout
             )
             result = response.json()
@@ -290,6 +298,48 @@ class MRZDocumentClient:
         except requests.RequestException as e:
             logger.error(f"Failed to update document: {e}")
             raise MRZAPIError(f"Failed to update document: {e}")
+    
+    def get_pdf_url(self, session_id: str, filename: str) -> str:
+        """
+        Get the URL to fetch the generated PDF from MRZ backend.
+        
+        Args:
+            session_id: Unique session identifier
+            filename: PDF filename from update_document response
+        
+        Returns:
+            str: Full URL to fetch the PDF
+        """
+        return f"{self.base_url}/api/document/pdf/{session_id}?file={filename}"
+    
+    def get_pdf_content(self, session_id: str, filename: str) -> bytes:
+        """
+        Fetch the generated PDF content from MRZ backend.
+        
+        Args:
+            session_id: Unique session identifier
+            filename: PDF filename from update_document response
+        
+        Returns:
+            bytes: PDF file content
+        
+        Raises:
+            MRZAPIError: If PDF fetch fails
+        """
+        try:
+            url = self.get_pdf_url(session_id, filename)
+            response = self.session.get(url, timeout=self.timeout)
+            
+            if response.status_code != 200:
+                raise MRZAPIError(
+                    f"Failed to fetch PDF: {response.status_code}",
+                    'PDF_FETCH_FAILED'
+                )
+            
+            return response.content
+        except requests.RequestException as e:
+            logger.error(f"Failed to fetch PDF: {e}")
+            raise MRZAPIError(f"Failed to fetch PDF: {e}")
     
     def get_document_preview(self, session_id: str, guest_data: dict = None) -> dict:
         """

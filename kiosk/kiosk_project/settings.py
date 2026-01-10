@@ -111,15 +111,16 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = ['Content-Type', 'Content-Length']
 
-# Use signed cookie sessions so the app does not require DB-backed sessions
-SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
+# Use database-backed sessions for reliability (persists across container restarts)
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
 # Session cookie settings for kiosk reliability
 SESSION_COOKIE_NAME = 'kiosk_session'
-SESSION_COOKIE_AGE = 3600  # 1 hour for kiosk sessions
+SESSION_COOKIE_AGE = 14400  # 4 hours for kiosk sessions (guests may take time)
 SESSION_COOKIE_SECURE = False  # Set True in production with HTTPS
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_SAVE_EVERY_REQUEST = True  # Refresh session on every request
+SESSION_SAVE_EVERY_REQUEST = True  # Refresh session expiry on every request
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Keep session alive even if browser closes
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

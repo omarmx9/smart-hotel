@@ -596,7 +596,13 @@ function toggleVerifyAccess(btn, inputId) {
     document.getElementById(inputId).value = newState ? '1' : '';
 }
 
-// Form validation: require at least one access method
+// Helper function to submit form - uses native form submission for proxy compatibility
+function submitFormAjax(form) {
+    // Just submit the form normally - server will redirect
+    form.submit();
+}
+
+// Form validation and submission for verifyForm
 document.getElementById('verifyForm').onsubmit = function(e) {
     var keycard = document.getElementById('verify_access_keycard').value;
     var face = document.getElementById('verify_access_face').value;
@@ -605,8 +611,18 @@ document.getElementById('verifyForm').onsubmit = function(e) {
         alert('Please choose at least one access method.');
         return false;
     }
+    // Show loading state AFTER form starts submitting (use setTimeout to not block submit)
+    var submitBtn = this.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        setTimeout(function() {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Processing...';
+        }, 0);
+    }
+    return true; // Allow form to submit normally
 };
 
+// Form validation and submission for manualEntryForm
 document.getElementById('manualEntryForm').onsubmit = function(e) {
     var keycard = document.getElementById('manual_access_keycard').value;
     var face = document.getElementById('manual_access_face').value;
@@ -615,6 +631,15 @@ document.getElementById('manualEntryForm').onsubmit = function(e) {
         alert('Please choose at least one access method.');
         return false;
     }
+    // Show loading state AFTER form starts submitting (use setTimeout to not block submit)
+    var submitBtn = this.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        setTimeout(function() {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Processing...';
+        }, 0);
+    }
+    return true; // Allow form to submit normally
 };
 
 // Cleanup on page unload

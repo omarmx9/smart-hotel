@@ -17,14 +17,20 @@ urlpatterns = [
     path('extract/status/<int:task_id>/', views.extract_status, name='extract_status'),
     path('verify/', views.verify_info, name='verify_info'),
     
-    # DW Registration Card (DW R.C.) routes
-    path('dw-registration/', views.dw_registration_card, name='dw_registration_card'),
-    path('dw-registration/sign/', views.dw_sign_document, name='dw_sign_document'),
-    path('dw-registration/print/', views.dw_generate_pdf, name='dw_generate_pdf'),
+    # Document Signing (unified PDF flow)
+    path('document/sign/', views.pdf_sign_document, name='pdf_sign_document'),  # Main signing route
+    path('document/preview-pdf/', views.serve_preview_pdf, name='serve_preview_pdf'),  # Serve preview PDF
+    path('document/print/', views.dw_generate_pdf, name='dw_generate_pdf'),  # Print PDF
     
-    # Legacy document routes (kept for compatibility)
-    path('document/', views.documentation, name='documentation'),
-    path('document/sign/', views.document_signing, name='document_signing'),
+    # Access Method Selection (separate page)
+    path('select-access-method/', views.select_access_method, name='select_access_method'),
+    
+    # Legacy routes (redirect to new flow for backwards compatibility)
+    path('dw-registration/', views.redirect_to_pdf_sign, name='dw_registration_card'),
+    path('dw-registration/sign/', views.redirect_to_pdf_sign, name='dw_sign_document'),
+    path('dw-registration/pdf-sign/', views.redirect_to_pdf_sign, name='dw_pdf_sign'),
+    path('document/', views.redirect_to_pdf_sign, name='documentation'),
+    path('document/signing/', views.redirect_to_pdf_sign, name='document_signing'),
     
     # Walk-in and Reservation
     path('walkin/', views.walkin, name='walkin'),
