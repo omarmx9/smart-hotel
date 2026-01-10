@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Arrivals{% endblock %}
+{% block page_title %}Arrivals{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex gap-2 align-items-center">
+        <label class="form-label mb-0 me-2">Date:</label>
+        <input type="date" id="dateFilter" class="form-control" value="{{ date }}" style="width: auto;">
+    </div>
+    <span class="text-muted">{{ arrivals|length }} arrival(s)</span>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Guest</th>
+                    <th>Room</th>
+                    <th>Reservation #</th>
+                    <th>Nights</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for res in arrivals %}
+                <tr>
+                    <td>
+                        <strong>{{ res.guest.full_name }}</strong>
+                        {% if res.guest.vip %}<span class="vip-badge ms-1">VIP</span>{% endif %}
+                        {% if res.guest.phone_number %}
+                        <br><small class="text-muted">{{ res.guest.phone_number }}</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ res.room.room_number|default:"Not Assigned" }}</td>
+                    <td>
+                        <a href="{% url 'reservations:reservation_detail' res.pk %}">
+                            {{ res.reservation_number }}
+                        </a>
+                    </td>
+                    <td>{{ res.nights }}</td>
+                    <td>
+                        <span class="badge-status badge-{{ res.status|slugify }}">
+                            {{ res.get_status_display }}
+                        </span>
+                    </td>
+                    <td>
+                        <a href="{% url 'reservations:check_in' res.pk %}" class="btn btn-sm btn-success">
+                            <i class="bi bi-box-arrow-in-right me-1"></i> Check In
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-5">
+                        <i class="bi bi-calendar-check fs-1 d-block mb-2"></i>
+                        No arrivals for {{ date }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('dateFilter').addEventListener('change', function() {
+    window.location.href = '{% url "reservations:arrivals" %}?date=' + this.value;
+});
+</script>
+{% endblock %}

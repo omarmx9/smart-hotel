@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}{{ guest.full_name }}{% endblock %}
+{% block page_title %}Guest Profile{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- Guest Info -->
+    <div class="col-lg-4">
+        <div class="table-card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-person me-2"></i> Guest Details</span>
+                <a href="{% url 'reservations:guest_edit' guest.pk %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-pencil"></i>
+                </a>
+            </div>
+            <div class="card-body p-4">
+                <h4 class="mb-1">
+                    {{ guest.full_name }}
+                    {% if guest.vip %}<span class="vip-badge ms-2">VIP</span>{% endif %}
+                </h4>
+                
+                <hr>
+                
+                <p class="mb-2"><i class="bi bi-envelope me-2 text-muted"></i> {{ guest.email|default:"No email" }}</p>
+                <p class="mb-2"><i class="bi bi-telephone me-2 text-muted"></i> {{ guest.phone_number|default:"No phone" }}</p>
+                <p class="mb-2"><i class="bi bi-passport me-2 text-muted"></i> {{ guest.passport_number|default:"No passport" }}</p>
+                <p class="mb-2"><i class="bi bi-globe me-2 text-muted"></i> {{ guest.nationality|default:"Unknown" }}</p>
+                {% if guest.date_of_birth %}
+                <p class="mb-2"><i class="bi bi-cake me-2 text-muted"></i> {{ guest.date_of_birth }}</p>
+                {% endif %}
+                
+                {% if guest.address %}
+                <hr>
+                <p class="mb-0">
+                    <i class="bi bi-geo-alt me-2 text-muted"></i>
+                    {{ guest.address }}{% if guest.city %}, {{ guest.city }}{% endif %}{% if guest.country %}, {{ guest.country }}{% endif %}
+                </p>
+                {% endif %}
+                
+                {% if guest.notes %}
+                <hr>
+                <h6>Notes</h6>
+                <p class="mb-0 text-muted">{{ guest.notes }}</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Actions -->
+        <div class="table-card">
+            <div class="card-header"><i class="bi bi-gear me-2"></i> Actions</div>
+            <div class="list-group list-group-flush">
+                <a href="{% url 'reservations:reservation_create_for_guest' guest.pk %}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-calendar-plus me-2 text-success"></i> New Reservation
+                </a>
+                <a href="{% url 'documents:upload' guest.pk %}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-upload me-2 text-primary"></i> Upload Document
+                </a>
+                <a href="{% url 'documents:sync_from_kiosk' guest.pk %}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-arrow-repeat me-2"></i> Sync from Kiosk
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Reservations & Documents -->
+    <div class="col-lg-8">
+        <!-- Reservations -->
+        <div class="table-card mb-4">
+            <div class="card-header">
+                <i class="bi bi-calendar-check me-2"></i> Reservations
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Reservation #</th>
+                            <th>Room</th>
+                            <th>Dates</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for res in reservations %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'reservations:reservation_detail' res.pk %}" class="text-decoration-none">
+                                    {{ res.reservation_number }}
+                                </a>
+                            </td>
+                            <td>{{ res.room.room_number|default:"-" }}</td>
+                            <td>{{ res.check_in_date }} - {{ res.check_out_date }}</td>
+                            <td>
+                                <span class="badge-status badge-{{ res.status|slugify }}">
+                                    {{ res.get_status_display }}
+                                </span>
+                            </td>
+                            <td>
+                                <a href="{% url 'reservations:reservation_detail' res.pk %}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">No reservations found</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Documents -->
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-file-earmark me-2"></i> Documents</span>
+                <a href="{% url 'documents:upload' guest.pk %}" class="btn btn-sm btn-outline-success">
+                    <i class="bi bi-upload me-1"></i> Upload
+                </a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Number</th>
+                            <th>Source</th>
+                            <th>Uploaded</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in documents %}
+                        <tr>
+                            <td>
+                                <i class="bi bi-file-earmark-text me-2"></i>
+                                {{ doc.get_document_type_display }}
+                            </td>
+                            <td>{{ doc.document_number|default:"-" }}</td>
+                            <td>
+                                <span class="badge {% if doc.source == 'kiosk' %}bg-info{% else %}bg-secondary{% endif %}">
+                                    {{ doc.get_source_display }}
+                                </span>
+                            </td>
+                            <td>{{ doc.uploaded_at|date:"M d, Y" }}</td>
+                            <td>
+                                {% if doc.verified %}
+                                <span class="badge bg-success">Verified</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">Unverified</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'documents:detail' doc.pk %}" class="btn btn-sm btn-outline-secondary" title="View">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">No documents uploaded</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

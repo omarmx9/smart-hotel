@@ -44,6 +44,7 @@ Built with Django and modern web technologies, the kiosk provides a touch-friend
 - **Automatic form population** - MRZ data fills registration fields
 - **Digital signatures** - Touch-enabled signature capture
 - **PDF generation** - Registration cards for guest records
+- **Front Desk integration** - Documents accessible to hotel staff
 - **Reservation lookup** - Find booking by number or guest details
 
 ### Access Methods
@@ -272,6 +273,22 @@ docker compose -f docker-compose-dev.yml up kiosk mrz-backend
 | `SECRET_KEY` | Django secret key | `replace-me-in-production` |
 | `ALLOWED_HOSTS` | Allowed hostnames | `*` |
 | `MRZ_SERVICE_URL` | MRZ backend URL | `http://mrz-backend:5000` |
+| `FRONTDESK_DB` | Frontdesk database name | `frontdesk` |
+| `FRONTDESK_DB_USER` | Frontdesk database user | `frontdesk` |
+| `FRONTDESK_DB_PASSWORD` | Frontdesk database password | (required) |
+| `FRONTDESK_DB_HOST` | Frontdesk database host | `postgres-frontdesk` |
+| `FRONTDESK_DB_PORT` | Frontdesk database port | `5432` |
+
+### Frontdesk Database Integration
+
+The kiosk connects to the **Frontdesk PostgreSQL database** to access real reservation data. This integration enables:
+
+- **Reservation lookup** - Find guest bookings by confirmation number or name
+- **Guest data sync** - MRZ-scanned passport data is saved to frontdesk database
+- **Document storage** - Passport images and signed registration forms are linked to guest records
+- **Check-in updates** - Reservation status updates flow back to frontdesk
+
+When `FRONTDESK_DB_PASSWORD` is set, the kiosk queries the frontdesk database for reservations. If not configured, it falls back to in-memory storage for development.
 
 ### Settings Overview
 

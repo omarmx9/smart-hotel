@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="table-card">
+            <div class="card-header">
+                <i class="bi bi-calendar-plus me-2"></i> {{ title }}
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Guest</label>
+                            {{ form.guest }}
+                            {% if form.guest.errors %}
+                            <div class="text-danger small">{{ form.guest.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Room</label>
+                            {{ form.room }}
+                            {% if form.room.errors %}
+                            <div class="text-danger small">{{ form.room.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Check-In Date</label>
+                            {{ form.check_in_date }}
+                            {% if form.check_in_date.errors %}
+                            <div class="text-danger small">{{ form.check_in_date.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Check-Out Date</label>
+                            {{ form.check_out_date }}
+                            {% if form.check_out_date.errors %}
+                            <div class="text-danger small">{{ form.check_out_date.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Adults</label>
+                            {{ form.adults }}
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Children</label>
+                            {{ form.children }}
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Rate per Night</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                {{ form.rate_per_night }}
+                            </div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label class="form-label">Special Requests</label>
+                            {{ form.special_requests }}
+                        </div>
+                    </div>
+                    
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger mt-3">
+                        {% for error in form.non_field_errors %}
+                        {{ error }}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mt-4 d-flex justify-content-between">
+                        <a href="{% if reservation %}{% url 'reservations:reservation_detail' reservation.pk %}{% else %}{% url 'reservations:reservation_list' %}{% endif %}" class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>
+                            {% if reservation %}Update{% else %}Create{% endif %} Reservation
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

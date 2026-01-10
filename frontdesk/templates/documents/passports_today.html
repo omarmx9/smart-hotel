@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Today's Passports{% endblock %}
+{% block page_title %}Today's Passports{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-end mb-4">
+    <span class="text-muted">{{ passports|length }} passport(s) for arrivals/in-house</span>
+</div>
+
+<div class="row g-4">
+    {% for doc in passports %}
+    <div class="col-sm-6 col-lg-4">
+        <div class="table-card h-100">
+            <div class="card-body p-3">
+                {% if doc.has_file %}
+                <div class="text-center mb-3">
+                    {% if doc.file %}
+                    <img src="{{ doc.file.url }}" alt="Passport" class="img-fluid rounded" style="max-height: 200px;">
+                    {% elif doc.kiosk_file_url %}
+                    <img src="{{ doc.kiosk_file_url }}" alt="Passport" class="img-fluid rounded" style="max-height: 200px;"
+                         onerror="this.style.display='none'">
+                    {% endif %}
+                </div>
+                {% endif %}
+                
+                <h6 class="mb-1">
+                    <a href="{% url 'reservations:guest_detail' doc.guest.pk %}" class="text-decoration-none">
+                        {{ doc.guest.full_name }}
+                    </a>
+                </h6>
+                
+                {% if doc.document_number %}
+                <p class="mb-1 text-muted small">
+                    <i class="bi bi-passport me-1"></i> {{ doc.document_number }}
+                </p>
+                {% endif %}
+                
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    {% if doc.verified %}
+                    <span class="badge bg-success">Verified</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">Unverified</span>
+                    {% endif %}
+                    
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'documents:detail' doc.pk %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        {% if not doc.verified %}
+                        <button onclick="verifyDocument({{ doc.pk }})" class="btn btn-outline-success">
+                            <i class="bi bi-check-lg"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-passport fs-1 d-block mb-2"></i>
+            No passports for today's arrivals or in-house guests
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function verifyDocument(pk) {
+    fetch(`/documents/${pk}/verify/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        }
+    });
+}
+</script>
+{% endblock %}

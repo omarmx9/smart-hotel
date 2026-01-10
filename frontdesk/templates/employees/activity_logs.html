@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Activity Logs{% endblock %}
+{% block page_title %}Activity Logs{% endblock %}
+
+{% block content %}
+<div class="d-flex gap-2 mb-4">
+    <select id="employeeFilter" class="form-select" style="width: auto;">
+        <option value="">All Employees</option>
+        {% for emp in employees %}
+        <option value="{{ emp.pk }}" {% if request.GET.employee == emp.pk|stringformat:"d" %}selected{% endif %}>
+            {{ emp.get_full_name }}
+        </option>
+        {% endfor %}
+    </select>
+    <select id="actionFilter" class="form-select" style="width: auto;">
+        <option value="">All Actions</option>
+        {% for value, label in action_choices %}
+        <option value="{{ value }}" {% if request.GET.action == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <input type="date" id="dateFrom" class="form-control" value="{{ request.GET.date_from }}" style="width: auto;" placeholder="From">
+    <input type="date" id="dateTo" class="form-control" value="{{ request.GET.date_to }}" style="width: auto;" placeholder="To">
+    <button onclick="applyFilters()" class="btn btn-primary">
+        <i class="bi bi-funnel"></i> Filter
+    </button>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Employee</th>
+                    <th>Action</th>
+                    <th>Description</th>
+                    <th>IP Address</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.timestamp }}</td>
+                    <td>{{ log.employee.get_full_name|default:"-" }}</td>
+                    <td>
+                        <span class="badge 
+                            {% if 'login' in log.action %}bg-info
+                            {% elif 'logout' in log.action %}bg-secondary
+                            {% elif 'checkin' in log.action %}bg-success
+                            {% elif 'checkout' in log.action %}bg-warning
+                            {% elif 'cancel' in log.action %}bg-danger
+                            {% else %}bg-primary{% endif %}">
+                            {{ log.get_action_display }}
+                        </span>
+                    </td>
+                    <td>{{ log.description|default:"-" }}</td>
+                    <td><small class="text-muted">{{ log.ip_address|default:"-" }}</small></td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-5">No activity logs found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if logs.has_other_pages %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if logs.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ logs.previous_page_number }}">Previous</a>
+        </li>
+        {% endif %}
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ logs.number }} of {{ logs.paginator.num_pages }}</span>
+        </li>
+        {% if logs.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ logs.next_page_number }}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function applyFilters() {
+    const employee = document.getElementById('employeeFilter').value;
+    const action = document.getElementById('actionFilter').value;
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    
+    let url = '{% url "employees:activity_logs" %}?';
+    if (employee) url += 'employee=' + employee + '&';
+    if (action) url += 'action=' + action + '&';
+    if (dateFrom) url += 'date_from=' + dateFrom + '&';
+    if (dateTo) url += 'date_to=' + dateTo;
+    
+    window.location.href = url;
+}
+</script>
+{% endblock %}

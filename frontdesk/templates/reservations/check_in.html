@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Check In - {{ reservation.reservation_number }}{% endblock %}
+{% block page_title %}Check In Guest{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="row g-4">
+            <!-- Reservation Summary -->
+            <div class="col-lg-4">
+                <div class="table-card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-calendar-check me-2"></i> Reservation
+                    </div>
+                    <div class="card-body p-4">
+                        <p class="mb-2"><strong>{{ reservation.reservation_number }}</strong></p>
+                        <hr>
+                        <p class="mb-1"><i class="bi bi-calendar me-2 text-muted"></i> {{ reservation.check_in_date }} - {{ reservation.check_out_date }}</p>
+                        <p class="mb-1"><i class="bi bi-moon me-2 text-muted"></i> {{ reservation.nights }} night(s)</p>
+                        <p class="mb-0"><i class="bi bi-people me-2 text-muted"></i> {{ reservation.adults }} adult(s){% if reservation.children %}, {{ reservation.children }} child(ren){% endif %}</p>
+                    </div>
+                </div>
+                
+                <div class="table-card">
+                    <div class="card-header">
+                        <i class="bi bi-person me-2"></i> Guest
+                    </div>
+                    <div class="card-body p-4">
+                        <h5>{{ reservation.guest.full_name }}</h5>
+                        {% if reservation.guest.vip %}
+                        <span class="vip-badge mb-2 d-inline-block">VIP Guest</span>
+                        {% endif %}
+                        {% if reservation.guest.email %}
+                        <p class="mb-1"><i class="bi bi-envelope me-2 text-muted"></i> {{ reservation.guest.email }}</p>
+                        {% endif %}
+                        {% if reservation.guest.phone_number %}
+                        <p class="mb-1"><i class="bi bi-telephone me-2 text-muted"></i> {{ reservation.guest.phone_number }}</p>
+                        {% endif %}
+                        {% if reservation.guest.passport_number %}
+                        <p class="mb-0"><i class="bi bi-passport me-2 text-muted"></i> {{ reservation.guest.passport_number }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Check-In Form -->
+            <div class="col-lg-8">
+                <div class="table-card">
+                    <div class="card-header bg-success text-white">
+                        <i class="bi bi-box-arrow-in-right me-2"></i> Complete Check-In
+                    </div>
+                    <div class="card-body p-4">
+                        <form method="post">
+                            {% csrf_token %}
+                            
+                            {% if not reservation.room %}
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong>No room assigned!</strong> Please select a room below.
+                            </div>
+                            {% endif %}
+                            
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Room Assignment</label>
+                                {% if reservation.room %}
+                                <div class="alert alert-info mb-2">
+                                    <i class="bi bi-door-open me-2"></i>
+                                    Currently assigned: <strong>Room {{ reservation.room.room_number }}</strong> ({{ reservation.room.get_room_type_display }})
+                                </div>
+                                {% endif %}
+                                <select name="room" class="form-select">
+                                    <option value="">{% if reservation.room %}Keep current room{% else %}Select a room{% endif %}</option>
+                                    {% for room in available_rooms %}
+                                    <option value="{{ room.pk }}">
+                                        Room {{ room.room_number }} - {{ room.get_room_type_display }} (${{ room.base_rate }}/night)
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted">Leave empty to use the assigned room, or select a different available room.</small>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Access Card Number</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-credit-card"></i></span>
+                                    {{ form.access_card_number }}
+                                </div>
+                                <small class="text-muted">Scan or enter the access card number to issue to the guest.</small>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Check-In Notes</label>
+                                {{ form.notes }}
+                            </div>
+                            
+                            <hr>
+                            
+                            <div class="d-flex justify-content-between align-items-center">
+                                <a href="{% url 'reservations:reservation_detail' reservation.pk %}" class="btn btn-outline-secondary">
+                                    <i class="bi bi-arrow-left me-1"></i> Back
+                                </a>
+                                <button type="submit" class="btn btn-success btn-lg">
+                                    <i class="bi bi-check-lg me-1"></i> Complete Check-In
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -34,9 +34,10 @@ Smart Hotel is a full-stack IoT solution for modern hotel management. The system
 | **Real-time Monitoring** | Temperature, humidity, luminosity, and gas sensors per room |
 | **Climate Control** | Remote temperature and lighting management |
 | **Self Check-in Kiosk** | Passport scanning with MRZ extraction |
+| **Front Desk System** | Employee management, reservations, document access |
 | **Multi-language Support** | EN, DE, PL, UK, RU for international guests |
 | **User Authentication** | Django-based authentication with PostgreSQL |
-| **Role-based Access** | Admin, Monitor, and Guest permission levels |
+| **Role-based Access** | Admin, Monitor, Guest, and Employee permission levels |
 | **SMS Notifications** | Guest credential delivery via Node-RED (Twilio) |
 | **Telegram Alerts** | Admin notifications with automatic fallback |
 | **Unified Notifications** | Telegram → SMS fallback with admin alerts |
@@ -54,7 +55,9 @@ flowchart TB
     subgraph CLOUD["Cloud Infrastructure"]
         subgraph APPLICATIONS["Applications"]
             DASHBOARD["Dashboard<br/>Django/Daphne"]
+            FRONTDESK["Front Desk<br/>Django/Gunicorn"]
             POSTGRES["PostgreSQL<br/>Rooms/Reservations"]
+            POSTGRES_FD["PostgreSQL<br/>Frontdesk (Employees)"]
             NODERED["Node-RED<br/>Notification Gateway"]
         end
 
@@ -79,6 +82,7 @@ flowchart TB
     subgraph BACK_OFFICE["Back Office"]
         STAFF["Staff"]
         Admin["Admin"]
+        RECEPTIONIST["Receptionist"]
     end
 
     subgraph HOTEL_LOBBY["Hotel Lobby"]
@@ -96,6 +100,10 @@ flowchart TB
     DASHBOARD -->|MQTT| NODERED
     DASHBOARD --> MOSQUITTO
     
+    FRONTDESK --> POSTGRES_FD
+    FRONTDESK -->|API| KIOSK_APP
+    FRONTDESK --> MOSQUITTO
+    
     NODERED --> TELEGRAM
     NODERED --> TWILIO
     
@@ -106,6 +114,7 @@ flowchart TB
     
     STAFF --> DASHBOARD
     Admin --> DASHBOARD
+    RECEPTIONIST --> FRONTDESK
     GUEST["Guest"] --> KIOSK
     GUEST_PHONE["Guest Phone"] --> DASHBOARD
 ```
@@ -127,7 +136,8 @@ flowchart TB
 | Component | Description | Status | Documentation |
 | ----------- | ------------- | -------- | --------------- |
 | **Cloud Infrastructure** | Docker Compose stack with all backend services | ✅ Production | [cloud/README.md](cloud/README.md) |
-| **Dashboard** | Django-based management interface | ✅ Production | [dashboards/README.md](dashboards/README.md) |
+| **Dashboard** | Django-based guest monitoring interface | ✅ Production | [dashboards/README.md](dashboards/README.md) |
+| **Front Desk** | Employee reservation & document management | ✅ Production | [frontdesk/README.md](frontdesk/README.md) |
 | **Guest Kiosk** | Self-service check-in system | ✅ Production | [kiosk/README.md](kiosk/README.md) |
 | **MRZ Backend** | Passport scanning and OCR microservice | ✅ Production | [kiosk/app/README.md](kiosk/app/README.md) |
 | **ESP32 Firmware** | Sensor and actuator RTOS firmware | ✅ Production | [esp32/README.md](esp32/README.md) |
@@ -191,6 +201,7 @@ After starting, all core services are pre-configured:
 | -------- | ----- | ------------- |
 | **Staff Dashboard** | <http://localhost:8001> | admin / SmartHotel2026! |
 | **Guest Kiosk** | <http://localhost:8002> | (no auth) |
+| **Front Desk** | <http://localhost:8003> | admin / see .env |
 | **Grafana** | <http://localhost:3000> | From `.env` |
 | **InfluxDB** | <http://localhost:8086> | From `.env` |
 | **Node-RED** | <http://localhost:1880/api/health> | Headless (no UI) |
@@ -257,6 +268,12 @@ Django-based management interface with real-time WebSocket updates, MQTT integra
 Self-service check-in system with passport scanning, multi-language support, and document generation.
 
 📖 **[Kiosk Documentation](kiosk/README.md)** - Guest flow, i18n, theming, MRZ integration
+
+### Front Desk
+
+Employee management system for front desk staff with reservation management, document access, and kiosk integration.
+
+📖 **[Front Desk Documentation](frontdesk/README.md)** - Employee roles, reservation workflow, kiosk sync
 
 ### MRZ Automation AI
 
@@ -346,8 +363,12 @@ smart-hotel/
 │   ├── docker-compose.yml    # Production stack
 │   ├── docker-compose-dev.yml# Development overrides
 │   └── config/               # Service configurations
-├── dashboards/               # Staff management interface
+├── dashboards/               # Guest room monitoring interface
 │   └── django_app/           # Django application
+├── frontdesk/                # Front desk employee system
+│   ├── employees/            # Employee auth & management
+│   ├── reservations/         # Reservation management
+│   └── documents/            # Document access from kiosk
 ├── kiosk/                    # Guest self check-in
 │   ├── kiosk/                # Django kiosk app
 │   └── app/                  # MRZ Flask backend

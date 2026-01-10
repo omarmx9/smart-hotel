@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Guests{% endblock %}
+{% block page_title %}Guest Directory{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <form method="get" class="d-flex gap-2 flex-grow-1 me-3">
+        <input type="text" name="query" value="{{ query }}" class="form-control" placeholder="Search guests..." style="max-width: 400px;">
+        <button type="submit" class="btn btn-outline-primary">
+            <i class="bi bi-search"></i>
+        </button>
+    </form>
+    <a href="{% url 'reservations:guest_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i> New Guest
+    </a>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Contact</th>
+                    <th>Passport</th>
+                    <th>Nationality</th>
+                    <th>Reservations</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for guest in guests %}
+                <tr>
+                    <td>
+                        <a href="{% url 'reservations:guest_detail' guest.pk %}" class="fw-bold text-decoration-none">
+                            {{ guest.full_name }}
+                        </a>
+                        {% if guest.vip %}<span class="vip-badge ms-1">VIP</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if guest.email %}<small class="d-block">{{ guest.email }}</small>{% endif %}
+                        {% if guest.phone_number %}<small class="d-block text-muted">{{ guest.phone_number }}</small>{% endif %}
+                    </td>
+                    <td>{{ guest.passport_number|default:"-" }}</td>
+                    <td>{{ guest.nationality|default:"-" }}</td>
+                    <td>{{ guest.reservations.count }}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'reservations:guest_detail' guest.pk %}" class="btn btn-outline-secondary" title="View">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            <a href="{% url 'reservations:guest_edit' guest.pk %}" class="btn btn-outline-primary" title="Edit">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <a href="{% url 'reservations:reservation_create_for_guest' guest.pk %}" class="btn btn-outline-success" title="New Reservation">
+                                <i class="bi bi-calendar-plus"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-5">
+                        <i class="bi bi-people fs-1 d-block mb-2"></i>
+                        No guests found
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if guests.has_other_pages %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if guests.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ guests.previous_page_number }}{% if query %}&query={{ query }}{% endif %}">Previous</a>
+        </li>
+        {% endif %}
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ guests.number }} of {{ guests.paginator.num_pages }}</span>
+        </li>
+        {% if guests.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ guests.next_page_number }}{% if query %}&query={{ query }}{% endif %}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}

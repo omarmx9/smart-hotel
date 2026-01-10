@@ -9,5 +9,7 @@ fastmrz
 opencv-python-headless
 python-docx
 reportlab
+# Database - PostgreSQL for frontdesk integration
+psycopg2-binary
 # Optional: only needed if using camera capture directly
 # opencv-python-headless can be used as lighter alternative

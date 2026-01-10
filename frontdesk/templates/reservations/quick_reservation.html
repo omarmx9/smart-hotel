@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Walk-In Reservation{% endblock %}
+{% block page_title %}Quick Walk-In Reservation{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="table-card">
+            <div class="card-header">
+                <i class="bi bi-lightning-charge me-2 text-warning"></i> Walk-In Guest Registration
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="row">
+                        <!-- Guest Information -->
+                        <div class="col-lg-6">
+                            <h5 class="mb-3 pb-2 border-bottom">
+                                <i class="bi bi-person me-2"></i> Guest Information
+                            </h5>
+                            
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">First Name *</label>
+                                    {{ form.first_name }}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Last Name *</label>
+                                    {{ form.last_name }}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Email</label>
+                                    {{ form.email }}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Phone</label>
+                                    {{ form.phone_number }}
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Passport/ID Number</label>
+                                    {{ form.passport_number }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Reservation Details -->
+                        <div class="col-lg-6">
+                            <h5 class="mb-3 pb-2 border-bottom">
+                                <i class="bi bi-calendar-check me-2"></i> Reservation Details
+                            </h5>
+                            
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label">Room *</label>
+                                    {{ form.room }}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Check-In Date *</label>
+                                    {{ form.check_in_date }}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Check-Out Date *</label>
+                                    {{ form.check_out_date }}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Adults</label>
+                                    {{ form.adults }}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Children</label>
+                                    {{ form.children }}
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Special Requests</label>
+                                    {{ form.special_requests }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {% if form.errors %}
+                    <div class="alert alert-danger mt-4">
+                        <strong>Please correct the following errors:</strong>
+                        <ul class="mb-0 mt-2">
+                            {% for field in form %}
+                            {% for error in field.errors %}
+                            <li>{{ field.label }}: {{ error }}</li>
+                            {% endfor %}
+                            {% endfor %}
+                            {% for error in form.non_field_errors %}
+                            <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mt-4 d-flex justify-content-between">
+                        <a href="{% url 'reservations:dashboard' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-check-lg me-1"></i> Create & Proceed to Check-In
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

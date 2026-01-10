@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Check Out - {{ reservation.reservation_number }}{% endblock %}
+{% block page_title %}Check Out Guest{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="row g-4">
+            <!-- Reservation Summary -->
+            <div class="col-lg-4">
+                <div class="table-card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-calendar-check me-2"></i> Stay Summary
+                    </div>
+                    <div class="card-body p-4">
+                        <p class="mb-2"><strong>{{ reservation.reservation_number }}</strong></p>
+                        <hr>
+                        <p class="mb-1"><i class="bi bi-door-open me-2 text-muted"></i> Room {{ reservation.room.room_number }}</p>
+                        <p class="mb-1"><i class="bi bi-calendar me-2 text-muted"></i> {{ reservation.check_in_date }} - {{ reservation.check_out_date }}</p>
+                        <p class="mb-0"><i class="bi bi-moon me-2 text-muted"></i> {{ reservation.nights }} night(s)</p>
+                    </div>
+                </div>
+                
+                <div class="table-card">
+                    <div class="card-header">
+                        <i class="bi bi-person me-2"></i> Guest
+                    </div>
+                    <div class="card-body p-4">
+                        <h5>{{ reservation.guest.full_name }}</h5>
+                        {% if reservation.guest.email %}
+                        <p class="mb-1"><i class="bi bi-envelope me-2 text-muted"></i> {{ reservation.guest.email }}</p>
+                        {% endif %}
+                        {% if reservation.guest.phone_number %}
+                        <p class="mb-0"><i class="bi bi-telephone me-2 text-muted"></i> {{ reservation.guest.phone_number }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Check-Out Form -->
+            <div class="col-lg-8">
+                <div class="table-card">
+                    <div class="card-header bg-warning">
+                        <i class="bi bi-box-arrow-right me-2"></i> Complete Check-Out
+                    </div>
+                    <div class="card-body p-4">
+                        <!-- Payment Summary -->
+                        <div class="bg-light rounded p-4 mb-4">
+                            <h5 class="mb-3">Payment Summary</h5>
+                            <div class="row">
+                                <div class="col-6">
+                                    <p class="mb-1">Room Rate ({{ reservation.nights }} nights × ${{ reservation.rate_per_night }})</p>
+                                    <p class="mb-1">Total Amount</p>
+                                    <p class="mb-1">Amount Paid</p>
+                                    <hr>
+                                    <p class="mb-0 fw-bold">Balance Due</p>
+                                </div>
+                                <div class="col-6 text-end">
+                                    <p class="mb-1">${{ reservation.total_amount }}</p>
+                                    <p class="mb-1"><strong>${{ reservation.total_amount }}</strong></p>
+                                    <p class="mb-1 text-success">-${{ reservation.amount_paid }}</p>
+                                    <hr>
+                                    <p class="mb-0 fw-bold {% if reservation.balance_due > 0 %}text-danger{% else %}text-success{% endif %}">
+                                        ${{ reservation.balance_due }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <form method="post">
+                            {% csrf_token %}
+                            
+                            {% if reservation.balance_due > 0 %}
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Payment Amount</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    {{ form.payment_amount }}
+                                </div>
+                                <small class="text-muted">Enter the payment amount to collect. Balance due: ${{ reservation.balance_due }}</small>
+                            </div>
+                            {% else %}
+                            <div class="alert alert-success">
+                                <i class="bi bi-check-circle me-2"></i>
+                                This reservation is fully paid.
+                            </div>
+                            {% endif %}
+                            
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Check-Out Notes</label>
+                                {{ form.notes }}
+                                <small class="text-muted">Any notes about the check-out (room condition, lost items, etc.)</small>
+                            </div>
+                            
+                            <hr>
+                            
+                            <div class="d-flex justify-content-between align-items-center">
+                                <a href="{% url 'reservations:reservation_detail' reservation.pk %}" class="btn btn-outline-secondary">
+                                    <i class="bi bi-arrow-left me-1"></i> Back
+                                </a>
+                                <button type="submit" class="btn btn-warning btn-lg">
+                                    <i class="bi bi-check-lg me-1"></i> Complete Check-Out
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

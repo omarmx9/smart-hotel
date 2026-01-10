@@ -214,6 +214,91 @@ services:
       retries: 3
 
   # ============================================================================
+  # FRONTDESK SERVICES
+  # ============================================================================
+
+  # Frontdesk PostgreSQL (separate database for employee passwords)
+  postgres-frontdesk:
+    image: docker.io/postgres:16-alpine
+    container_name: postgres-frontdesk
+    environment:
+      - POSTGRES_DB=${FRONTDESK_DB:-frontdesk}
+      - POSTGRES_USER=${FRONTDESK_DB_USER:-frontdesk}
+      - POSTGRES_PASSWORD=${FRONTDESK_DB_PASSWORD}
+    volumes:
+      - postgres-frontdesk-data:/var/lib/postgresql/data:rw
+    restart: unless-stopped
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FRONTDESK_DB_USER:-frontdesk}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontdesk Web Application (Django)
+  frontdesk:
+    <<: *python-base
+    container_name: frontdesk
+    ports:
+      - "${FRONTDESK_PORT:-8003}:8000"
+    environment:
+      # Database (separate from main dashboard)
+      - FRONTDESK_DB=${FRONTDESK_DB:-frontdesk}
+      - FRONTDESK_DB_USER=${FRONTDESK_DB_USER:-frontdesk}
+      - FRONTDESK_DB_PASSWORD=${FRONTDESK_DB_PASSWORD}
+      - FRONTDESK_DB_HOST=postgres-frontdesk
+      - FRONTDESK_DB_PORT=5432
+      # Dashboard database (read-only for room data)
+      - DASHBOARD_DB=${POSTGRES_DB:-smarthotel}
+      - DASHBOARD_DB_USER=${POSTGRES_USER:-smarthotel}
+      - DASHBOARD_DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DASHBOARD_DB_HOST=postgres
+      - DASHBOARD_DB_PORT=5432
+      # Django settings
+      - DJANGO_SECRET_KEY=${FRONTDESK_SECRET_KEY}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-*}
+      # MQTT for room access cards
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_USER=${MQTT_USER:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      # Kiosk API for document access
+      - KIOSK_API_URL=http://kiosk:8000/api
+      - KIOSK_MEDIA_URL=http://kiosk:8000/media
+      - KIOSK_API_TOKEN=${KIOSK_API_TOKEN:-}
+      # Admin user (created on first run)
+      - FRONTDESK_ADMIN_USER=${FRONTDESK_ADMIN_USER:-admin}
+      - FRONTDESK_ADMIN_PASSWORD=${FRONTDESK_ADMIN_PASSWORD}
+      - FRONTDESK_ADMIN_EMAIL=${FRONTDESK_ADMIN_EMAIL:-admin@hotel.local}
+    working_dir: /app
+    volumes:
+      - ../frontdesk:/app:rw
+      - frontdesk-media:/app/media:rw
+      - ~/.cache/pip:/root/.cache/pip:rw
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y --no-install-recommends libpq-dev &&
+        pip install -r requirements.txt gunicorn &&
+        python manage.py migrate --noinput &&
+        python manage.py collectstatic --noinput --clear &&
+        python manage.py create_admin || true &&
+        python manage.py create_sample_rooms || true &&
+        gunicorn --bind 0.0.0.0:8000 frontdesk_project.wsgi:application --workers 2
+      "
+    depends_on:
+      postgres-frontdesk:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      kiosk:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - default
+
+  # ============================================================================
   # KIOSK SERVICES
   # ============================================================================
 
@@ -238,14 +323,20 @@ services:
       MQTT_USER: '${MQTT_USER:-}'
       MQTT_PASSWORD: '${MQTT_PASSWORD:-}'
       MQTT_ENABLED: 'true'
+      # Frontdesk database connection (for reservations)
+      FRONTDESK_DB: '${FRONTDESK_DB:-frontdesk}'
+      FRONTDESK_DB_USER: '${FRONTDESK_DB_USER:-frontdesk}'
+      FRONTDESK_DB_PASSWORD: '${FRONTDESK_DB_PASSWORD}'
+      FRONTDESK_DB_HOST: 'postgres-frontdesk'
+      FRONTDESK_DB_PORT: '5432'
     working_dir: /app
     volumes:
       - ../kiosk:/app:rw
       - ~/.cache/pip:/root/.cache/pip:rw
     command: >
       sh -c "
-        apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 &&
-        pip install -r requirements.txt gunicorn &&
+        apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 libpq-dev &&
+        pip install -r requirements.txt gunicorn psycopg2-binary &&
         python manage.py migrate --noinput &&
         rm -rf staticfiles && python manage.py collectstatic --noinput &&
         gunicorn --bind 0.0.0.0:8000 kiosk_project.wsgi:application --workers 2
@@ -254,6 +345,7 @@ services:
       - mrz-backend
       - mosquitto
       - dashboard
+      - postgres-frontdesk
     restart: unless-stopped
     networks:
       - kiosk-network
@@ -291,6 +383,7 @@ volumes:
   influxdb-data:
   influxdb-config:
   postgres-data:
+  postgres-frontdesk-data:
   mosquitto-data:
   mosquitto-logs:
 
@@ -300,6 +393,9 @@ volumes:
 
   # Node-RED
   nodered-data:
+
+  # Frontdesk
+  frontdesk-media:
 
   # Kiosk
   mrz_logs:

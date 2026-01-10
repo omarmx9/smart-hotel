@@ -41,6 +41,7 @@ flowchart TB
     subgraph EXTERNAL["External Connections"]
         ESP32["ESP32 Devices<br/>MQTT"]
         STAFF["Staff Browser<br/>HTTP"]
+        RECEPTIONIST["Front Desk<br/>HTTP"]
         GUESTS["Guest Kiosk<br/>HTTP"]
     end
 
@@ -51,10 +52,12 @@ flowchart TB
             INFLUXDB["InfluxDB<br/>Time-Series DB"]
             GRAFANA["Grafana<br/>Visualization"]
             POSTGRES["PostgreSQL<br/>Rooms/Reservations"]
+            POSTGRES_FD["PostgreSQL<br/>Frontdesk (Employees)"]
         end
         
         subgraph APP_LAYER["Application Layer"]
             DASHBOARD["Dashboard<br/>Django/ASGI"]
+            FRONTDESK["Front Desk<br/>Django/Gunicorn"]
             NODERED["Node-RED<br/>Notification Gateway"]
         end
         
@@ -71,6 +74,7 @@ flowchart TB
 
     ESP32 <-->|MQTT| MOSQUITTO
     STAFF -->|HTTP| DASHBOARD
+    RECEPTIONIST -->|HTTP| FRONTDESK
     GUESTS -->|HTTP| KIOSK
     
     MOSQUITTO --> TELEGRAF
@@ -81,6 +85,10 @@ flowchart TB
     DASHBOARD <--> MOSQUITTO
     DASHBOARD --> NODERED
     DASHBOARD --> INFLUXDB
+    
+    FRONTDESK <--> POSTGRES_FD
+    FRONTDESK -->|API| KIOSK
+    FRONTDESK <--> MOSQUITTO
     
     NODERED --> TELEGRAM
     NODERED --> SMS
@@ -117,26 +125,28 @@ flowchart LR
 
 ### Core Infrastructure
 
-| Service | Image | Port | Description |
-|---------|-------|------|-------------|
-| **InfluxDB** | `influxdb:2-alpine` |  | Time-series database for sensor data |
-| **PostgreSQL** | `postgres:16-alpine` |  | Relational database for rooms/reservations |
-| **Mosquitto** | `eclipse-mosquitto:latest` |  | MQTT broker for IoT messaging |
-| **Telegraf** | `telegraf:alpine` |  | MQTT → InfluxDB data bridge |
-| **Grafana** | `grafana/grafana:latest` |  | Metrics visualization |
+| Service | Image | Description |
+| --------- | ------- | ------------- |
+| **InfluxDB** | `influxdb:2-alpine` | Time-series database for sensor data |
+| **PostgreSQL** | `postgres:16-alpine` | Relational database for rooms/reservations |
+| **PostgreSQL (Frontdesk)** | `postgres:16-alpine` | Isolated database for employee credentials |
+| **Mosquitto** | `eclipse-mosquitto:latest` | MQTT broker for IoT messaging |
+| **Telegraf** | `telegraf:alpine` | MQTT → InfluxDB data bridge |
+| **Grafana** | `grafana/grafana:latest` | Metrics visualization |
 
 ### Authentication & Messaging
 
 | Service | Image | Port | Description |
-|---------|-------|------|-------------|
+| --------- | ------- | ------ | ------------- |
 | **Node-RED** | `nodered/node-red:latest` | internal only | Notification gateway (Telegram + SMS) |
 
 ### Application Services
 
 | Service | Build Context | Port | Description |
-|---------|---------------|------|-------------|
+| --------- | --------------- | ------ | ------------- |
 | **Dashboard** | `../dashboards/django_app` | 8001 | Staff management interface |
 | **Kiosk** | `../kiosk` | 8002 | Guest self check-in |
+| **Front Desk** | `../frontdesk` | 8003 | Employee reservation management |
 | **MRZ Backend** | `../kiosk/app` | 5000 (dev only) | Passport processing API |
 
 ## Quick Start
@@ -173,7 +183,7 @@ docker compose logs -f
 The `./setup.sh` script provides an interactive wizard to configure:
 
 | Feature | Description |
-|---------|-------------|
+| --------- | ------------- |
 | **Port Conflict Detection** | Automatically scans for port conflicts and offers remapping |
 | **MQTT Authentication** | Optional username/password authentication for MQTT broker |
 | **MQTT TLS** | Optional TLS encryption with self-signed or custom certificates |
@@ -190,6 +200,7 @@ The setup wizard automatically detects if any required ports are in use and offe
 Remapped ports are automatically saved to `.env` and displayed in the summary.
 
 All core services (InfluxDB, Grafana, Dashboard) are **pre-configured automatically** via:
+
 - InfluxDB initialization scripts (create buckets, retention policies, and Telegraf configs)
 - Grafana provisioning (datasources and default dashboards)
 - Dashboard admin user created automatically
@@ -203,12 +214,13 @@ Use the update script for safe updates with automatic backups:
 ```
 
 The update script will:
+
 1. Create backups of PostgreSQL and InfluxDB databases
 2. Pull latest Docker images
 3. Run database migrations
 4. Perform health checks
 
-### Development Mode
+### Development Deployment
 
 Development mode exposes additional debugging features:
 
@@ -218,6 +230,7 @@ docker compose -f docker-compose.yml -f docker-compose-dev.yml up --build -d
 ```
 
 **Development features:**
+
 - MRZ Test Frontend exposed at port 5000
 - Flask debug mode with auto-reload
 - Django debug mode enabled
@@ -240,11 +253,11 @@ docker compose down -v
 All ports are configurable via `.env` - the setup wizard can remap ports if conflicts are detected.
 
 | Service | Default URL | Notes |
-|---------|-------------|-------|
-| Dashboard | http://localhost:8001 | Login: admin / SmartHotel2026! |
-| Grafana | http://localhost:3000 | Credentials from `.env` |
-| InfluxDB | http://localhost:8086 | Credentials from `.env` |
-| Kiosk | http://localhost:8002 | No auth required for guests |
+| --------- | ------------- | ------- |
+| Dashboard | <http://localhost:8001> | Login: admin / SmartHotel2026! |
+| Grafana | <http://localhost:3000> | Credentials from `.env` |
+| InfluxDB | <http://localhost:8086> | Credentials from `.env` |
+| Kiosk | <http://localhost:8002> | No auth required for guests |
 | Node-RED | Internal only | Headless - no external port exposed |
 | Mosquitto | mqtt://localhost:1883 | Optional auth via setup.sh |
 | Mosquitto TLS | mqtts://localhost:8883 | Optional, configure via setup.sh |
@@ -521,7 +534,7 @@ See `.env.example` for complete documentation of all variables.
 #### Key Configuration Categories
 
 | Category | Variables | Description |
-|----------|-----------|-------------|
+| ---------- | ----------- | ------------- |
 | **Database** | `POSTGRES_*` | Main PostgreSQL settings |
 | **InfluxDB** | `INFLUX_*` | Time-series database |
 | **Grafana** | `GRAFANA_*` | Visualization dashboard |
@@ -534,14 +547,14 @@ See `.env.example` for complete documentation of all variables.
 #### External Services (Manual Configuration)
 
 | Service | How to Get Credentials |
-|---------|------------------------|
-| **Twilio** | https://console.twilio.com/ |
+| --------- | ------------------------ |
+| **Twilio** | <https://console.twilio.com/> |
 | **Telegram** | Create bot via @BotFather |
 | **SMTP** | Your email provider |
 
 ### Configuration Files
 
-```
+```text
 cloud/
 ├── .env                     # Environment variables (generate with ./generate-env.sh)
 ├── .env.example             # Template with documentation
@@ -571,7 +584,7 @@ cloud/
 
 The notification system uses Node-RED as a unified gateway for Telegram and SMS notifications with automatic fallback logic.
 
-### Architecture
+### Notification Architecture
 
 ```mermaid
 flowchart LR
@@ -614,7 +627,7 @@ flowchart LR
 5. **If both fail**: Publish failure to `hotel/notifications/failure`
 6. Results published to `hotel/notifications/result`
 
-### Configuration
+### Service Configuration
 
 Set up notification services in `.env`:
 
@@ -632,7 +645,7 @@ TWILIO_PHONE_NUMBER=+1234567890
 ### API Endpoints
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/api/health` | GET | Service health and configuration status |
 | `/api/status` | GET | Detailed statistics |
 | `/api/notify` | POST | Send notification (HTTP alternative) |
@@ -640,7 +653,7 @@ TWILIO_PHONE_NUMBER=+1234567890
 ### MQTT Topics
 
 | Topic | Direction | Payload |
-|-------|-----------|---------|
+| ------- | ----------- | --------- |
 | `hotel/notifications/send` | IN | `{type, message, recipient, priority}` |
 | `hotel/notifications/result` | OUT | `{id, success, method, attempts}` |
 | `hotel/notifications/failure` | OUT | `{id, reason, attempts}` |
@@ -649,12 +662,12 @@ TWILIO_PHONE_NUMBER=+1234567890
 #### ESP32-CAM Topics (Face Recognition)
 
 | Topic | Direction | Payload |
-|-------|-----------|---------|
+| ------- | ----------- | --------- |
 | `hotel/kiosk/+/face/recognized` | IN | `{name, confidence, timestamp, device}` |
 | `hotel/kiosk/+/face/unknown` | IN | `{confidence, timestamp, device}` |
 | `hotel/kiosk/+/status` | IN | `{status, uptime, model_ready, free_heap}` |
 | `hotel/kiosk/+/heartbeat` | IN | `{uptime, free_heap, wifi_rssi}` |
-| `hotel/kiosk/<id>/control` | OUT | `{command: "status"|"restart"|"capture"}` |
+| `hotel/kiosk/<id>/control` | OUT | `{command: "status"\|"restart"\|"capture"}` |
 
 ### Notification Payload
 
@@ -677,6 +690,7 @@ TWILIO_PHONE_NUMBER=+1234567890
 ### Dashboard Integration
 
 The Notifications page (`/notifications/`) provides:
+
 - Real-time service status
 - Delivery statistics
 - Send test notifications (admin only)
@@ -713,7 +727,7 @@ flowchart TB
 ### Port Mappings
 
 | Host Port | Container | Service |
-|-----------|-----------|---------|
+| ----------- | ----------- | --------- |
 | 3000 | 3000 | Grafana web UI |
 | 8086 | 8086 | InfluxDB API |
 | 8001 | 8000 | Dashboard Django |
@@ -729,13 +743,14 @@ flowchart TB
 All persistent data is stored in Docker named volumes:
 
 | Volume | Service | Purpose |
-|--------|---------|---------|
+| -------- | --------- | --------- |
 | `influxdb-data` | InfluxDB | Time-series data |
 | `influxdb-config` | InfluxDB | Configuration |
 | `grafana-logs` | Grafana | Log files |
 | `mosquitto-data` | Mosquitto | Retained messages |
 | `mosquitto-logs` | Mosquitto | Broker logs |
 | `postgres-data` | PostgreSQL | Rooms, reservations |
+| `postgres-frontdesk-data` | PostgreSQL | Employee credentials (isolated) |
 | `nodered-data` | Node-RED | Flow data |
 | `kiosk_data` | Kiosk | SQLite database |
 | `kiosk_media` | Kiosk | Uploaded files |
@@ -759,11 +774,12 @@ docker compose exec -T postgres psql -U smarthotel smarthotel < backup.sql
 ### Grafana Dashboards
 
 Pre-configured dashboards for:
+
 - **Room Sensors**: Temperature, humidity, luminosity per room
 - **System Health**: Container metrics, network traffic
 - **MQTT Traffic**: Message rates, topic activity
 
-Access Grafana at http://localhost:3000
+Access Grafana at <http://localhost:3000>
 
 ### InfluxDB Queries
 
@@ -828,6 +844,7 @@ services:
 ### Common Issues
 
 **Port already in use:**
+
 ```bash
 # Find process using port
 sudo lsof -i :3000
@@ -835,6 +852,7 @@ sudo lsof -i :3000
 ```
 
 **Database connection failed:**
+
 ```bash
 # Check if postgres is ready
 docker compose logs postgres
@@ -843,6 +861,7 @@ docker compose restart dashboard
 ```
 
 **MQTT not receiving messages:**
+
 ```bash
 # Test MQTT connectivity
 docker compose exec mosquitto mosquitto_sub -t '#' -v
@@ -851,6 +870,7 @@ docker compose logs telegraf
 ```
 
 **InfluxDB token issues:**
+
 ```bash
 # Recreate Telegraf user
 docker compose exec influxdb /docker-entrypoint-initdb.d/init-telegraf.sh

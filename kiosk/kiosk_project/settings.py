@@ -63,16 +63,41 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'kiosk_project.wsgi.application'
 
-# SQLite database for test deployment
+# SQLite database for kiosk sessions and local data
 # Use /app/data path if it exists (Docker), otherwise use BASE_DIR
 import os as _os
 _db_path = Path('/app/data/db.sqlite3') if _os.path.isdir('/app/data') else BASE_DIR / 'db.sqlite3'
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': _db_path,
+
+# Check if frontdesk database is configured
+_use_frontdesk = bool(os.environ.get('FRONTDESK_DB_PASSWORD'))
+
+if _use_frontdesk:
+    # Use frontdesk PostgreSQL for reservations, SQLite for sessions
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': _db_path,
+        },
+        'frontdesk': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('FRONTDESK_DB', 'frontdesk'),
+            'USER': os.environ.get('FRONTDESK_DB_USER', 'frontdesk'),
+            'PASSWORD': os.environ.get('FRONTDESK_DB_PASSWORD', ''),
+            'HOST': os.environ.get('FRONTDESK_DB_HOST', 'postgres-frontdesk'),
+            'PORT': os.environ.get('FRONTDESK_DB_PORT', '5432'),
+            'OPTIONS': {
+                'options': '-c search_path=public',
+            },
+        }
     }
-}
+else:
+    # SQLite only (development/fallback)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': _db_path,
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = []
 

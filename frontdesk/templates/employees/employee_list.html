@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Employees{% endblock %}
+{% block page_title %}Employee Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex gap-2">
+        <select id="roleFilter" class="form-select" style="width: auto;">
+            <option value="">All Roles</option>
+            {% for value, label in role_choices %}
+            <option value="{{ value }}" {% if request.GET.role == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select id="statusFilter" class="form-select" style="width: auto;">
+            <option value="">All Status</option>
+            <option value="active" {% if request.GET.status == 'active' %}selected{% endif %}>Active</option>
+            <option value="inactive" {% if request.GET.status == 'inactive' %}selected{% endif %}>Inactive</option>
+        </select>
+    </div>
+    <a href="{% url 'employees:create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i> Add Employee
+    </a>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Employee ID</th>
+                    <th>Role</th>
+                    <th>Shift</th>
+                    <th>Status</th>
+                    <th>Last Activity</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for emp in employees %}
+                <tr>
+                    <td>
+                        <strong>{{ emp.get_full_name }}</strong>
+                        <br><small class="text-muted">{{ emp.email }}</small>
+                    </td>
+                    <td>{{ emp.employee_id|default:"-" }}</td>
+                    <td>
+                        <span class="badge {% if emp.role == 'admin' %}bg-danger{% elif emp.role == 'manager' %}bg-primary{% else %}bg-secondary{% endif %}">
+                            {{ emp.get_role_display }}
+                        </span>
+                    </td>
+                    <td>{{ emp.get_shift_display }}</td>
+                    <td>
+                        {% if emp.is_active %}
+                        <span class="badge bg-success">Active</span>
+                        {% else %}
+                        <span class="badge bg-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ emp.last_activity|default:"-" }}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'employees:edit' emp.pk %}" class="btn btn-outline-primary" title="Edit">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <button onclick="resetPassword({{ emp.pk }}, '{{ emp.get_full_name|escapejs }}')" 
+                                    class="btn btn-outline-warning" title="Reset Password">
+                                <i class="bi bi-key"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-5">
+                        No employees found
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Password Reset Modal -->
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Password Reset</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="passwordMessage"></p>
+                <div id="tempPassword" class="alert alert-warning d-none">
+                    <strong>Temporary Password:</strong>
+                    <code id="tempPasswordValue"></code>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="copyPassword()">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if employees.has_other_pages %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if employees.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ employees.previous_page_number }}">Previous</a>
+        </li>
+        {% endif %}
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ employees.number }} of {{ employees.paginator.num_pages }}</span>
+        </li>
+        {% if employees.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ employees.next_page_number }}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('roleFilter').addEventListener('change', updateFilters);
+document.getElementById('statusFilter').addEventListener('change', updateFilters);
+
+function updateFilters() {
+    const role = document.getElementById('roleFilter').value;
+    const status = document.getElementById('statusFilter').value;
+    let url = '{% url "employees:list" %}?';
+    if (role) url += 'role=' + role + '&';
+    if (status) url += 'status=' + status;
+    window.location.href = url;
+}
+
+function resetPassword(pk, name) {
+    if (confirm(`Reset password for ${name}?`)) {
+        fetch(`/accounts/employees/${pk}/reset-password/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('passwordMessage').textContent = data.message;
+                document.getElementById('tempPassword').classList.remove('d-none');
+                document.getElementById('tempPasswordValue').textContent = data.temporary_password;
+                new bootstrap.Modal(document.getElementById('passwordModal')).show();
+            } else {
+                alert('Failed to reset password');
+            }
+        });
+    }
+}
+
+function copyPassword() {
+    const pwd = document.getElementById('tempPasswordValue').textContent;
+    navigator.clipboard.writeText(pwd);
+}
+</script>
+{% endblock %}

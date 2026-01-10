@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stats Row -->
+<div class="row g-4 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card d-flex align-items-center gap-3">
+            <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                <i class="bi bi-box-arrow-in-right"></i>
+            </div>
+            <div>
+                <div class="stat-value">{{ todays_checkins }}</div>
+                <div class="stat-label">Today's Arrivals</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card d-flex align-items-center gap-3">
+            <div class="stat-icon bg-warning bg-opacity-10 text-warning">
+                <i class="bi bi-box-arrow-right"></i>
+            </div>
+            <div>
+                <div class="stat-value">{{ todays_checkouts }}</div>
+                <div class="stat-label">Today's Departures</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card d-flex align-items-center gap-3">
+            <div class="stat-icon bg-success bg-opacity-10 text-success">
+                <i class="bi bi-people"></i>
+            </div>
+            <div>
+                <div class="stat-value">{{ current_guests }}</div>
+                <div class="stat-label">In-House Guests</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="stat-card d-flex align-items-center gap-3">
+            <div class="stat-icon bg-info bg-opacity-10 text-info">
+                <i class="bi bi-door-open"></i>
+            </div>
+            <div>
+                <div class="stat-value">{{ available_rooms }}/{{ total_rooms }}</div>
+                <div class="stat-label">Rooms Available ({{ occupancy_rate|floatformat:0 }}% occ.)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Today's Arrivals -->
+    <div class="col-lg-6">
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-box-arrow-in-right me-2 text-primary"></i>Upcoming Arrivals</span>
+                <a href="{% url 'reservations:arrivals' %}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Guest</th>
+                            <th>Room</th>
+                            <th>Date</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for res in upcoming_arrivals %}
+                        <tr>
+                            <td>
+                                <strong>{{ res.guest.full_name }}</strong>
+                                {% if res.guest.vip %}<span class="vip-badge ms-2">VIP</span>{% endif %}
+                            </td>
+                            <td>{{ res.room.room_number|default:"Unassigned" }}</td>
+                            <td>{{ res.check_in_date }}</td>
+                            <td>
+                                <a href="{% url 'reservations:check_in' res.pk %}" class="btn btn-sm btn-success">
+                                    <i class="bi bi-check-lg"></i> Check In
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-4">No upcoming arrivals</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Today's Departures -->
+    <div class="col-lg-6">
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-box-arrow-right me-2 text-warning"></i>Today's Departures</span>
+                <a href="{% url 'reservations:departures' %}" class="btn btn-sm btn-outline-warning">View All</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Guest</th>
+                            <th>Room</th>
+                            <th>Balance</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for res in todays_departures %}
+                        <tr>
+                            <td>
+                                <strong>{{ res.guest.full_name }}</strong>
+                                {% if res.guest.vip %}<span class="vip-badge ms-2">VIP</span>{% endif %}
+                            </td>
+                            <td>{{ res.room.room_number }}</td>
+                            <td>
+                                {% if res.balance_due > 0 %}
+                                <span class="text-danger">${{ res.balance_due }}</span>
+                                {% else %}
+                                <span class="text-success">Paid</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'reservations:check_out' res.pk %}" class="btn btn-sm btn-warning">
+                                    <i class="bi bi-box-arrow-right"></i> Check Out
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-4">No departures scheduled</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- In-House Guests -->
+<div class="row g-4 mt-2">
+    <div class="col-12">
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-people me-2 text-success"></i>In-House Guests</span>
+                <a href="{% url 'reservations:in_house' %}" class="btn btn-sm btn-outline-success">View All</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Room</th>
+                            <th>Guest</th>
+                            <th>Check-In</th>
+                            <th>Check-Out</th>
+                            <th>Nights Left</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for res in in_house %}
+                        <tr>
+                            <td><strong>{{ res.room.room_number }}</strong></td>
+                            <td>
+                                {{ res.guest.full_name }}
+                                {% if res.guest.vip %}<span class="vip-badge ms-2">VIP</span>{% endif %}
+                            </td>
+                            <td>{{ res.check_in_date }}</td>
+                            <td>{{ res.check_out_date }}</td>
+                            <td>
+                                {% with nights_left=res.check_out_date|timesince %}
+                                {{ res.check_out_date }}
+                                {% endwith %}
+                            </td>
+                            <td>
+                                <a href="{% url 'reservations:reservation_detail' res.pk %}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">No guests currently in-house</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

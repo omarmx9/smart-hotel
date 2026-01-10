@@ -1,0 +1,19 @@
+# Django framework
+Django
+# PostgreSQL support
+psycopg2-binary
+# Static file serving
+whitenoise
+# CORS headers
+django-cors-headers
+# HTTP requests to kiosk API
+requests
+# Environment variable parsing
+python-dotenv
+# Password hashing (Argon2)
+argon2-cffi
+# MQTT client for room access cards
+paho-mqtt
+# Form styling
+django-crispy-forms
+crispy-bootstrap5

@@ -131,6 +131,9 @@ generate_env() {
     local NODERED_CREDENTIAL_SECRET=$(generate_hex 32)
     local KIOSK_SECRET_KEY=$(generate_secret 64)
     local KIOSK_API_TOKEN=$(generate_hex 32)
+    local FRONTDESK_DB_PASSWORD=$(generate_secret 32)
+    local FRONTDESK_SECRET_KEY=$(generate_secret 64)
+    local FRONTDESK_ADMIN_PASSWORD=$(generate_secure_password 16)
 
     # Create .env file
     cat > "$ENV_FILE" << EOF
@@ -203,6 +206,19 @@ KIOSK_ALLOWED_HOSTS=*
 KIOSK_API_TOKEN=${KIOSK_API_TOKEN}
 
 # ============================================================================
+# FRONTDESK - Front Desk Employee Application
+# ============================================================================
+FRONTDESK_PORT=8003
+FRONTDESK_DB=frontdesk
+FRONTDESK_DB_USER=frontdesk
+FRONTDESK_DB_PASSWORD=${FRONTDESK_DB_PASSWORD}
+FRONTDESK_SECRET_KEY=${FRONTDESK_SECRET_KEY}
+# Default admin account (created on first run)
+FRONTDESK_ADMIN_USER=admin
+FRONTDESK_ADMIN_PASSWORD=${FRONTDESK_ADMIN_PASSWORD}
+FRONTDESK_ADMIN_EMAIL=admin@hotel.local
+
+# ============================================================================
 # NODE-RED - SMS Gateway (Headless)
 # ============================================================================
 NODERED_PORT=1880
@@ -253,6 +269,8 @@ EOF
     echo "  • Grafana admin password"
     echo "  • Node-RED credential secret"
     echo "  • Kiosk secret key and API token"
+    echo "  • Frontdesk database password and secret key"
+    echo "  • Frontdesk admin account"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""

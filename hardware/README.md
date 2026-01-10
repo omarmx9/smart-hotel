@@ -1,4 +1,3 @@
-
 # Smart Hotel Hardware
 
 ![ESP32](https://img.shields.io/badge/ESP32-DevKit%20V1-blue.svg)
@@ -25,7 +24,7 @@ This directory contains hardware designs for the Smart Hotel room sensor nodes. 
 ### Supported Configurations
 
 | Configuration | Sensors | Actuators | Use Case |
-|---------------|---------|-----------|----------|
+| --------------- | --------- | ----------- | ---------- |
 | **Full Suite** | DHT22, LDR, MQ-5 | LEDs, Fan relay | Complete room monitoring |
 | **Climate Only** | DHT22 | Fan relay | HVAC control |
 | **Light Only** | LDR | LEDs | Lighting automation |
@@ -68,7 +67,7 @@ flowchart TB
 ### Design Files
 
 | File | Description |
-|------|-------------|
+| --------------- | ------------- |
 | `Gerber_TopLayer.GTL` | Top copper layer |
 | `Gerber_BottomLayer.GBL` | Bottom copper layer |
 | `Gerber_TopSilkscreenLayer.GTO` | Component labels (top) |
@@ -81,7 +80,7 @@ flowchart TB
 ### Board Specifications
 
 | Parameter | Value |
-|-----------|-------|
+| --------------- | ------- |
 | **Dimensions** | 80mm × 60mm |
 | **Layers** | 2 (top and bottom copper) |
 | **Copper Weight** | 1 oz (35μm) |
@@ -95,7 +94,7 @@ flowchart TB
 ### Bill of Materials (BOM)
 
 | Qty | Component | Value/Model | Package | Notes |
-|-----|-----------|-------------|---------|-------|
+| ----- | ----------- | ------------- | --------- | ------- |
 | 1 | ESP32-DevKit-V1 | ESP-WROOM-32 | 38-pin | Main MCU |
 | 1 | DHT22 | AM2302 | 4-pin | Temp/humidity sensor |
 | 1 | LDR | GL5528 | 5mm | Light-dependent resistor |
@@ -112,7 +111,7 @@ flowchart TB
 ### Vendor Sources
 
 | Component | Recommended Vendor |
-|-----------|-------------------|
+| --------------- | ------------------- |
 | ESP32-DevKit | AliExpress, Amazon, Mouser |
 | DHT22 | Adafruit, SparkFun, AliExpress |
 | MQ-5 | Amazon, AliExpress |
@@ -128,7 +127,7 @@ The Gerber files in `ESP-32S PCB/` are ready for production. See `How-to-order-P
 #### Recommended PCB Manufacturers
 
 | Manufacturer | Lead Time | Min Order | Notes |
-|--------------|-----------|-----------|-------|
+| --------------- | ----------- | ----------- | ------- |
 | **JLCPCB** | 3-5 days | 5 pcs | Best value, SMT assembly available |
 | **PCBWay** | 3-5 days | 5 pcs | Good quality, more options |
 | **OSH Park** | 12 days | 3 pcs | High quality, US-based |
@@ -138,7 +137,7 @@ The Gerber files in `ESP-32S PCB/` are ready for production. See `How-to-order-P
 
 When ordering, use these settings:
 
-```
+```text
 Layers: 2
 Dimensions: 80mm x 60mm
 PCB Qty: 5 (minimum)
@@ -203,7 +202,8 @@ pio device monitor -b 115200
 ```
 
 Expected output:
-```
+
+```text
 [WIFI] Connecting to network...
 [WIFI] Connected! IP: 192.168.1.x
 [MQTT] Connected to broker
@@ -217,7 +217,7 @@ Expected output:
 ### DHT22 (Temperature & Humidity)
 
 | Parameter | Specification |
-|-----------|---------------|
+| ----------- | --------------- |
 | **Temperature Range** | -40°C to 80°C |
 | **Temperature Accuracy** | ±0.5°C |
 | **Humidity Range** | 0-100% RH |
@@ -228,7 +228,7 @@ Expected output:
 ### LDR GL5528 (Light Sensor)
 
 | Parameter | Specification |
-|-----------|---------------|
+| ----------- | --------------- |
 | **Light Resistance** | 10-20 kΩ (10 lux) |
 | **Dark Resistance** | 1 MΩ |
 | **Response Time** | 20-30 ms (rise), 30 ms (fall) |
@@ -238,7 +238,7 @@ Expected output:
 ### MQ-5 (Gas Sensor)
 
 | Parameter | Specification |
-|-----------|---------------|
+| ----------- | --------------- |
 | **Target Gases** | LPG, natural gas, coal gas |
 | **Detection Range** | 200-10000 ppm |
 | **Preheat Time** | 24-48 hours (initial) |
@@ -315,12 +315,13 @@ flowchart LR
 ### Power Considerations
 
 | Power Source | Voltage | Current | Notes |
-|--------------|---------|---------|-------|
+| -------------- | --------- | --------- | ------- |
 | USB | 5V | 500mA | Development only |
 | USB-C PD | 5V | 2A | Recommended |
 | External PSU | 5V | 2A | Production deployment |
 
 **Current Budget:**
+
 - ESP32: 80-240mA (depends on WiFi activity)
 - DHT22: 1.5mA (during read)
 - LDR circuit: <1mA
@@ -331,7 +332,7 @@ flowchart LR
 ## Design Screenshots
 
 | Preview | Description |
-|---------|-------------|
+| --------- | ------------- |
 | ![PCB Top](Screenshot%202025-12-31%20152338.jpg) | PCB top layer layout |
 | ![PCB Bottom](Screenshot%202025-12-31%20152948.jpg) | PCB bottom layer / assembled |
 

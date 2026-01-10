@@ -1,10 +1,36 @@
+"""
+Emulator module for kiosk reservation system.
+
+This module provides an in-memory fallback for reservation/guest data when
+the frontdesk PostgreSQL database is not available. When the frontdesk
+database IS available, it queries that database for reservation and guest
+information.
+
+Priority:
+1. Frontdesk PostgreSQL database (production)
+2. MOCK_API_BASE remote API (testing)  
+3. In-memory storage (development/fallback)
+"""
+
 import threading
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+
 try:
     import requests
 except Exception:
     requests = None
+
+# Import frontdesk database adapter (may not be available in all contexts)
+try:
+    from . import frontdesk_db
+    _has_frontdesk = True
+except ImportError:
+    frontdesk_db = None
+    _has_frontdesk = False
 
 _lock = threading.Lock()
 _counters = {
@@ -14,6 +40,7 @@ _counters = {
     'face': 0,
 }
 
+# In-memory fallback storage (used when frontdesk DB not available)
 guests = {}
 reservations = {}
 tasks = {}
@@ -34,6 +61,12 @@ def create_guest(first_name, last_name, passport_number='', date_of_birth=None):
 
 
 def get_guest(gid):
+    # Try frontdesk database first (production)
+    if _has_frontdesk and frontdesk_db:
+        guest = frontdesk_db.get_guest(gid)
+        if guest:
+            return guest
+    
     # If a remote mock API is configured, try to fetch guest from it
     base = os.environ.get('MOCK_API_BASE')
     if base and requests:
@@ -46,10 +79,21 @@ def get_guest(gid):
                     return g
         except Exception:
             pass
+    
+    # Fallback to in-memory storage
     return guests.get(int(gid))
 
 
 def get_or_create_guest(first_name, last_name, passport_number='', date_of_birth=None):
+    # Try frontdesk database first (production)
+    if _has_frontdesk and frontdesk_db:
+        guest = frontdesk_db.get_or_create_guest(
+            first_name, last_name, passport_number, date_of_birth
+        )
+        if guest:
+            return guest
+    
+    # Fallback to in-memory storage
     for g in guests.values():
         if g['first_name'] == first_name and g['last_name'] == last_name and (not passport_number or g.get('passport_number') == passport_number):
             return g
@@ -91,6 +135,12 @@ def finalize_payment(reservation, amount=0):
 
 
 def get_reservation(rid):
+    # Try frontdesk database first (production)
+    if _has_frontdesk and frontdesk_db:
+        res = frontdesk_db.get_reservation(rid)
+        if res:
+            return res
+    
     base = os.environ.get('MOCK_API_BASE')
     if base and requests:
         try:
@@ -106,6 +156,12 @@ def get_reservation(rid):
 
 
 def get_reservation_by_number(resnum):
+    # Try frontdesk database first (production)
+    if _has_frontdesk and frontdesk_db:
+        res = frontdesk_db.get_reservation_by_number(resnum)
+        if res:
+            return res
+    
     base = os.environ.get('MOCK_API_BASE')
     if base and requests:
         try:
@@ -125,6 +181,19 @@ def get_reservation_by_number(resnum):
 
 def get_reservations_by_guest(guest):
     gid = guest['id'] if isinstance(guest, dict) else int(guest)
+    
+    # Try frontdesk database first (production)
+    # Note: frontdesk_db uses name-based lookup, not ID, so we get the guest first
+    if _has_frontdesk and frontdesk_db:
+        guest_data = frontdesk_db.get_guest(gid)
+        if guest_data:
+            results = frontdesk_db.get_reservations_by_guest_name(
+                guest_data.get('first_name', ''),
+                guest_data.get('last_name', '')
+            )
+            if results:
+                return results
+    
     base = os.environ.get('MOCK_API_BASE')
     if base and requests:
         try:
@@ -135,6 +204,41 @@ def get_reservations_by_guest(guest):
         except Exception:
             pass
     return [r for r in reservations.values() if r.get('guest_id') == gid]
+
+
+def get_reservations_by_guest_name(first_name, last_name):
+    """
+    Find reservations by guest name (for check-in lookup after passport scan).
+    
+    Args:
+        first_name: Guest's first name
+        last_name: Guest's last name
+    
+    Returns:
+        List of matching reservations
+    """
+    # Try frontdesk database first (production)
+    if _has_frontdesk and frontdesk_db:
+        results = frontdesk_db.get_reservations_by_guest_name(first_name, last_name)
+        if results:
+            return results
+    
+    # Fallback to in-memory storage
+    matches = []
+    for r in reservations.values():
+        guest = r.get('guest', {})
+        if isinstance(guest, dict):
+            if (guest.get('first_name', '').lower() == first_name.lower() and
+                guest.get('last_name', '').lower() == last_name.lower()):
+                matches.append(r)
+    return matches
+
+
+def get_todays_arrivals():
+    """Get all reservations arriving today (for kiosk welcome screen)."""
+    if _has_frontdesk and frontdesk_db:
+        return frontdesk_db.get_todays_arrivals()
+    return []
 
 
 def create_task(status='processing'):
@@ -223,6 +327,19 @@ def store_signed_document(guest_id, reservation_id, guest_data, signature_svg, s
     }
     
     signed_documents[doc_id] = document
+    
+    # Also store in frontdesk database if available
+    if _has_frontdesk and frontdesk_db and pdf_path:
+        try:
+            frontdesk_db.store_guest_document(
+                guest_id=guest_id,
+                document_type='registration_form',
+                file_path=pdf_path,
+                notes=f'Signed at kiosk, reservation: {reservation_id}'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to store document in frontdesk DB: {e}")
+    
     return document
 
 
@@ -282,6 +399,27 @@ def store_passport_image(guest_id, reservation_id, image_path, image_data_base64
     }
     
     passport_images[img_id] = passport_img
+    
+    # Also store in frontdesk database if available
+    if _has_frontdesk and frontdesk_db and image_path:
+        try:
+            # Extract document details from MRZ if available
+            metadata = {}
+            if mrz_data:
+                metadata['document_number'] = mrz_data.get('passport_number', '')
+                metadata['issuing_country'] = mrz_data.get('nationality', '')
+                if mrz_data.get('expiration_date'):
+                    metadata['expiry_date'] = mrz_data.get('expiration_date')
+            
+            frontdesk_db.store_guest_document(
+                guest_id=guest_id,
+                document_type='passport',
+                file_path=image_path,
+                **metadata
+            )
+        except Exception as e:
+            logger.warning(f"Failed to store passport image in frontdesk DB: {e}")
+    
     return passport_img
 
 

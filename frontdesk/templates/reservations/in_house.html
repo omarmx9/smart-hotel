@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}In-House Guests{% endblock %}
+{% block page_title %}In-House Guests{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-end mb-4">
+    <span class="text-muted">{{ reservations|length }} guest(s) currently in-house</span>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Room</th>
+                    <th>Guest</th>
+                    <th>Contact</th>
+                    <th>Check-In</th>
+                    <th>Check-Out</th>
+                    <th>Balance</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for res in reservations %}
+                <tr>
+                    <td><strong>{{ res.room.room_number }}</strong></td>
+                    <td>
+                        <a href="{% url 'reservations:guest_detail' res.guest.pk %}" class="text-decoration-none">
+                            {{ res.guest.full_name }}
+                        </a>
+                        {% if res.guest.vip %}<span class="vip-badge ms-1">VIP</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if res.guest.phone_number %}
+                        <small>{{ res.guest.phone_number }}</small>
+                        {% else %}
+                        <small class="text-muted">-</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ res.check_in_date }}</td>
+                    <td>
+                        {{ res.check_out_date }}
+                        {% if res.is_today_checkout %}
+                        <span class="badge bg-warning text-dark ms-1">Today</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if res.balance_due > 0 %}
+                        <span class="text-danger">${{ res.balance_due }}</span>
+                        {% else %}
+                        <span class="text-success">Paid</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'reservations:reservation_detail' res.pk %}" class="btn btn-outline-secondary" title="View">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            <a href="{% url 'reservations:check_out' res.pk %}" class="btn btn-outline-warning" title="Check Out">
+                                <i class="bi bi-box-arrow-right"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-5">
+                        <i class="bi bi-house fs-1 d-block mb-2"></i>
+                        No guests currently in-house
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
