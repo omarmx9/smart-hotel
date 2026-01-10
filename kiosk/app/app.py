@@ -1,15 +1,22 @@
 """
-MRZ Backend Microservice
-Pure API service for MRZ extraction from uploaded images.
+MRZ Backend Microservice v3.1
+Production API service for MRZ extraction with WebRTC stream support.
+
+Architecture:
+- Layer 1: Auto-Capture (YOLO-based document detection, quality assessment)
+- Layer 2: Image Enhancer (passthrough now, filters/enhancers later)
+- Layer 3: MRZ Extraction (OCR, field parsing)
+- Layer 4: Document Filling (PDF generation)
 
 Provides REST API for:
-- MRZ extraction from uploaded images (base64 or multipart)
-- Document detection for auto-capture
-- Document processing and perspective correction
-- Document filling (PDF) - triggered after MRZ update
+- WebRTC stream frame processing (browser sends frames via base64)
+- Real-time document detection and corner tracking
+- MRZ extraction from captured/uploaded images
+- Quality assessment and best-frame selection
+- Document filling (PDF) - triggered after MRZ confirmation
 
-NOTE: This is a backend-only service. Camera capture is handled by the frontend
-(browser-based using WebRTC/getUserMedia).
+NOTE: This is a pure BACKEND service. Camera is browser-based via WebRTC.
+The frontend captures frames and sends them to this backend for processing.
 """
 from flask import Flask, Response, jsonify, send_from_directory, request
 from flask_cors import CORS
@@ -23,9 +30,13 @@ import uuid
 import base64
 import json
 import glob
+from typing import Optional, Dict, List, Tuple
+from dataclasses import dataclass, field
+from datetime import datetime
 
-# Import layers (no camera layer needed for backend)
-from layer2_readjustment import DocumentProcessor
+# Import layers
+from layer1_auto_capture import QualityAssessor, QualityMetrics
+from layer2_image_enhancer import ImageBridge, EnhancementConfig
 from layer3_mrz import MRZExtractor, ImageSaver
 from layer4_document_filling import DocumentFiller, DocumentFillingError
 
@@ -52,37 +63,88 @@ CORS(app, origins=["*"])
 # Configuration
 TESSDATA_PATH = "models/"  # Directory containing mrz.traineddata
 TEMPLATE_PATH = "templates/DWA_Registration_Card.pdf"  # Registration card template (PDF)
+MODEL_PATH = "models/CornerDetection.pt"  # YOLO document detection model
 
-# New directory structure
+# WebRTC Stream Settings
+STREAM_FRAME_QUALITY = 85  # JPEG quality for stream responses
+MAX_BURST_FRAMES = 5  # Maximum frames for burst capture
+STABILITY_FRAMES = 8  # Frames required for stability
+STABILITY_TOLERANCE = 15.0  # Max corner movement (pixels)
+MIN_QUALITY_SCORE = 40.0  # Minimum acceptable quality score
+
+# Directory structure
 CAPTURED_PASSPORTS_DIR = "Logs/captured_passports"
 CAPTURED_IMAGES_DIR = os.path.join(CAPTURED_PASSPORTS_DIR, "captured_images")
 CAPTURED_JSON_DIR = os.path.join(CAPTURED_PASSPORTS_DIR, "captured_json")
 DOCUMENT_FILLING_DIR = "Logs/document_filling"
 DOCUMENT_MRZ_DIR = os.path.join(DOCUMENT_FILLING_DIR, "document_mrz")
 DOCUMENT_FILLED_DIR = os.path.join(DOCUMENT_FILLING_DIR, "document_filled")
+AUTO_CAPTURE_DIR = "Logs/auto_capture"
 
 # Ensure directories exist
-for dir_path in [CAPTURED_IMAGES_DIR, CAPTURED_JSON_DIR, DOCUMENT_MRZ_DIR, DOCUMENT_FILLED_DIR]:
+for dir_path in [CAPTURED_IMAGES_DIR, CAPTURED_JSON_DIR, DOCUMENT_MRZ_DIR, DOCUMENT_FILLED_DIR, AUTO_CAPTURE_DIR]:
     os.makedirs(dir_path, exist_ok=True)
+
+
+# =============================================================================
+# WebRTC Stream Session Manager
+# =============================================================================
+
+@dataclass
+class StreamSession:
+    """Tracks state for a WebRTC stream session."""
+    session_id: str
+    created_at: datetime
+    prev_corners: Optional[List[Tuple[float, float]]] = None
+    stable_count: int = 0
+    burst_frames: List[np.ndarray] = field(default_factory=list)
+    best_frame: Optional[np.ndarray] = None
+    best_quality: float = 0.0
+    captured: bool = False
+    
+    def reset_stability(self):
+        """Reset stability tracking."""
+        self.prev_corners = None
+        self.stable_count = 0
+        self.burst_frames = []
 
 
 class MRZBackendService:
     """
-    Backend service for MRZ extraction.
-    Handles image processing and MRZ extraction from uploaded images.
-    No camera hardware dependencies.
+    Backend service for MRZ extraction with WebRTC stream support.
+    
+    This is a PURE BACKEND service. Camera is handled by the browser via WebRTC.
+    The frontend sends frames to this backend for:
+    - Document detection (corner tracking)
+    - Stability monitoring
+    - Quality assessment
+    - Best-frame selection
+    - MRZ extraction
     
     Flow:
-    1. /api/extract - Extract MRZ, save to captured_passports (no document filling yet)
-    2. /api/mrz/update - Receive final/edited MRZ, trigger document filling
+    1. POST /api/stream/frame - Send frames for detection/stability
+    2. POST /api/stream/capture - Trigger capture when stable
+    3. POST /api/mrz/update - Finalize MRZ, trigger document filling
     """
     
     def __init__(self, tessdata_path, captured_images_dir, captured_json_dir, 
-                 template_path, document_mrz_dir, document_filled_dir):
-        logger.info("Initializing MRZBackendService")
+                 template_path, document_mrz_dir, document_filled_dir,
+                 model_path=None):
+        logger.info("Initializing MRZBackendService v3.1 (WebRTC Backend)")
         
-        # Layer 2: Image Readjustment
-        self.processor = DocumentProcessor()
+        # Layer 1: YOLO model for document detection
+        self.model = None
+        self.model_path = model_path or MODEL_PATH
+        self._model_loaded = False
+        
+        # Stream sessions (keyed by session_id)
+        self.stream_sessions: Dict[str, StreamSession] = {}
+        
+        # Layer 2: Image Enhancer (passthrough for now)
+        self.image_enhancer = ImageBridge()
+        
+        # Quality Assessor
+        self.quality_assessor = QualityAssessor()
         
         # Layer 3: MRZ Extraction
         self.mrz_extractor = MRZExtractor(tessdata_path=tessdata_path)
@@ -105,12 +167,350 @@ class MRZBackendService:
             logger.warning("Layer 4 will be skipped in pipeline")
             self.document_filler = None
         
-        logger.info("MRZBackendService initialized successfully")
+        # Load YOLO model for detection
+        self._load_model()
+        
+        logger.info("MRZBackendService v3.1 initialized successfully")
+    
+    def _load_model(self) -> bool:
+        """Load YOLO model for document detection."""
+        if self._model_loaded:
+            return True
+        
+        try:
+            from ultralytics import YOLO
+            
+            if not os.path.exists(self.model_path):
+                logger.warning(f"YOLO model not found at {self.model_path}")
+                logger.warning("Document detection will use quality-only mode")
+                return False
+            
+            logger.info(f"Loading YOLO model from {self.model_path}")
+            self.model = YOLO(self.model_path)
+            self.model.fuse()
+            self._model_loaded = True
+            logger.info("YOLO model loaded and fused")
+            return True
+            
+        except ImportError:
+            logger.warning("ultralytics not installed, detection disabled")
+            return False
+        except Exception as e:
+            logger.error(f"Model loading failed: {e}")
+            return False
+    
+    # =========================================================================
+    # Stream Session Management
+    # =========================================================================
+    
+    def create_stream_session(self) -> str:
+        """Create a new stream session for WebRTC frame processing."""
+        session_id = str(uuid.uuid4())
+        self.stream_sessions[session_id] = StreamSession(
+            session_id=session_id,
+            created_at=datetime.now()
+        )
+        logger.info(f"Created stream session: {session_id}")
+        return session_id
+    
+    def get_stream_session(self, session_id: str) -> Optional[StreamSession]:
+        """Get an existing stream session."""
+        return self.stream_sessions.get(session_id)
+    
+    def close_stream_session(self, session_id: str) -> bool:
+        """
+        Close and cleanup a stream session.
+        
+        Returns:
+            bool: True if session was found and closed
+        """
+        session = self.stream_sessions.pop(session_id, None)
+        if session is not None:
+            # Explicitly clear large numpy arrays to help GC
+            session.burst_frames.clear()
+            session.best_frame = None
+            session.prev_corners = None
+            logger.info(f"Closed stream session: {session_id}")
+            return True
+        return False
+    
+    def cleanup_old_sessions(self, max_age_minutes: int = 30):
+        """Remove sessions older than max_age_minutes."""
+        now = datetime.now()
+        expired = []
+        for sid, session in self.stream_sessions.items():
+            age = (now - session.created_at).total_seconds() / 60
+            if age > max_age_minutes:
+                expired.append(sid)
+        
+        for sid in expired:
+            del self.stream_sessions[sid]
+            logger.info(f"Expired stream session: {sid}")
+    
+    # =========================================================================
+    # Document Detection (WebRTC Frame Processing)
+    # =========================================================================
+    
+    def _detect_corners(self, frame: np.ndarray) -> Tuple[Optional[List[Tuple[float, float]]], float]:
+        """
+        Detect document corners using YOLO model.
+        
+        Args:
+            frame: BGR image from WebRTC stream
+            
+        Returns:
+            Tuple of (corners, confidence) or (None, 0) if not detected
+        """
+        if not self._model_loaded or self.model is None:
+            return None, 0.0
+        
+        try:
+            # Add virtual padding for edge detection
+            h, w = frame.shape[:2]
+            ratio = 0.15
+            px, py = int(w * ratio), int(h * ratio)
+            padded = np.full((h + 2*py, w + 2*px, 3), 128, dtype=np.uint8)
+            padded[py:py+h, px:px+w] = frame
+            
+            # Run inference
+            results = self.model(padded, conf=0.5, verbose=False)
+            
+            # Extract corners from keypoints
+            for r in results:
+                if r.keypoints is not None and len(r.keypoints) > 0:
+                    kpts = r.keypoints.data[0].cpu().numpy()
+                    visible = []
+                    for x, y, v in kpts:
+                        if v > 0.5:
+                            visible.append((float(x) - px, float(y) - py))
+                    
+                    if len(visible) == 4:
+                        confidence = float(r.boxes.conf[0].item())
+                        return visible, confidence
+            
+            return None, 0.0
+            
+        except Exception as e:
+            logger.error(f"Detection error: {e}")
+            return None, 0.0
+    
+    def _order_corners(self, corners: List[Tuple[float, float]]) -> np.ndarray:
+        """Order corners: top-left, top-right, bottom-right, bottom-left."""
+        c = np.array(corners, dtype='float32')
+        c = c[c[:, 1].argsort()]
+        top = c[:2][c[:2, 0].argsort()]
+        bottom = c[2:][c[2:, 0].argsort()]
+        return np.array([top[0], top[1], bottom[1], bottom[0]], dtype='float32')
+    
+    def _corners_stable(self, current: List[Tuple[float, float]], 
+                        previous: Optional[List[Tuple[float, float]]]) -> bool:
+        """Check if corners are stable compared to previous frame."""
+        if previous is None:
+            return False
+        
+        curr_arr = np.array(current)
+        prev_arr = np.array(previous)
+        distances = np.linalg.norm(curr_arr - prev_arr, axis=1)
+        return np.max(distances) < STABILITY_TOLERANCE
+    
+    def _perspective_crop(self, image: np.ndarray, 
+                          corners: List[Tuple[float, float]]) -> np.ndarray:
+        """Apply perspective transform to extract flat document."""
+        src = self._order_corners(corners)
+        
+        width = int(max(
+            np.linalg.norm(src[1] - src[0]),
+            np.linalg.norm(src[2] - src[3])
+        ))
+        height = int(max(
+            np.linalg.norm(src[3] - src[0]),
+            np.linalg.norm(src[2] - src[1])
+        ))
+        
+        width = max(width, 400)
+        height = max(height, 300)
+        
+        dst = np.array([
+            [0, 0], [width - 1, 0],
+            [width - 1, height - 1], [0, height - 1]
+        ], dtype='float32')
+        
+        M = cv2.getPerspectiveTransform(src, dst)
+        return cv2.warpPerspective(image, M, (width, height))
+    
+    def process_stream_frame(self, session_id: str, image_data: str) -> dict:
+        """
+        Process a frame from WebRTC stream.
+        
+        Args:
+            session_id: Stream session ID
+            image_data: Base64 encoded frame from browser
+            
+        Returns:
+            dict with detection status, corners, stability info
+        """
+        session = self.get_stream_session(session_id)
+        if session is None:
+            return {"error": "Invalid session", "error_code": "INVALID_SESSION", "detected": False}
+        
+        try:
+            # Decode frame
+            image_bytes = base64.b64decode(image_data)
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if frame is None:
+                return {"error": "Could not decode frame", "error_code": "DECODE_FAILED", "detected": False}
+            
+            # Detect corners
+            corners, confidence = self._detect_corners(frame)
+            
+            result = {
+                "detected": corners is not None,
+                "confidence": confidence,
+                "corners": corners,
+                "stable_count": session.stable_count,
+                "stable_required": STABILITY_FRAMES,
+                "ready_for_capture": False
+            }
+            
+            if corners is None:
+                session.reset_stability()
+                return result
+            
+            # Check stability
+            if self._corners_stable(corners, session.prev_corners):
+                session.stable_count += 1
+                
+                # Collect burst frame only when approaching stability
+                # This avoids expensive quality assessment on every frame
+                if session.stable_count >= STABILITY_FRAMES // 2:
+                    warped = self._perspective_crop(frame, corners)
+                    quality = self.quality_assessor.assess(warped)
+                    
+                    if quality.overall_score > session.best_quality:
+                        session.best_quality = quality.overall_score
+                        session.best_frame = warped
+                    
+                    # Only keep burst frames if under limit
+                    if len(session.burst_frames) < MAX_BURST_FRAMES:
+                        session.burst_frames.append(warped)
+                
+                if session.stable_count >= STABILITY_FRAMES:
+                    result["ready_for_capture"] = True
+            else:
+                # Reset on instability
+                session.stable_count = 0
+                session.burst_frames.clear()  # More efficient than creating new list
+                session.best_frame = None
+                session.best_quality = 0.0
+            
+            session.prev_corners = corners
+            result["stable_count"] = session.stable_count
+            result["quality_score"] = session.best_quality
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Frame processing error: {e}")
+            return {"error": str(e), "detected": False}
+    
+    def capture_from_stream(self, session_id: str) -> dict:
+        """
+        Capture the best frame from stream session.
+        
+        Args:
+            session_id: Stream session ID
+            
+        Returns:
+            dict with captured image and quality info
+        """
+        session = self.get_stream_session(session_id)
+        if session is None:
+            return {"success": False, "error": "Invalid session"}
+        
+        if session.best_frame is None:
+            return {"success": False, "error": "No stable frame captured"}
+        
+        logger.info(f"[Layer 1] Stream capture - Quality: {session.best_quality:.1f}")
+        
+        # Process through pipeline
+        return self._process_captured_image(session.best_frame, session)
+    
+    def _process_captured_image(self, image: np.ndarray, session: StreamSession) -> dict:
+        """
+        Process a captured image through the pipeline.
+        
+        Args:
+            image: Captured image (already perspective-corrected)
+            session: StreamSession with quality metrics
+            
+        Returns:
+            dict: Processing result with MRZ data
+        """
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        session_id = session.session_id
+        
+        try:
+            # Layer 2: Image Enhancer (passthrough or enhancements)
+            logger.info("[Layer 2] Processing through enhancer...")
+            processed_image = self.image_enhancer.process(image)
+            logger.info("[Layer 2] Enhancer processing complete")
+            
+            # Save processed image
+            image_filename = f"{timestamp}_{session_id}.jpg"
+            image_path = os.path.join(self.captured_images_dir, image_filename)
+            cv2.imwrite(image_path, processed_image)
+            logger.info(f"[Layer 2] Image saved: {image_path}")
+            
+            # Layer 3: MRZ Extraction
+            logger.info("[Layer 3] Extracting MRZ...")
+            mrz_data = self.mrz_extractor.extract(image_path)
+            
+            # Prepare result
+            result_data = {
+                "session_id": session_id,
+                "timestamp": timestamp,
+                "image_path": image_path,
+                "capture_mode": "webrtc_stream",
+                "status": "extracted",
+                "mrz_data": mrz_data,
+                "quality": session.best_quality,
+                "is_edited": False
+            }
+            
+            # Save JSON
+            json_filename = f"{timestamp}_{session_id}.json"
+            json_path = os.path.join(self.captured_json_dir, json_filename)
+            with open(json_path, 'w') as f:
+                json.dump(result_data, f, indent=2)
+            logger.info(f"[Layer 3] JSON saved: {json_path}")
+            
+            logger.info("[Pipeline] Stream capture complete!")
+            logger.info("=" * 60)
+            
+            return {
+                "success": True,
+                "session_id": session_id,
+                "data": mrz_data,
+                "image_path": image_path,
+                "timestamp": timestamp,
+                "quality": session.best_quality,
+                "message": "MRZ extracted. Call /api/mrz/update to finalize."
+            }
+            
+        except Exception as e:
+            logger.error(f"[Pipeline] Processing failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_code": "PROCESSING_FAILED"
+            }
     
     def process_image(self, image_data, filename="upload.jpg"):
         """
         Process an uploaded image and extract MRZ data.
-        NOTE: Document filling is NOT done here. It waits for /api/mrz/update.
+        Used for web upload mode (not camera capture).
         
         Args:
             image_data: Raw image bytes or base64 encoded string
@@ -143,14 +543,22 @@ class MRZBackendService:
             
             logger.info(f"Image decoded - Shape: {raw_frame.shape}")
             
-            # Generate session_id for tracking through the flow
+            # Assess quality of uploaded image
+            quality_metrics = self.quality_assessor.assess(raw_frame)
+            acceptable, reason = self.quality_assessor.is_acceptable(quality_metrics)
+            
+            if not acceptable:
+                logger.warning(f"Image quality issue: {reason}")
+                # Continue anyway but log warning
+            
+            # Generate session_id for tracking
             session_id = str(uuid.uuid4())
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             
-            # Layer 2: Process image
-            logger.info("[Layer 2] Processing image...")
-            processed_frame = self.processor.process(raw_frame)
-            logger.info("[Layer 2] Processing complete")
+            # Layer 2: Process through bridge
+            logger.info("[Layer 2] Processing through bridge...")
+            processed_frame = self.image_enhancer.process(raw_frame)
+            logger.info("[Layer 2] Bridge processing complete")
             
             # Layer 3: Save image and extract MRZ
             logger.info("[Layer 3] Saving image...")
@@ -164,14 +572,16 @@ class MRZBackendService:
             logger.info("[Layer 3] Extracting MRZ...")
             mrz_data = self.mrz_extractor.extract(image_path)
             
-            # Prepare result data (initial extraction - before any edits)
+            # Prepare result data
             result_data = {
                 "session_id": session_id,
                 "timestamp": timestamp,
                 "image_path": image_path,
                 "image_filename": filename,
-                "status": "extracted",  # Status: extracted (not yet finalized)
+                "capture_mode": "upload",
+                "status": "extracted",
                 "mrz_data": mrz_data,
+                "quality": quality_metrics.to_dict(),
                 "is_edited": False
             }
             
@@ -195,6 +605,7 @@ class MRZBackendService:
                 "data": mrz_data,
                 "image_path": image_path,
                 "timestamp": timestamp,
+                "quality": quality_metrics.to_dict(),
                 "message": "MRZ extracted. Call /api/mrz/update to finalize and generate document."
             }
             
@@ -404,13 +815,14 @@ class MRZBackendService:
     
     def detect_document(self, image_data):
         """
-        Detect if a document is present in the image (for auto-capture).
+        Detect if a document is present in the image.
+        Uses YOLO model for corner detection if available.
         
         Args:
             image_data: Raw image bytes or base64 encoded string
             
         Returns:
-            dict: Detection result with confidence and bounding box
+            dict: Detection result with confidence and quality metrics
         """
         try:
             # Decode image
@@ -425,18 +837,32 @@ class MRZBackendService:
             if frame is None:
                 return {"detected": False, "error": "Could not decode image"}
             
-            # Use processor to detect document
-            overlay_frame, detection_info = self.processor.get_preview_with_overlay(frame)
+            # Assess quality
+            quality = self.quality_assessor.assess(frame)
+            acceptable, reason = self.quality_assessor.is_acceptable(quality)
             
-            if detection_info and detection_info.get('detected'):
-                return {
-                    "detected": True,
-                    "confidence": detection_info.get('area_percentage', 0),
-                    "corners": detection_info.get('corners', []),
-                    "ready_for_capture": detection_info.get('area_percentage', 0) > 15
-                }
+            # Use YOLO detection if model is loaded
+            if self._model_loaded:
+                corners, confidence = self._detect_corners(frame)
+                
+                if corners:
+                    return {
+                        "detected": True,
+                        "confidence": confidence,
+                        "corners": corners,
+                        "quality": quality.to_dict(),
+                        "quality_acceptable": acceptable,
+                        "ready_for_capture": acceptable and confidence > 0.5
+                    }
             
-            return {"detected": False, "confidence": 0}
+            # Fallback: just return quality info
+            return {
+                "detected": acceptable,
+                "confidence": quality.overall_score / 100,
+                "quality": quality.to_dict(),
+                "quality_acceptable": acceptable,
+                "ready_for_capture": acceptable
+            }
             
         except Exception as e:
             logger.error(f"Detection error: {e}")
@@ -444,7 +870,7 @@ class MRZBackendService:
 
 
 # Initialize backend service
-logger.info("Starting MRZ Backend Service initialization")
+logger.info("Starting MRZ Backend Service v3.1 initialization")
 
 service = MRZBackendService(
     tessdata_path=TESSDATA_PATH,
@@ -452,7 +878,8 @@ service = MRZBackendService(
     captured_json_dir=CAPTURED_JSON_DIR,
     template_path=TEMPLATE_PATH,
     document_mrz_dir=DOCUMENT_MRZ_DIR,
-    document_filled_dir=DOCUMENT_FILLED_DIR
+    document_filled_dir=DOCUMENT_FILLED_DIR,
+    model_path=MODEL_PATH
 )
 
 
@@ -466,16 +893,162 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "service": "mrz-backend",
-        "version": "2.1.0",
-        "capabilities": ["mrz_extraction", "document_detection", "document_filling"]
+        "version": "3.1.0",
+        "mode": "webrtc",
+        "capabilities": [
+            "webrtc_stream",
+            "document_detection",
+            "mrz_extraction", 
+            "quality_assessment",
+            "document_filling"
+        ],
+        "model_loaded": service._model_loaded,
+        "active_sessions": len(service.stream_sessions)
     })
+
+
+# ============================================================================
+# WebRTC Stream Endpoints (Layer 1)
+# ============================================================================
+
+@app.route("/api/stream/session", methods=["POST"])
+def api_create_stream_session():
+    """
+    Create a new WebRTC stream session.
+    Call this before sending frames.
+    
+    Response:
+        {
+            "success": true,
+            "session_id": "uuid-here",
+            "message": "Stream session created"
+        }
+    """
+    logger.info("Creating new stream session")
+    
+    # Cleanup old sessions first
+    service.cleanup_old_sessions()
+    
+    session_id = service.create_stream_session()
+    
+    return jsonify({
+        "success": True,
+        "session_id": session_id,
+        "message": "Stream session created. Send frames to /api/stream/frame"
+    })
+
+
+@app.route("/api/stream/session/<session_id>", methods=["DELETE"])
+def api_close_stream_session(session_id):
+    """
+    Close a stream session.
+    
+    Response:
+        {
+            "success": true,
+            "message": "Session closed"
+        }
+    """
+    logger.info(f"Closing stream session: {session_id}")
+    
+    service.close_stream_session(session_id)
+    
+    return jsonify({
+        "success": True,
+        "message": "Session closed"
+    })
+
+
+@app.route("/api/stream/frame", methods=["POST"])
+def api_process_stream_frame():
+    """
+    Process a frame from WebRTC stream.
+    Browser sends frames, backend detects document and tracks stability.
+    
+    Request (application/json):
+        {
+            "session_id": "uuid-here",
+            "image": "base64-encoded-frame"
+        }
+        
+    Response:
+        {
+            "detected": true,
+            "confidence": 0.95,
+            "corners": [[x1,y1], [x2,y2], [x3,y3], [x4,y4]],
+            "stable_count": 5,
+            "stable_required": 8,
+            "ready_for_capture": false,
+            "quality_score": 72.5
+        }
+    """
+    if not request.is_json:
+        return jsonify({"error": "JSON body required", "detected": False}), 400
+    
+    data = request.get_json()
+    session_id = data.get('session_id')
+    image_data = data.get('image')
+    
+    if not session_id:
+        return jsonify({"error": "session_id required", "detected": False}), 400
+    
+    if not image_data:
+        return jsonify({"error": "image required", "detected": False}), 400
+    
+    result = service.process_stream_frame(session_id, image_data)
+    return jsonify(result)
+
+
+@app.route("/api/stream/capture", methods=["POST"])
+def api_capture_from_stream():
+    """
+    Capture the best frame from stream session.
+    Call this when ready_for_capture is true.
+    
+    Request (application/json):
+        {
+            "session_id": "uuid-here"
+        }
+        
+    Response:
+        {
+            "success": true,
+            "session_id": "uuid-here",
+            "data": { ... MRZ fields ... },
+            "quality": 85.2,
+            "timestamp": "20231231_120000",
+            "message": "MRZ extracted. Call /api/mrz/update to finalize."
+        }
+    """
+    logger.info("Stream capture request received")
+    
+    if not request.is_json:
+        return jsonify({"success": False, "error": "JSON body required"}), 400
+    
+    data = request.get_json()
+    session_id = data.get('session_id')
+    
+    if not session_id:
+        return jsonify({"success": False, "error": "session_id required"}), 400
+    
+    result = service.capture_from_stream(session_id)
+    
+    if result.get('success'):
+        return jsonify(result)
+    else:
+        return jsonify(result), 422
+
+
+# ============================================================================
+# Legacy Upload Endpoint (Web Upload Mode)
+# ============================================================================
 
 
 @app.route("/api/extract", methods=["POST"])
 def api_extract_from_image():
     """
-    Extract MRZ data from an uploaded image.
-    NOTE: This only extracts MRZ. Document filling happens after /api/mrz/update.
+    Extract MRZ data from an uploaded image (web upload mode).
+    NOTE: For camera capture, use /api/capture instead.
     
     Request (multipart/form-data):
         - 'image': Image file
@@ -489,6 +1062,7 @@ def api_extract_from_image():
             "success": true,
             "session_id": "uuid-here",
             "data": { ... MRZ fields ... },
+            "quality": { ... quality metrics ... },
             "timestamp": "20231231_120000",
             "message": "MRZ extracted. Call /api/mrz/update to finalize."
         }
@@ -577,9 +1151,13 @@ def api_status():
     return jsonify({
         "success": True,
         "service": "mrz-backend",
-        "version": "2.1.0",
+        "version": "3.1.0",
+        "mode": "webrtc",
+        "model_loaded": service._model_loaded,
         "document_filler_available": service.document_filler is not None,
+        "active_stream_sessions": len(service.stream_sessions),
         "tessdata_path": TESSDATA_PATH,
+        "model_path": MODEL_PATH,
         "directories": {
             "captured_images": CAPTURED_IMAGES_DIR,
             "captured_json": CAPTURED_JSON_DIR,
@@ -588,6 +1166,9 @@ def api_status():
         },
         "endpoints": {
             "health": "/health",
+            "stream_session": "/api/stream/session",
+            "stream_frame": "/api/stream/frame",
+            "stream_capture": "/api/stream/capture",
             "extract": "/api/extract",
             "detect": "/api/detect",
             "status": "/api/status",
@@ -895,12 +1476,13 @@ def serve_static(filename):
 
 if __name__ == '__main__':
     print("\n" + "=" * 60)
-    print("MRZ BACKEND MICROSERVICE v2.1.0")
+    print("MRZ BACKEND MICROSERVICE v3.1.0 (WebRTC Mode)")
     print("=" * 60)
     print("\n📁 Architecture:")
-    print("  This is a BACKEND-ONLY service for MRZ extraction.")
-    print("  Camera capture is handled by the frontend (browser-based).")
-    print("  Document signing and storage handled by kiosk service.")
+    print("  Layer 1: WebRTC Stream (browser camera, YOLO detection)")
+    print("  Layer 2: Image Enhancer (passthrough, future: filters)")
+    print("  Layer 3: MRZ Extraction (OCR, field parsing)")
+    print("  Layer 4: Document Filling (PDF generation)")
     print("\n📂 Directory Structure:")
     print(f"  Logs/captured_passports/")
     print(f"    ├── captured_images/  - Processed passport images")
@@ -908,19 +1490,31 @@ if __name__ == '__main__':
     print(f"  Logs/document_filling/")
     print(f"    ├── document_mrz/     - Finalized MRZ data (after edit)")
     print(f"    └── document_filled/  - Filled PDF documents")
-    print("\n📡 API Flow:")
-    print("  1. POST /api/extract      - Extract MRZ (saves to captured_*)")
+    print("\n📡 API Flow (WebRTC Stream Mode):")
+    print("  1. POST /api/stream/session   - Create stream session")
+    print("  2. POST /api/stream/frame     - Send frames (loop)")
+    print("  3. Wait for ready_for_capture = true")
+    print("  4. POST /api/stream/capture   - Capture best frame")
+    print("  5. [User can edit MRZ in frontend]")
+    print("  6. POST /api/mrz/update       - Finalize & fill document")
+    print("  7. DELETE /api/stream/session - Close session")
+    print("\n📡 API Flow (Web Upload Mode):")
+    print("  1. POST /api/extract         - Extract MRZ from uploaded image")
     print("  2. [User can edit MRZ in frontend]")
-    print("  3. POST /api/mrz/update   - Finalize MRZ & fill document")
+    print("  3. POST /api/mrz/update      - Finalize & fill document")
     print("\n📡 All Endpoints:")
-    print("  GET  /health              - Health check")
-    print("  GET  /api/status          - Service status")
-    print("  POST /api/extract         - Extract MRZ from uploaded image")
-    print("  POST /api/detect          - Detect document in image")
-    print("  POST /api/mrz/update      - Update MRZ & trigger doc filling")
-    print("  POST /api/document/preview- Get document preview HTML")
+    print("  GET  /health                 - Health check")
+    print("  GET  /api/status             - Service status")
+    print("  POST /api/stream/session     - Create stream session")
+    print("  POST /api/stream/frame       - Process stream frame")
+    print("  POST /api/stream/capture     - Capture from stream")
+    print("  DEL  /api/stream/session/:id - Close stream session")
+    print("  POST /api/extract            - Extract MRZ from upload (web)")
+    print("  POST /api/detect             - Detect document in image")
+    print("  POST /api/mrz/update         - Update MRZ & trigger doc filling")
+    print("  POST /api/document/preview   - Get document preview HTML")
     print("\n🧪 Test Frontend:")
-    print("  GET  /                    - Test frontend with browser camera")
+    print("  GET  /                       - Test frontend with browser camera")
     print("\n" + "=" * 60)
     print("Server starting... Press Ctrl+C to stop")
     print("=" * 60 + "\n")

@@ -1,46 +1,89 @@
 Smart Hotel API Endpoints Documentation
 ========================================
-Last Updated: 2026-01-09
+Last Updated: 2026-01-10
 
 ================================================================================
-MRZ BACKEND SERVICE (Flask - Port 5000)
+MRZ BACKEND SERVICE v3.1 (Flask - Port 5000) - WebRTC Mode
 ================================================================================
-Pure API service for MRZ extraction from uploaded images.
-Document signing and storage are handled by the Kiosk service.
+Production API service for MRZ extraction with WebRTC stream support.
+Camera is handled by browser via getUserMedia, server receives frames.
 
-1. /health [GET]
-   - Health check endpoint for service discovery and load balancers.
-   - Returns: service status, version, and capabilities.
+Architecture:
+- Layer 1: WebRTC Stream (browser camera, YOLO detection, stability)
+- Layer 2: Image Enhancer (passthrough, future: filters)
+- Layer 3: MRZ Extraction (OCR, field parsing)
+- Layer 4: Document Filling (PDF generation)
 
-2. /api/extract [POST]
+--------------------------------------------------------------------------------
+WEBRTC STREAM MODE ENDPOINTS (Browser Camera)
+--------------------------------------------------------------------------------
+
+1. /api/stream/session [POST]
+   - Create a new WebRTC stream session.
+   - Returns: session_id.
+   - Call this first before sending frames.
+
+2. /api/stream/frame [POST]
+   - Process a frame from WebRTC stream.
+   - Accepts: JSON with session_id, image (base64).
+   - Returns: detected, confidence, corners, stable_count, stable_required,
+     ready_for_capture, quality_score.
+   - Call in a loop (e.g., every 100ms) until ready_for_capture=true.
+
+3. /api/stream/capture [POST]
+   - Capture the best frame from stream session.
+   - Accepts: JSON with session_id.
+   - Returns: session_id, MRZ data, quality score, timestamp.
+   - Call when ready_for_capture is true.
+
+4. /api/stream/session/<session_id> [DELETE]
+   - Close and cleanup a stream session.
+   - Returns: success status.
+
+--------------------------------------------------------------------------------
+WEB MODE ENDPOINTS (Image Upload)
+--------------------------------------------------------------------------------
+
+5. /api/extract [POST]
    - Extract MRZ data from an uploaded image.
    - Accepts: multipart/form-data (image file) or JSON (base64 image).
-   - Returns: extracted MRZ fields, image path, and timestamp.
+   - Returns: session_id, MRZ data, quality metrics, timestamp.
 
-3. /api/detect [POST]
-   - Detect if a document is present in the image (for auto-capture).
-   - Accepts: JSON (base64 image) or multipart/form-data (image file).
-   - Returns: detection status, confidence, and readiness for capture.
+--------------------------------------------------------------------------------
+COMMON ENDPOINTS
+--------------------------------------------------------------------------------
 
-4. /api/status [GET]
+6. /health [GET]
+   - Health check endpoint for service discovery and load balancers.
+   - Returns: service status, version, mode, capabilities, model_loaded,
+     active_sessions count.
+
+7. /api/status [GET]
    - Get service status and capabilities.
-   - Returns: service info, document filler availability, and endpoint list.
+   - Returns: service info, mode, model status, document filler availability,
+     active_stream_sessions, directory paths, and endpoint list.
 
-5. /api/mrz/update [POST]
-   - Update guest information after MRZ extraction.
+8. /api/detect [POST]
+   - Detect if a document is present in a single image.
+   - Accepts: JSON (base64 image) or multipart/form-data (image file).
+   - Returns: detection status, confidence, corners, quality metrics.
+
+9. /api/mrz/update [POST]
+   - Update guest information after MRZ extraction and trigger document filling.
    - Accepts: JSON with session_id and guest_data.
-   - Returns: session_id, timestamp, and updated guest_data.
+   - Auto-detects if data was edited by comparing with original extraction.
+   - Returns: session_id, timestamp, guest_data, is_edited flag, edit_details,
+     filled_document path.
 
-6. /api/document/preview [POST]
-   - Get document preview as PDF or HTML with current data.
-   - Accepts: JSON with guest_data, optional session_id, format (pdf|html).
-   - Returns: pdf_path, pdf_url, pdf_filename for PDF preview.
-   - Also returns preview_html as fallback for HTML display.
+10. /api/document/preview [POST]
+    - Get document preview as HTML with current data.
+    - Accepts: JSON with guest_data, optional session_id.
+    - Returns: preview_html for display.
 
-7. /api/document/pdf/<session_id> [GET]
-   - Serve generated PDF file for preview.
-   - Query param: file=<filename>
-   - Returns: PDF binary file for embedding in viewer.
+11. /api/document/pdf/<session_id> [GET]
+    - Serve generated PDF file for preview.
+    - Query param: file=<filename>
+    - Returns: PDF binary file for embedding in viewer.
 
 
 ================================================================================

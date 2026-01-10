@@ -1,663 +1,411 @@
-# MRZ Automation AI
+# MRZ Backend Service v3.1
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg)
 ![Flask](https://img.shields.io/badge/Flask-2.3+-lightgrey.svg)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+![YOLO](https://img.shields.io/badge/YOLO-Ultralytics-purple.svg)
+![Mode](https://img.shields.io/badge/mode-WebRTC-orange.svg)
+![Status](https://img.shields.io/badge/status-production-success.svg)
 
-> A production-ready passport scanning system that transforms live camera feeds into structured data through intelligent document processing.
+> **WebRTC Backend Mode** - Camera handled by browser, server processes frames
 
-## Table of Contents
-
-- [Overview](#overview)
-- [The Journey: From Camera to Data](#the-journey-from-camera-to-data)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [API Reference](#api-reference)
-- [Layer Documentation](#layer-documentation)
-- [Project Structure](#project-structure)
-- [Requirements](#requirements)
-- [Development & Testing](#development--testing)
-
-## Overview
-
-MRZ Automation AI is a passport scanning system built for real-world conditions. Unlike solutions that work only with clean, scanned images, this system handles what actually happens when someone holds a passport in front of a camera: tilted angles, varying lighting, motion blur, and partial visibility.
-
-The system takes you from a live camera feed to extracted, structured passport data in seconds—and saves everything along the way for complete audit and debugging capabilities. Every capture produces traceable artifacts, making the system suitable for both production deployments and compliance-heavy environments.
-
-## The Journey: From Camera to Data
-
-### Step 1: Live Camera Preview
-
-You start the camera and see a live video feed. The system continuously analyzes each frame, looking for a rectangular document. When it spots one, a green overlay appears showing you exactly what it detected.
-
-**What's happening behind the scenes:**
-- Camera streams frames in real-time using OpenCV
-- Each frame is quickly analyzed for document presence
-- Visual feedback helps you position the passport correctly
-- Detection metrics show coverage area percentage and confidence
-
-**The user experience:** You see immediate visual feedback. Green box means "I see your passport." No green box means "position it better."
-
-### Step 2: Capture Trigger
-
-When you're ready, you hit "Capture". The system waits 2 seconds (giving you time to hold steady), then grabs a high-quality frame. This delay is intentional—it reduces motion blur and gives you a moment to perfect the positioning.
-
-### Step 3: Document Detection & Correction
-
-Your captured frame probably shows a tilted passport, uneven lighting, maybe some blur. This is where the real transformation happens. The system performs a series of intelligent corrections:
-
-**Finding the Document:**
-- Converts to grayscale and applies Gaussian blur to reduce noise
-- Uses Canny edge detection to find document boundaries
-- Identifies contours and filters for rectangular shapes
-- Validates based on area and aspect ratio
-
-**Fixing Perspective:**
-- Identifies the four corners of the passport
-- Calculates the perspective transformation matrix
-- Warps the image to create a straight-on, flat view
-- Output: a perfectly aligned document, as if scanned
-
-**Enhancing for OCR:**
-- Applies CLAHE (Contrast Limited Adaptive Histogram Equalization)
-- Boosts text visibility even in poor lighting
-- Uses bilateral filtering to reduce noise while preserving edges
-- Result: a crisp, high-contrast image ready for text recognition
-
-**Why this matters:** This is the crucial step that makes real-world capture work. Without correction, MRZ extraction would fail on most camera captures. With it, even shaky handheld shots become readable.
-
-### Step 4: MRZ Extraction
-
-Now the system reads the Machine Readable Zone—those two lines of characters at the bottom of the passport. Using FastMRZ, it decodes and structures all the fields:
-
-**Extracted data includes:**
-- Document type and issuing country code
-- Full name (surname and given names)
-- Passport number and nationality
-- Date of birth, sex, and expiry date
-- Personal ID number and check digits
-- Raw MRZ lines for verification
-
-Everything is validated and parsed into clean, structured JSON format. The system handles multiple document types (TD1, TD2, TD3) including passports, ID cards, and visas.
-
-### Step 5: Saving Everything
-
-Here's where traceability becomes critical. The system saves a complete audit trail:
-
-**For every capture attempt:**
-- The processed image (exactly what the OCR engine saw)
-- A JSON file with all extracted data, timestamps, and metadata
-- Both files linked by matching filenames with timestamps
-
-**If extraction fails:**
-- The image is still saved for debugging
-- Error details are logged
-- You can review exactly what went wrong
-
-This audit trail is invaluable for debugging, compliance requirements, and quality improvement over time.
-
-### Step 6: Document Filling (Optional)
-
-If you've configured a DOCX template, the system automatically populates it with the extracted MRZ fields. This step is optional and non-critical—if it fails, your MRZ data remains safe and accessible.
-
-**How it works:**
-- Loads the DOCX template
-- Maps MRZ fields to template placeholders (`{{SURNAME}}`, `{{PASSPORT_NUMBER}}`, etc.)
-- Generates a filled document with timestamp
-- Saves to the `filled_documents/` directory
-
-**The beauty of separation:** Document filling failures don't invalidate the capture. You still have your MRZ data and can fill documents manually or retry later.
-
-## Features
-
-### Live Camera Integration
-- Real-time video preview with MJPEG streaming
-- Document detection overlay with visual feedback
-- USB camera support with V4L2 backend (Linux) and DirectShow (Windows)
-- Detection metrics showing document presence and coverage area
-
-### Advanced Image Processing
-- Automatic document detection using contour analysis
-- Perspective correction to flatten tilted or skewed passports
-- CLAHE contrast enhancement for text visibility in any lighting
-- Bilateral filtering for noise reduction while preserving edges
-- Handles challenging conditions: poor lighting, motion blur, partial visibility
-
-### MRZ Extraction
-- FastMRZ-powered optical character recognition
-- Support for TD1, TD2, and TD3 document formats
-- Structured JSON output with all MRZ fields
-- Confidence scoring for extraction quality
-- Validation of check digits and data integrity
-
-### Document Automation
-- Auto-fill DOCX templates using extracted data
-- Customizable field mapping for different document types
-- Non-blocking: failures don't invalidate successful extractions
-- Template-based approach supports multiple output formats
-
-### Complete Traceability
-- Processed images saved for every capture attempt
-- JSON results with timestamps and metadata
-- Separate storage for successful and failed extractions
-- Full audit trail for compliance and debugging
-- Easy result inspection and quality verification
-
-## Architecture
-
-System Component Diagram
-
-```mermaid
-graph LR
-    Camera["USB Camera"] -->|Raw Frame| L1["Layer 1<br/>Capture"]
-    L1 -->|Frame| L2["Layer 2<br/>Readjustment"]
-    L2 -->|Processed Image| L3["Layer 3<br/>MRZ Extract"]
-    L3 -->|MRZ Data| L4["Layer 4<br/>Document Fill"]
-    L3 -->|JSON| Storage[("Storage")]
-    L4 -->|Filled PDF| Storage
-    L1 -->|Preview| Web["Web UI"]
-    
-    style Camera fill:#e1f5e1
-    style L1 fill:#e3f2fd
-    style L2 fill:#f3e5f5
-    style L3 fill:#fff3e0
-    style L4 fill:#fce4ec
-    style Storage fill:#eceff1
-```
-
-The system follows a clean **layered architecture** where each layer has a single responsibility and can be tested or replaced independently. This design emerged through iterative real-world testing—each layer addresses specific failure modes encountered in production conditions.
-
-```mermaid
-flowchart TB
-  COORD["ScannerCoordinator (Central orchestration & error handling)"]
-  COORD --> L1
-  subgraph PIPELINE["Processing Pipeline"]
-    L1["Layer 1 Capture"] --> L2["Layer 2 Readjustment"]
-    L2 --> L3["Layer 3 MRZ Extract & Save"]
-    L3 --> L4["Layer 4 Document Filling"]
-  end
-```
-
-**Layer 1 - Capture**: Manages USB camera I/O, live preview streaming, and raw frame acquisition
-
-**Layer 2 - Readjustment**: Converts real-world camera frames into OCR-ready images through detection, perspective correction, and enhancement
-
-**Layer 3 - MRZ Extraction & Persistence**: Extracts structured data from processed images and maintains complete audit trail
-
-**Layer 4 - Document Filling**: Automates document population by mapping MRZ fields to DOCX templates
-
-### Design Principles
-
-- **Separation of Concerns**: Each layer has one job and doesn't make pipeline control decisions
-- **Independence**: Layers can be tested, debugged, and replaced without affecting others
-- **Fail-Safe**: Critical failures stop the pipeline; non-critical failures (Layer 4) preserve successful extractions
-- **Traceability**: Every operation leaves evidence for debugging and compliance
-- **Extensibility**: New layers or alternative implementations can be added cleanly
-
-### Why This Design?
-
-This architecture wasn't planned upfront—it evolved through real-world testing:
-
-**Started with**: Static passport images → Worked great, but not realistic
-
-**Added Layer 1**: Live camera → Problem: MRZ extraction failed constantly (tilted documents, bad lighting)
-
-**Added Layer 2**: Image correction → Problem: Extraction improved, but debugging failures was impossible
-
-**Added Layer 3**: Traceability → Problem: Now we could debug, but wanted automation
-
-**Added Layer 4**: Document filling → Result: Complete pipeline that handles real-world conditions
-
-Each layer exists because a specific problem appeared in testing. Each failure made the system more robust. For the complete evolution story, see [DESIGN_JOURNEY.md](DESIGN_JOURNEY.md).
-
-## Quick Start
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/mrz-automation-ai.git
-cd mrz-automation-ai
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the server
-python app.py
-
-# Open your browser
-# Navigate to http://localhost:5000
-```
-
-The web interface will load with camera controls. Click "Start Camera" to begin.
-
-### System Requirements
-
-**Operating System**: Linux (recommended), Windows 10/11, or macOS 10.15+
-
-**Hardware**: USB camera or built-in webcam, minimum 4GB RAM
-
-**Python**: 3.10 or higher
-
-**Linux users**: Ensure V4L2 support
-```bash
-ls /dev/video*  # Check available cameras
-sudo apt-get install v4l-utils  # If needed
-```
-
-## Configuration
-
-Configuration is centralized at the top of `app.py`. Modify these values before running:
-
-```python
-# Camera Configuration
-CAMERA_INDEX = 0  # Device index: 0 for /dev/video0 (Linux) or first camera
-
-# Directory Configuration
-SAVE_DIR = "captured_passports"  # Base directory for all outputs
-TEMPLATE_PATH = "templates/DWA_Registration_Card.docx"  # DOCX template
-
-# OCR Configuration (optional, for future Tesseract integration)
-TESSDATA_PATH = None
-```
-
-### Output Directory Structure
-
-The system automatically creates this structure:
-
-```
-captured_passports/
-├── captured_images/    # Processed images ready for OCR
-└── captured_json/      # MRZ extraction results with metadata
-
-filled_documents/       # Auto-filled DOCX files (Layer 4 output)
-```
-
-## Usage
-
-### Web Interface Workflow
-
-1. **Start the Application**
-   ```bash
-   python app.py
-   ```
-   Server starts on `http://localhost:5000`
-
-2. **Initialize Camera**
-   - Open the web interface
-   - Click "Start Camera" button
-   - Video feed appears with real-time preview
-
-3. **Position Document**
-   - Hold passport in camera view
-   - Green overlay indicates successful detection
-   - Metrics show detection status and coverage area
-   - Center and flatten the document for best results
-
-4. **Capture and Process**
-   - Click "Capture" button
-   - System waits 2 seconds for stabilization
-   - Full pipeline executes automatically
-   - Results appear in output directories
-
-5. **Review Results**
-   - Check terminal/logs for processing status
-   - Inspect saved files in output directories
-   - View extracted MRZ data in JSON format
-
-### Programmatic Usage
-
-Integrate the system into your own applications:
-
-```python
-from layer1_capture.camera import CameraManager
-from layer2_readjustment.processor import DocumentProcessor
-from layer3_mrz.extractor import MRZExtractor
-from layer3_mrz.saver import ImageSaver
-
-# Initialize components
-camera = CameraManager(camera_index=0)
-processor = DocumentProcessor()
-extractor = MRZExtractor()
-saver = ImageSaver(base_dir="captured_passports")
-
-# Capture and process
-camera.start()
-frame = camera.get_frame()
-
-# Process through pipeline
-processed_image = processor.process_frame(frame)
-mrz_data = extractor.extract(processed_image)
-
-# Save results
-image_path = saver.save_image(processed_image, prefix="scan")
-json_path = saver.save_json(mrz_data, prefix="scan")
-
-print(f"MRZ Data: {mrz_data}")
-camera.stop()
-```
-
-## API Reference
-
-The Flask server exposes RESTful endpoints for camera control and document processing.
-
-### Camera Management
-
-#### `POST /start_camera`
-Initialize the camera and begin video streaming.
-
-**Response**:
-```json
-{
-  "status": "success",
-  "message": "Camera started successfully"
-}
-```
-
-#### `POST /stop_camera`
-Release camera resources and stop streaming.
-
-**Response**:
-```json
-{
-  "status": "success",
-  "message": "Camera stopped"
-}
-```
-
-### Video Streaming
-
-#### `GET /video_feed`
-MJPEG stream with real-time document detection overlay.
-
-**Response**: Continuous multipart image stream
-
-**Features**:
-- Green bounding box when document detected
-- Detection metrics overlay
-- Real-time visual feedback
-
-#### `GET /detection_status`
-Get current document detection metrics without video stream.
-
-**Response**:
-```json
-{
-  "detected": true,
-  "area_percentage": 45.2,
-  "timestamp": "2024-01-15T10:30:00.123Z"
-}
-```
-
-### Document Processing
-
-#### `POST /capture`
-Trigger complete capture and processing pipeline.
-
-**Response (Success)**:
-```json
-{
-  "status": "success",
-  "mrz_data": {
-    "type": "P",
-    "country": "USA",
-    "surname": "SMITH",
-    "given_names": "JOHN MICHAEL",
-    "passport_number": "123456789",
-    "nationality": "USA",
-    "date_of_birth": "1990-01-01",
-    "sex": "M",
-    "expiry_date": "2030-01-01"
-  },
-  "image_path": "captured_passports/captured_images/scan_20240115_103000.png",
-  "json_path": "captured_passports/captured_json/scan_20240115_103000.json",
-  "timestamp": "2024-01-15T10:30:00.123Z"
-}
-```
-
-**Response (Failure)**:
-```json
-{
-  "status": "error",
-  "message": "MRZ extraction failed",
-  "details": "No valid MRZ data found in image",
-  "image_path": "captured_passports/captured_images/failed_20240115_103000.png"
-}
-```
-
-## Layer Documentation
-
-### Layer 1: Capture
-
-**Purpose**: Manage USB camera hardware and provide reliable frame acquisition.
-
-**What it does:**
-- Initializes camera with optimal settings
-- Streams frames continuously for preview
-- Captures high-quality frames on demand
-- Handles camera errors and resource cleanup
-
-**Why it exists:** Initial attempts with static images worked well but weren't realistic. Real deployments need live camera feeds, which introduce variability (motion, lighting, positioning) that must be handled at the source.
-
-**Files**: `layer1_capture/camera.py`
-
-### Layer 2: Readjustment
-
-**Purpose**: Transform real-world camera frames into OCR-ready document images.
-
-**What it does:**
-- Detects documents within frame using contour analysis
-- Applies perspective transformation to flatten tilted documents
-- Enhances contrast with CLAHE for text visibility
-- Reduces noise while preserving text edges
-
-**Why it exists:** Moving from static images to live camera feeds caused MRZ extraction accuracy to drop dramatically. The problem wasn't OCR quality—it was image geometry. Real passports are tilted, skewed, and poorly lit. This layer normalizes those inputs before OCR.
-
-**The transformation:**
-```
-Tilted camera capture → Document detection → Perspective correction → Enhancement → OCR-ready image
-```
-
-**Files**: `layer2_readjustment/processor.py`
-
-### Layer 3: MRZ Extraction & Persistence
-
-**Purpose**: Extract structured passport data and maintain complete audit trail.
-
-**What it does:**
-- Runs FastMRZ OCR on processed images
-- Extracts and validates all MRZ fields
-- Saves processed images with timestamps
-- Persists extraction results as JSON
-- Links images to corresponding data files
-
-**Why it exists:** With improved image quality, MRZ extraction became reliable—but debugging failures was hard. When extraction failed, it was unclear if the image was bad, MRZ was partial, or OCR misread characters. This layer isolates OCR logic and ensures every attempt leaves evidence.
-
-**Output structure:**
-```json
-{
-  "timestamp": "2024-01-15T10:30:00Z",
-  "mrz_type": "TD3",
-  "data": { /* all MRZ fields */ },
-  "raw_mrz_lines": [ /* original text */ ]
-}
-```
-
-**Files**: `layer3_mrz/extractor.py`, `layer3_mrz/saver.py`
-
-### Layer 4: Document Filling
-
-**Purpose**: Automate document population using extracted MRZ data.
-
-**What it does:**
-- Loads DOCX templates with placeholder fields
-- Maps MRZ data to template placeholders
-- Generates filled documents with timestamps
-- Handles template and field errors gracefully
-
-**Why it's separate:** Document filling can fail independently (missing template, invalid fields, write permissions) without invalidating a successful MRZ extraction. Keeping it isolated preserves pipeline robustness—the scan still succeeds even if automation fails.
-
-**Field mapping example:**
-```python
-{
-  "{{SURNAME}}": "SMITH",
-  "{{GIVEN_NAMES}}": "JOHN",
-  "{{PASSPORT_NUMBER}}": "123456789",
-  "{{DATE_OF_BIRTH}}": "1990-01-01"
-}
-```
-
-**Files**: `layer4_document_filling/filler.py`
-
-## Project Structure
-
-```
-mrz-automation-ai/
-│
-├── app.py                          # Flask server + ScannerCoordinator
-├── error_handlers.py               # Typed error classes
-├── requirements.txt                # Python dependencies
-├── README.md                       # This file
-├── DESIGN_JOURNEY.md              # Architecture evolution story
-│
-├── layer1_capture/                 # Layer 1: Camera Management
-│   ├── __init__.py
-│   └── camera.py                   # CameraManager class
-│
-├── layer2_readjustment/            # Layer 2: Image Processing
-│   ├── __init__.py
-│   └── processor.py                # DocumentProcessor class
-│
-├── layer3_mrz/                     # Layer 3: MRZ Extraction
-│   ├── __init__.py
-│   ├── extractor.py                # MRZExtractor class
-│   └── saver.py                    # ImageSaver class
-│
-├── layer4_document_filling/        # Layer 4: Document Automation
-│   ├── __init__.py
-│   └── filler.py                   # DocumentFiller class
-│
-├── web/                            # Frontend Assets
-│   ├── index.html                  # Main web interface
-│   └── static/
-│       ├── css/
-│       └── js/
-│
-├── templates/                      # DOCX Templates
-│   └── DWA_Registration_Card.docx
-│
-├── models/                         # Optional: OCR Models
-│
-├── captured_passports/             # Output: Captures
-│   ├── captured_images/
-│   └── captured_json/
-│
-├── filled_documents/               # Output: Filled Documents
-│
-└── tests/                          # Test Suite
-    ├── test_layer1_capture.py
-    ├── test_layer2_readjustment.py
-    ├── test_layer3_mrz.py
-    └── test_layer4_filling.py
-```
-
-## Requirements
-
-### Core Dependencies
-
-**Python Version**: 3.10 or higher
-
-**Required Packages**:
-```
-opencv-python>=4.8.0      # Computer vision and camera access
-Flask>=2.3.0              # Web server and RESTful API
-python-docx>=0.8.11       # DOCX template manipulation
-fastmrz>=0.1.0            # MRZ optical character recognition
-numpy>=1.24.0             # Numerical operations
-Pillow>=10.0.0            # Image format support
-```
-
-### Installation
-
-```bash
-# Create virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Verify installation
-python -c "import cv2; print(cv2.__version__)"
-python -c "import fastmrz; print('FastMRZ OK')"
-```
-
-### System Dependencies
-
-**Linux**:
-```bash
-# Camera support
-sudo apt-get install v4l-utils
-
-# Check camera devices
-v4l2-ctl --list-devices
-```
-
-**Windows/macOS**: No additional system dependencies required
-
-## Development & Testing
-
-### Running Tests
-
-```bash
-# Install dev dependencies
-pip install pytest pytest-cov
-
-# Run all tests
-pytest tests/
-
-# Run with coverage report
-pytest --cov=. --cov-report=html tests/
-
-# Run specific layer tests
-pytest tests/test_layer2_readjustment.py -v
-```
-
-### Code Style
-
-```bash
-# Format code
-black .
-
-# Check style
-flake8 . --max-line-length=100
-```
-
-### Debugging Tips
-
-**Camera not detected:**
-```bash
-# Linux: List cameras
-ls -l /dev/video*
-
-# Test with OpenCV
-python -c "import cv2; cap = cv2.VideoCapture(0); print(cap.isOpened())"
-```
-
-**MRZ extraction fails:**
-1. Check saved image in `captured_passports/captured_images/`
-2. Verify document is clearly visible and in focus
-3. Ensure MRZ lines are complete (not cut off)
-4. Try adjusting Layer 2 parameters
-
-**Document filling fails:**
-1. Verify template path in configuration
-2. Check template has correct placeholders
-3. Ensure write permissions for `filled_documents/` directory
+A production-grade Flask microservice for passport/ID document processing with MRZ (Machine Readable Zone) extraction, document detection, and PDF generation.
 
 ---
 
-**Built through iteration, designed for reality.**
+## Architecture Overview
+
+```mermaid
+flowchart TB
+    subgraph Browser["🌐 Browser (Frontend)"]
+        CAM["📷 getUserMedia<br/>Camera Access"]
+        WS["🔄 WebRTC Stream<br/>Frame Sender"]
+        UI["📱 User Interface"]
+    end
+    
+    subgraph Backend["🖥️ Flask Backend (Port 5000)"]
+        subgraph L1["Layer 1: Auto-Capture"]
+            DET["🎯 YOLO Detection<br/>Corner Tracking"]
+            STAB["📊 Stability<br/>Monitor"]
+            QUAL["✨ Quality<br/>Assessor"]
+        end
+        
+        subgraph L2["Layer 2: Image Enhancer"]
+            ENH["🔧 Passthrough<br/>(Future: Filters)"]
+        end
+        
+        subgraph L3["Layer 3: MRZ Extraction"]
+            OCR["📝 Tesseract OCR"]
+            PARSE["🔍 Field Parser"]
+        end
+        
+        subgraph L4["Layer 4: Document Filling"]
+            PDF["📄 PDF Generator"]
+            TPL["📋 Template Engine"]
+        end
+    end
+    
+    CAM --> WS
+    WS -->|"Base64 Frames"| DET
+    DET --> STAB
+    STAB --> QUAL
+    QUAL -->|"Best Frame"| ENH
+    ENH --> OCR
+    OCR --> PARSE
+    PARSE -->|"MRZ Data"| UI
+    UI -->|"Confirmed Data"| PDF
+    PDF --> TPL
+    
+    style L1 fill:#e1f5fe
+    style L2 fill:#f3e5f5
+    style L3 fill:#e8f5e9
+    style L4 fill:#fff3e0
+```
+
+---
+
+## Key Features
+
+### Layer 1 — Auto-Capture (WebRTC Mode)
+- **YOLO-based document detection** with 4-corner keypoint tracking
+- **Virtual padding** for better edge detection
+- **Stability tracking** - waits for document to be still
+- **Burst capture** - captures multiple frames for quality selection
+- **Quality assessment** - sharpness, contrast, brightness, noise analysis
+- **Stream session management** - handles multiple concurrent sessions
+
+### Layer 2 — Image Enhancer
+- **Passthrough mode** by default
+- **Future enhancements ready**:
+  - INTER_LANCZOS4 upscaling
+  - Unsharp mask sharpening
+  - CLAHE contrast enhancement
+  - FastNlMeans denoising
+
+### Layer 3 — MRZ Extraction
+- Tesseract OCR with MRZ-optimized training data
+- Field parsing and validation
+- JSON output with all passport fields
+
+### Layer 4 — Document Filling
+- PDF template filling
+- Automatic field mapping
+- Registration card generation
+
+---
+
+## API Flow
+
+### WebRTC Stream Mode (Kiosk/Camera)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant S as Backend Server
+    participant M as YOLO Model
+    participant O as OCR Engine
+    
+    B->>S: POST /api/stream/session
+    S-->>B: session_id
+    
+    rect rgb(230, 245, 255)
+        Note over B,S: Frame Processing Loop
+        loop Every 100ms
+            B->>S: POST /api/stream/frame<br/>{session_id, image}
+            S->>M: Detect Corners
+            M-->>S: corners, confidence
+            S-->>B: {detected, stable_count, ready_for_capture}
+        end
+    end
+    
+    Note over B: ready_for_capture = true
+    B->>S: POST /api/stream/capture<br/>{session_id}
+    S->>O: Extract MRZ
+    O-->>S: MRZ Fields
+    S-->>B: {session_id, data, quality}
+    
+    Note over B: User reviews/edits data
+    B->>S: POST /api/mrz/update<br/>{session_id, guest_data}
+    S-->>B: {filled_document, is_edited}
+    
+    B->>S: DELETE /api/stream/session/{id}
+    S-->>B: Session closed
+```
+
+### Web Upload Mode
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant S as Backend Server
+    participant O as OCR Engine
+    
+    B->>S: POST /api/extract<br/>{image file or base64}
+    S->>O: Extract MRZ
+    O-->>S: MRZ Fields
+    S-->>B: {session_id, data, quality}
+    
+    Note over B: User reviews/edits data
+    B->>S: POST /api/mrz/update<br/>{session_id, guest_data}
+    S-->>B: {filled_document, is_edited}
+```
+
+---
+
+## API Endpoints
+
+### Health & Status
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check for load balancers |
+| `/api/status` | GET | Detailed service status |
+
+### Stream Mode (WebRTC)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/stream/session` | POST | Create new stream session |
+| `/api/stream/session/<id>` | DELETE | Close stream session |
+| `/api/stream/frame` | POST | Process frame from stream |
+| `/api/stream/capture` | POST | Capture best frame from session |
+
+### Upload Mode
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/extract` | POST | Extract MRZ from uploaded image |
+| `/api/detect` | POST | Detect document in single image |
+
+### Document Processing
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/mrz/update` | POST | Finalize MRZ & generate PDF |
+| `/api/document/preview` | POST | Get document preview HTML |
+| `/api/document/pdf/<id>` | GET | Serve generated PDF |
+
+---
+
+## Quick Start
+
+### 1. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Start the Server
+
+```bash
+python app.py
+```
+
+### 3. API Flow (WebRTC Mode)
+
+```python
+import requests
+import base64
+
+# 1. Create stream session
+session = requests.post("http://localhost:5000/api/stream/session").json()
+session_id = session["session_id"]
+
+# 2. Send frames in a loop (from browser via JS)
+# Frontend code: capture frame from video, convert to base64, POST to /api/stream/frame
+# Example single frame:
+with open("frame.jpg", "rb") as f:
+    frame_b64 = base64.b64encode(f.read()).decode()
+
+result = requests.post("http://localhost:5000/api/stream/frame", json={
+    "session_id": session_id,
+    "image": frame_b64
+}).json()
+
+print(f"Detected: {result['detected']}, Stable: {result['stable_count']}/{result['stable_required']}")
+
+# 3. When ready_for_capture is True, capture
+if result.get("ready_for_capture"):
+    capture = requests.post("http://localhost:5000/api/stream/capture", json={
+        "session_id": session_id
+    }).json()
+    
+    if capture["success"]:
+        print(f"MRZ: {capture['data']}")
+        print(f"Quality: {capture['quality']}")
+
+# 4. Finalize and generate document
+requests.post("http://localhost:5000/api/mrz/update", json={
+    "session_id": session_id,
+    "guest_data": capture["data"]
+})
+
+# 5. Close session
+requests.delete(f"http://localhost:5000/api/stream/session/{session_id}")
+```
+
+---
+
+## Directory Structure
+
+```
+app/
+├── app.py                      # Main Flask application (v3.1)
+├── error_handlers.py           # Unified error handling
+├── api_endpoints.txt           # API documentation
+├── README.md                   # This file
+│
+├── layer1_auto_capture/        # Document detection & capture
+│   ├── __init__.py
+│   ├── camera.py               # Camera abstraction (unused in WebRTC)
+│   ├── quality.py              # QualityAssessor, QualityMetrics
+│   └── auto_capture.py         # Stability tracking, burst capture
+│
+├── layer2_image_enhancer/      # Image processing pipeline
+│   ├── __init__.py
+│   └── bridge.py               # ImageBridge (passthrough + future filters)
+│
+├── layer3_readjustment/        # MRZ extraction
+│   ├── __init__.py
+│   ├── mrz_extractor.py        # OCR & field parsing
+│   └── image_saver.py          # Image persistence
+│
+├── layer4_doc_filling/         # PDF generation
+│   ├── __init__.py
+│   └── doc_filler.py           # Template filling
+│
+├── models/                     # AI models
+│   └── CornerDetection.pt      # YOLO document detection model
+│
+├── web/                        # Test frontend
+│   └── index.html
+│
+└── Logs/                       # Runtime data
+    ├── captured_passports/
+    │   ├── captured_images/    # Processed images
+    │   └── captured_json/      # Initial MRZ extractions
+    └── document_filling/
+        ├── document_mrz/       # Finalized MRZ data
+        └── document_filled/    # Generated PDFs
+```
+
+---
+
+## Quality Metrics
+
+The system evaluates image quality across multiple dimensions:
+
+```mermaid
+pie title Quality Score Weights
+    "Sharpness" : 35
+    "Contrast" : 25
+    "Brightness" : 15
+    "Edge Density" : 15
+    "Noise Level" : 10
+```
+
+| Metric | Weight | Threshold | Description |
+|--------|--------|-----------|-------------|
+| Sharpness | 35% | ≥ 50 | Laplacian variance (higher = sharper) |
+| Contrast | 25% | ≥ 40 | Standard deviation of luminance |
+| Brightness | 15% | 30-80 | Mean luminance (not too dark/bright) |
+| Edge Density | 15% | ≥ 30 | Percentage of strong edges |
+| Noise | 10% | ≤ 5 | High-frequency noise (lower = better) |
+
+---
+
+## Configuration
+
+### Constants (in `app.py`)
+
+```python
+# Detection settings
+STABILITY_FRAMES = 8       # Frames required for stable detection
+STABILITY_TOLERANCE = 15   # Pixel tolerance for corner movement
+MAX_BURST_FRAMES = 5       # Frames to collect during burst
+
+# Quality thresholds
+QUALITY_THRESHOLD = 50     # Minimum overall quality score
+```
+
+### EnhancementConfig (Layer 2)
+
+```python
+from layer2_image_enhancer import ImageBridge, EnhancementConfig
+
+config = EnhancementConfig(
+    enable_upscaling=True,       # INTER_LANCZOS4 upscaling
+    target_width=1800,
+    
+    enable_sharpening=True,      # Unsharp mask
+    sharpen_amount=0.3,
+    
+    enable_contrast=True,        # CLAHE
+    clahe_clip_limit=2.0,
+    
+    enable_denoise=True,         # FastNlMeans
+    denoise_strength=10,
+)
+
+bridge = ImageBridge(config)
+```
+
+---
+
+## Error Handling
+
+All errors use a consistent format:
+
+```json
+{
+    "success": false,
+    "error": "Human-readable message",
+    "error_code": "MACHINE_READABLE_CODE"
+}
+```
+
+### Error Codes
+
+| Code | Description |
+|------|-------------|
+| `INVALID_SESSION` | Stream session not found |
+| `CAPTURE_FAILED` | No stable frame available |
+| `INVALID_IMAGE` | Could not decode image |
+| `MODEL_NOT_FOUND` | YOLO model file missing |
+| `MRZ_EXTRACTION_FAILED` | OCR failed |
+| `DOCUMENT_FILLING_ERROR` | PDF generation failed |
+
+---
+
+## Requirements
+
+```
+flask>=2.3.0
+flask-cors
+opencv-python>=4.8.0
+numpy>=1.24.0
+ultralytics>=8.0.0       # YOLO
+pytesseract
+Pillow
+pypdf2
+reportlab
+```
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 3.1.0 | 2026-01-10 | WebRTC backend mode, renamed layer2 to image_enhancer |
+| 3.0.0 | 2026-01-09 | Auto-capture with local camera |
+| 2.0.0 | 2026-01-08 | Layer architecture, quality metrics |
+| 1.0.0 | 2026-01-07 | Initial release |
+
+---
+
+## License
+
+MIT License - See LICENSE file

@@ -25,7 +25,7 @@ class ScannerError(Exception):
         }
 
 
-# Layer 1 Errors - Camera
+# Layer 1 Errors - Camera and Auto-Capture
 class CameraError(ScannerError):
     """Camera-related errors"""
     pass
@@ -65,7 +65,7 @@ class CameraNotInitializedError(CameraError):
             message="Camera not initialized. Please start the camera first.",
             error_code="CAMERA_NOT_INITIALIZED",
             details={
-                "suggestion": "Call /start_camera endpoint first"
+                "suggestion": "Call /api/capture/start endpoint first"
             }
         )
 
@@ -78,6 +78,52 @@ class FrameCaptureError(CameraError):
             error_code="FRAME_CAPTURE_FAILED",
             details={
                 "suggestion": "Check camera connection or restart the camera"
+            }
+        )
+
+
+class AutoCaptureError(ScannerError):
+    """Auto-capture related errors"""
+    pass
+
+
+class ModelNotFoundError(AutoCaptureError):
+    """YOLO model file not found"""
+    def __init__(self, model_path):
+        super().__init__(
+            message=f"Document detection model not found: {model_path}",
+            error_code="MODEL_NOT_FOUND",
+            details={
+                "model_path": model_path,
+                "suggestion": "Ensure the YOLO model file exists in models/ directory"
+            }
+        )
+
+
+class CaptureTimeoutError(AutoCaptureError):
+    """Capture timed out waiting for stable document"""
+    def __init__(self, timeout_seconds):
+        super().__init__(
+            message=f"Auto-capture timed out after {timeout_seconds}s waiting for stable document",
+            error_code="CAPTURE_TIMEOUT",
+            details={
+                "timeout": timeout_seconds,
+                "suggestion": "Hold the document steady within the frame"
+            }
+        )
+
+
+class QualityTooLowError(AutoCaptureError):
+    """Image quality below acceptable threshold"""
+    def __init__(self, quality_score, min_required, reason=None):
+        super().__init__(
+            message=f"Image quality too low: {quality_score:.1f} (minimum: {min_required})",
+            error_code="QUALITY_TOO_LOW",
+            details={
+                "quality_score": quality_score,
+                "min_required": min_required,
+                "reason": reason,
+                "suggestion": "Improve lighting, reduce motion blur, or hold steady"
             }
         )
 
@@ -160,6 +206,50 @@ class TemplateSaveError(DocumentFillingError):
                 "output_path": output_path,
                 "reason": str(reason),
                 "suggestion": "Check disk space and write permissions in filled_documents/"
+            }
+        )
+
+
+# WebRTC Stream Errors
+class StreamError(ScannerError):
+    """WebRTC stream related errors"""
+    pass
+
+
+class InvalidSessionError(StreamError):
+    """Invalid or expired stream session"""
+    def __init__(self, session_id):
+        super().__init__(
+            message=f"Invalid or expired stream session: {session_id}",
+            error_code="INVALID_SESSION",
+            details={
+                "session_id": session_id,
+                "suggestion": "Create a new session with POST /api/stream/session"
+            }
+        )
+
+
+class FrameDecodeError(StreamError):
+    """Failed to decode frame from stream"""
+    def __init__(self, reason=None):
+        super().__init__(
+            message="Failed to decode frame from stream",
+            error_code="FRAME_DECODE_FAILED",
+            details={
+                "reason": reason,
+                "suggestion": "Ensure frame is properly base64 encoded JPEG/PNG"
+            }
+        )
+
+
+class NoStableFrameError(StreamError):
+    """No stable frame available for capture"""
+    def __init__(self):
+        super().__init__(
+            message="No stable frame captured yet",
+            error_code="NO_STABLE_FRAME",
+            details={
+                "suggestion": "Continue sending frames until ready_for_capture is true"
             }
         )
 
