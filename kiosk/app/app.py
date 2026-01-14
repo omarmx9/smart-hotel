@@ -1,6 +1,6 @@
 """
-MRZ Backend Microservice v3.1
-Production API service for MRZ extraction with WebRTC stream support.
+MRZ Backend Microservice v3.3.0
+Production API service for MRZ extraction with real-time WebSocket streaming.
 
 Architecture:
 - Layer 1: Auto-Capture (YOLO-based document detection, quality assessment)
@@ -8,18 +8,23 @@ Architecture:
 - Layer 3: MRZ Extraction (OCR, field parsing)
 - Layer 4: Document Filling (PDF generation)
 
-Provides REST API for:
-- WebRTC stream frame processing (browser sends frames via base64)
+Provides:
+- WebSocket endpoint for 24fps real-time binary frame streaming
+- REST API for HTTP fallback (frame batching, gzip compression)
+- Video stream processing (browser sends frames, backend detects)
 - Real-time document detection and corner tracking
 - MRZ extraction from captured/uploaded images
 - Quality assessment and best-frame selection
 - Document filling (PDF) - triggered after MRZ confirmation
 
 NOTE: This is a pure BACKEND service. Camera is browser-based via WebRTC.
-The frontend captures frames and sends them to this backend for processing.
+The frontend streams binary frames via WebSocket for optimal performance.
 """
 from flask import Flask, Response, jsonify, send_from_directory, request
 from flask_cors import CORS
+from flask_compress import Compress
+from flask_sock import Sock
+import gzip
 import cv2
 import numpy as np
 import time
@@ -30,9 +35,13 @@ import uuid
 import base64
 import json
 import glob
+import threading
+import queue
+import io
 from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
+from collections import deque
 
 # Import layers
 from layer1_auto_capture import QualityAssessor, QualityMetrics
@@ -42,7 +51,7 @@ from layer4_document_filling import DocumentFiller, DocumentFillingError
 
 # Import error handling
 from error_handlers import (
-    ScannerError, 
+    ScannerError,
     MRZError,
     handle_error
 )
@@ -60,6 +69,15 @@ app = Flask(__name__)
 # Enable CORS for cross-origin requests from kiosk service
 CORS(app, origins=["*"])
 
+# Enable gzip compression for all responses
+Compress(app)
+app.config['COMPRESS_MIMETYPES'] = ['application/json', 'text/html', 'text/css', 'application/javascript']
+app.config['COMPRESS_LEVEL'] = 6  # Balance speed vs compression
+app.config['COMPRESS_MIN_SIZE'] = 500  # Compress responses > 500 bytes
+
+# Enable WebSocket support for real-time video streaming
+sock = Sock(app)
+
 # Configuration
 TESSDATA_PATH = "models/"  # Directory containing mrz.traineddata
 TEMPLATE_PATH = "templates/DWA_Registration_Card.pdf"  # Registration card template (PDF)
@@ -71,6 +89,12 @@ MAX_BURST_FRAMES = 5  # Maximum frames for burst capture
 STABILITY_FRAMES = 8  # Frames required for stability
 STABILITY_TOLERANCE = 15.0  # Max corner movement (pixels)
 MIN_QUALITY_SCORE = 40.0  # Minimum acceptable quality score
+
+# Video Stream Settings (24 FPS target)
+VIDEO_TARGET_FPS = 24  # Target FPS for video streaming
+VIDEO_FRAME_INTERVAL = 1.0 / VIDEO_TARGET_FPS  # ~41.67ms per frame
+VIDEO_CHUNK_MAX_FRAMES = 48  # Max frames in a single chunk (~2 seconds)
+VIDEO_BUFFER_SIZE = 72  # Buffer size for frame processing (~3 seconds)
 
 # Directory structure
 CAPTURED_PASSPORTS_DIR = "Logs/captured_passports"
@@ -102,6 +126,20 @@ class StreamSession:
     best_quality: float = 0.0
     captured: bool = False
     
+    # Async YOLO detection state
+    last_detection_corners: Optional[List[Tuple[float, float]]] = None
+    last_detection_confidence: float = 0.0
+    last_detection_time: float = 0.0
+    pending_frame: Optional[np.ndarray] = None
+    detection_in_progress: bool = False
+    
+    # Video stream state
+    video_frame_buffer: deque = field(default_factory=lambda: deque(maxlen=VIDEO_BUFFER_SIZE))
+    video_processing_active: bool = False
+    video_last_processed_frame: int = 0
+    video_total_frames_received: int = 0
+    video_header: Optional[bytes] = None  # WebM header from first chunk
+    
     def reset_stability(self):
         """Reset stability tracking."""
         self.prev_corners = None
@@ -130,7 +168,7 @@ class MRZBackendService:
     def __init__(self, tessdata_path, captured_images_dir, captured_json_dir, 
                  template_path, document_mrz_dir, document_filled_dir,
                  model_path=None):
-        logger.info("Initializing MRZBackendService v3.1 (WebRTC Backend)")
+        logger.info("Initializing MRZBackendService v3.3.0 (WebSocket + WebRTC Backend)")
         
         # Layer 1: YOLO model for document detection
         self.model = None
@@ -140,8 +178,16 @@ class MRZBackendService:
         # Stream sessions (keyed by session_id)
         self.stream_sessions: Dict[str, StreamSession] = {}
         
-        # Layer 2: Image Enhancer (passthrough for now)
-        self.image_enhancer = ImageBridge()
+        # Layer 2: Image Enhancer with OCR-optimized settings
+        enhancement_config = EnhancementConfig(
+            enable_contrast=True,      # Enable CLAHE for better text visibility
+            clahe_clip_limit=2.0,
+            enable_sharpening=True,    # Subtle sharpening for better OCR
+            sharpen_amount=0.3,
+            enable_denoise=False,      # Keep disabled to preserve text edges
+            enable_upscaling=False      # Keep disabled for speed
+        )
+        self.image_enhancer = ImageBridge(config=enhancement_config)
         
         # Quality Assessor
         self.quality_assessor = QualityAssessor()
@@ -251,9 +297,10 @@ class MRZBackendService:
     # Document Detection (WebRTC Frame Processing)
     # =========================================================================
     
-    def _detect_corners(self, frame: np.ndarray) -> Tuple[Optional[List[Tuple[float, float]]], float]:
+    def _detect_corners_yolo(self, frame: np.ndarray) -> Tuple[Optional[List[Tuple[float, float]]], float]:
         """
         Detect document corners using YOLO model.
+        This is the accurate but slow method (~1-2s on CPU).
         
         Args:
             frame: BGR image from WebRTC stream
@@ -262,7 +309,8 @@ class MRZBackendService:
             Tuple of (corners, confidence) or (None, 0) if not detected
         """
         if not self._model_loaded or self.model is None:
-            return None, 0.0
+            logger.warning("YOLO model not loaded, using fallback")
+            return self._detect_corners_fallback(frame)
         
         try:
             # Add virtual padding for edge detection
@@ -291,7 +339,110 @@ class MRZBackendService:
             return None, 0.0
             
         except Exception as e:
-            logger.error(f"Detection error: {e}")
+            logger.error(f"YOLO detection error: {e}")
+            return None, 0.0
+    
+    def _detect_corners(self, frame: np.ndarray, use_fast_mode: bool = True) -> Tuple[Optional[List[Tuple[float, float]]], float]:
+        """
+        Detect document corners using YOLO model or fast fallback.
+        
+        Args:
+            frame: BGR image from WebRTC stream
+            use_fast_mode: If True, use fast OpenCV detection (for streaming).
+                          If False, use YOLO (for final capture).
+            
+        Returns:
+            Tuple of (corners, confidence) or (None, 0) if not detected
+        """
+        if use_fast_mode:
+            return self._detect_corners_fallback(frame)
+        
+        return self._detect_corners_yolo(frame)
+    
+    def _detect_corners_fallback(self, frame: np.ndarray) -> Tuple[Optional[List[Tuple[float, float]]], float]:
+        """
+        Fast fallback detection using edge detection and contour analysis.
+        Optimized for real-time streaming (~10-20ms per frame).
+        
+        Args:
+            frame: BGR image from WebRTC stream
+            
+        Returns:
+            Tuple of (corners, confidence) or (None, 0) if not detected
+        """
+        try:
+            h, w = frame.shape[:2]
+            
+            # Downscale for faster processing (process at 320px width)
+            scale = 320 / w if w > 320 else 1.0
+            if scale < 1.0:
+                small = cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            else:
+                small = frame
+            sh, sw = small.shape[:2]
+            
+            # Convert to grayscale
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            
+            # Apply Gaussian blur (smaller kernel for speed)
+            blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+            
+            # Edge detection
+            edges = cv2.Canny(blurred, 50, 150)
+            
+            # Dilate to connect edges (single iteration)
+            kernel = np.ones((2, 2), np.uint8)
+            edges = cv2.dilate(edges, kernel, iterations=1)
+            
+            # Find contours
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if not contours:
+                return None, 0.0
+            
+            # Find largest contour
+            largest = max(contours, key=cv2.contourArea)
+            area = cv2.contourArea(largest)
+            
+            # Check if contour is large enough (at least 10% of frame)
+            min_area = sh * sw * 0.10
+            if area < min_area:
+                return None, 0.0
+            
+            # Approximate contour to polygon
+            epsilon = 0.02 * cv2.arcLength(largest, True)
+            approx = cv2.approxPolyDP(largest, epsilon, True)
+            
+            # Scale corners back to original size
+            inv_scale = 1.0 / scale
+            
+            # Check if it's a quadrilateral
+            if len(approx) == 4:
+                corners = [(float(p[0][0]) * inv_scale, float(p[0][1]) * inv_scale) for p in approx]
+                # Confidence based on area ratio
+                confidence = min(area / (sh * sw * 0.5), 1.0)
+                return corners, confidence
+            
+            # If not a quad, create synthetic corners based on bounding rect
+            x, y, rw, rh = cv2.boundingRect(largest)
+            
+            # Check aspect ratio (passport is roughly 1.4:1)
+            aspect = rw / rh if rh > 0 else 0
+            if 0.6 < aspect < 2.0 and area > min_area:
+                # Return bounding box corners (scaled back)
+                corners = [
+                    (float(x) * inv_scale, float(y) * inv_scale),
+                    (float(x + rw) * inv_scale, float(y) * inv_scale),
+                    (float(x + rw) * inv_scale, float(y + rh) * inv_scale),
+                    (float(x) * inv_scale, float(y + rh) * inv_scale)
+                ]
+                confidence = min(area / (sh * sw * 0.4), 0.8)  # Max 80% for fallback
+                return corners, confidence
+            
+            return None, 0.0
+            
+        except Exception as e:
+            logger.debug(f"Fallback detection error: {e}")
             return None, 0.0
     
     def _order_corners(self, corners: List[Tuple[float, float]]) -> np.ndarray:
@@ -340,7 +491,10 @@ class MRZBackendService:
     
     def process_stream_frame(self, session_id: str, image_data: str) -> dict:
         """
-        Process a frame from WebRTC stream.
+        Process a frame from WebRTC stream with async YOLO detection.
+        
+        Uses background thread for YOLO inference to maintain high FPS.
+        Returns immediately with last known detection result.
         
         Args:
             session_id: Stream session ID
@@ -362,8 +516,29 @@ class MRZBackendService:
             if frame is None:
                 return {"error": "Could not decode frame", "error_code": "DECODE_FAILED", "detected": False}
             
-            # Detect corners
-            corners, confidence = self._detect_corners(frame)
+            # Use YOLO detection (accurate but slower)
+            # Run in background thread to avoid blocking
+            if not session.detection_in_progress:
+                session.detection_in_progress = True
+                session.pending_frame = frame.copy()
+                
+                def run_yolo_detection():
+                    try:
+                        corners, confidence = self._detect_corners_yolo(session.pending_frame)
+                        session.last_detection_corners = corners
+                        session.last_detection_confidence = confidence
+                        session.last_detection_time = time.time()
+                    except Exception as e:
+                        logger.error(f"YOLO detection error: {e}")
+                    finally:
+                        session.detection_in_progress = False
+                
+                # Run YOLO in background thread
+                threading.Thread(target=run_yolo_detection, daemon=True).start()
+            
+            # Use last known detection result (for instant response)
+            corners = session.last_detection_corners
+            confidence = session.last_detection_confidence
             
             result = {
                 "detected": corners is not None,
@@ -371,7 +546,8 @@ class MRZBackendService:
                 "corners": corners,
                 "stable_count": session.stable_count,
                 "stable_required": STABILITY_FRAMES,
-                "ready_for_capture": False
+                "ready_for_capture": False,
+                "detection_age_ms": int((time.time() - session.last_detection_time) * 1000) if session.last_detection_time > 0 else 0
             }
             
             if corners is None:
@@ -382,26 +558,26 @@ class MRZBackendService:
             if self._corners_stable(corners, session.prev_corners):
                 session.stable_count += 1
                 
-                # Collect burst frame only when approaching stability
-                # This avoids expensive quality assessment on every frame
+                # Only assess quality when approaching stability (expensive)
                 if session.stable_count >= STABILITY_FRAMES // 2:
                     warped = self._perspective_crop(frame, corners)
                     quality = self.quality_assessor.assess(warped)
+                    result["quality_score"] = quality.overall_score
                     
                     if quality.overall_score > session.best_quality:
                         session.best_quality = quality.overall_score
                         session.best_frame = warped
                     
-                    # Only keep burst frames if under limit
                     if len(session.burst_frames) < MAX_BURST_FRAMES:
                         session.burst_frames.append(warped)
                 
                 if session.stable_count >= STABILITY_FRAMES:
                     result["ready_for_capture"] = True
+                    result["quality_score"] = session.best_quality
             else:
                 # Reset on instability
                 session.stable_count = 0
-                session.burst_frames.clear()  # More efficient than creating new list
+                session.burst_frames.clear()
                 session.best_frame = None
                 session.best_quality = 0.0
             
@@ -415,6 +591,336 @@ class MRZBackendService:
             logger.error(f"Frame processing error: {e}")
             return {"error": str(e), "detected": False}
     
+    # =========================================================================
+    # Video Stream Processing (MediaRecorder Chunks)
+    # =========================================================================
+    
+    def process_video_chunk(self, session_id: str, video_data: bytes, 
+                            chunk_index: int = 0) -> dict:
+        """
+        Process a video chunk from the kiosk (MediaRecorder WebM).
+        The backend splits the video into frames and processes them.
+        
+        Args:
+            session_id: Stream session ID
+            video_data: Raw video bytes (WebM/MP4 chunk from MediaRecorder)
+            chunk_index: Chunk sequence number for ordering
+            
+        Returns:
+            dict with processing status and detection results
+        """
+        session = self.get_stream_session(session_id)
+        if session is None:
+            return {"error": "Invalid session", "error_code": "INVALID_SESSION", "detected": False}
+        
+        try:
+            # For first chunk, we need to accumulate the WebM header
+            # MediaRecorder chunks need the header from chunk 0 to be decodable
+            if chunk_index == 0:
+                session.video_header = video_data
+            
+            # Save video chunk to temp file for OpenCV processing
+            # Include header for non-first chunks to make them decodable
+            with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
+                if chunk_index == 0:
+                    tmp.write(video_data)
+                else:
+                    # Prepend header to make chunk decodable
+                    if hasattr(session, 'video_header') and session.video_header:
+                        tmp.write(session.video_header + video_data)
+                    else:
+                        tmp.write(video_data)
+                tmp_path = tmp.name
+            
+            # Extract frames from video chunk
+            frames = self._extract_frames_from_video(tmp_path)
+            
+            # Cleanup temp file
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            
+            if not frames:
+                logger.warning(f"[Video] No frames extracted from chunk {chunk_index} ({len(video_data)} bytes)")
+                # Return last known detection state instead of error
+                return {
+                    "detected": session.last_detection_corners is not None,
+                    "confidence": session.last_detection_confidence,
+                    "corners": session.last_detection_corners,
+                    "stable_count": session.stable_count,
+                    "stable_required": STABILITY_FRAMES,
+                    "ready_for_capture": session.stable_count >= STABILITY_FRAMES,
+                    "frames_processed": 0,
+                    "chunk_index": chunk_index,
+                    "quality_score": session.best_quality
+                }
+            
+            logger.info(f"[Video] Extracted {len(frames)} frames from chunk {chunk_index}")
+            
+            # Process frames through detection pipeline
+            result = self._process_video_frames(session, frames)
+            result["frames_processed"] = len(frames)
+            result["chunk_index"] = chunk_index
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Video chunk processing error: {e}")
+            return {"error": str(e), "detected": False, "frames_processed": 0}
+    
+    def _extract_frames_from_video(self, video_path: str) -> List[np.ndarray]:
+        """
+        Extract frames from a video file.
+        Uses OpenCV with ffmpeg backend for WebM support.
+        
+        Args:
+            video_path: Path to the video file
+            
+        Returns:
+            List of frames as numpy arrays
+        """
+        frames = []
+        
+        try:
+            # Try OpenCV first (works for most formats)
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+            
+            if not cap.isOpened():
+                # Try without explicit backend
+                cap = cv2.VideoCapture(video_path)
+            
+            if not cap.isOpened():
+                logger.warning(f"Could not open video file with OpenCV: {video_path}")
+                # Try ffmpeg directly as fallback
+                return self._extract_frames_ffmpeg(video_path)
+            
+            # Get video properties
+            video_fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            logger.debug(f"Video: {video_fps:.1f}fps, {total_frames} frames (reported)")
+            
+            # For short chunks, just extract all frames
+            # Don't skip frames - process what we get
+            frame_idx = 0
+            max_frames = 24  # Limit to 24 frames per chunk (1 second at 24fps)
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                frames.append(frame)
+                frame_idx += 1
+                
+                if len(frames) >= max_frames:
+                    break
+            
+            cap.release()
+            
+            if not frames:
+                logger.warning(f"OpenCV extracted 0 frames, trying ffmpeg fallback")
+                return self._extract_frames_ffmpeg(video_path)
+            
+        except Exception as e:
+            logger.error(f"Frame extraction error: {e}")
+            # Try ffmpeg fallback
+            return self._extract_frames_ffmpeg(video_path)
+        
+        return frames
+    
+    def _extract_frames_ffmpeg(self, video_path: str) -> List[np.ndarray]:
+        """
+        Fallback frame extraction using ffmpeg directly.
+        
+        Args:
+            video_path: Path to the video file
+            
+        Returns:
+            List of frames as numpy arrays
+        """
+        import subprocess
+        
+        frames = []
+        output_pattern = video_path + "_frame_%03d.jpg"
+        
+        try:
+            # Use ffmpeg to extract frames
+            cmd = [
+                'ffmpeg', '-y', '-i', video_path,
+                '-vf', 'fps=24',  # Extract at 24fps
+                '-q:v', '2',  # Good JPEG quality
+                '-frames:v', '24',  # Max 24 frames
+                output_pattern
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, timeout=10)
+            
+            if result.returncode != 0:
+                logger.warning(f"ffmpeg failed: {result.stderr.decode()[:200]}")
+                return frames
+            
+            # Read the extracted frames
+            for i in range(1, 25):
+                frame_path = video_path + f"_frame_{i:03d}.jpg"
+                if os.path.exists(frame_path):
+                    frame = cv2.imread(frame_path)
+                    if frame is not None:
+                        frames.append(frame)
+                    os.unlink(frame_path)
+                else:
+                    break
+            
+            logger.debug(f"ffmpeg extracted {len(frames)} frames")
+            
+        except subprocess.TimeoutExpired:
+            logger.warning("ffmpeg timeout")
+        except FileNotFoundError:
+            logger.warning("ffmpeg not installed")
+        except Exception as e:
+            logger.error(f"ffmpeg extraction error: {e}")
+        
+        return frames
+    
+    def _process_video_frames(self, session: StreamSession, 
+                               frames: List[np.ndarray]) -> dict:
+        """
+        Process multiple frames from video stream.
+        Uses the best frame based on detection and quality.
+        
+        Args:
+            session: Stream session
+            frames: List of frames to process
+            
+        Returns:
+            dict with detection results from best frame
+        """
+        best_result = {
+            "detected": False,
+            "confidence": 0.0,
+            "corners": None,
+            "stable_count": 0,
+            "stable_required": STABILITY_FRAMES,
+            "ready_for_capture": False,
+            "quality_score": 0.0
+        }
+        
+        for frame in frames:
+            session.video_total_frames_received += 1
+            
+            # Add frame to buffer
+            session.video_frame_buffer.append(frame)
+            
+            # Start async YOLO detection if not already running
+            if not session.detection_in_progress:
+                session.detection_in_progress = True
+                session.pending_frame = frame.copy()
+                
+                def run_yolo_detection():
+                    try:
+                        corners, confidence = self._detect_corners_yolo(session.pending_frame)
+                        session.last_detection_corners = corners
+                        session.last_detection_confidence = confidence
+                        session.last_detection_time = time.time()
+                    except Exception as e:
+                        logger.error(f"YOLO detection error: {e}")
+                    finally:
+                        session.detection_in_progress = False
+                
+                threading.Thread(target=run_yolo_detection, daemon=True).start()
+            
+            # Use last known detection
+            corners = session.last_detection_corners
+            confidence = session.last_detection_confidence
+            
+            if corners is not None:
+                # Check stability
+                if self._corners_stable(corners, session.prev_corners):
+                    session.stable_count += 1
+                    
+                    if session.stable_count >= STABILITY_FRAMES // 2:
+                        warped = self._perspective_crop(frame, corners)
+                        quality = self.quality_assessor.assess(warped)
+                        
+                        if quality.overall_score > session.best_quality:
+                            session.best_quality = quality.overall_score
+                            session.best_frame = warped
+                        
+                        if len(session.burst_frames) < MAX_BURST_FRAMES:
+                            session.burst_frames.append(warped)
+                else:
+                    session.stable_count = 0
+                    session.burst_frames.clear()
+                    session.best_frame = None
+                    session.best_quality = 0.0
+                
+                session.prev_corners = corners
+                
+                # Update best result
+                if confidence > best_result["confidence"]:
+                    best_result = {
+                        "detected": True,
+                        "confidence": confidence,
+                        "corners": corners,
+                        "stable_count": session.stable_count,
+                        "stable_required": STABILITY_FRAMES,
+                        "ready_for_capture": session.stable_count >= STABILITY_FRAMES,
+                        "quality_score": session.best_quality,
+                        "total_frames": session.video_total_frames_received
+                    }
+            else:
+                session.reset_stability()
+        
+        return best_result
+    
+    def process_video_stream_base64(self, session_id: str, 
+                                     frames_base64: List[str]) -> dict:
+        """
+        Process multiple base64-encoded frames from a video stream.
+        This is an alternative to sending raw video chunks.
+        
+        The kiosk captures at 24fps and sends batches of frames.
+        
+        Args:
+            session_id: Stream session ID
+            frames_base64: List of base64-encoded JPEG frames
+            
+        Returns:
+            dict with processing results
+        """
+        session = self.get_stream_session(session_id)
+        if session is None:
+            return {"error": "Invalid session", "error_code": "INVALID_SESSION", "detected": False}
+        
+        try:
+            frames = []
+            for frame_b64 in frames_base64:
+                image_bytes = base64.b64decode(frame_b64)
+                nparr = np.frombuffer(image_bytes, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if frame is not None:
+                    frames.append(frame)
+            
+            if not frames:
+                return {
+                    "error": "No valid frames decoded",
+                    "error_code": "DECODE_FAILED",
+                    "detected": False,
+                    "frames_processed": 0
+                }
+            
+            logger.debug(f"[Video] Processing batch of {len(frames)} frames")
+            
+            result = self._process_video_frames(session, frames)
+            result["frames_processed"] = len(frames)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Video stream processing error: {e}")
+            return {"error": str(e), "detected": False, "frames_processed": 0}
+
     def capture_from_stream(self, session_id: str) -> dict:
         """
         Capture the best frame from stream session.
@@ -648,38 +1154,63 @@ class MRZBackendService:
         Compare original MRZ extraction with new guest data to detect edits.
         
         Args:
-            original_mrz: Original MRZ data from extraction
-            new_guest_data: New guest data from update request
+            original_mrz: Original MRZ data from extraction (uses MRZ field names)
+            new_guest_data: New guest data from update request (may use UI field names)
             
         Returns:
             dict: Comparison result with is_edited flag and changed_fields list
         """
-        # Fields to compare (map MRZ field names to guest_data field names)
-        field_mapping = {
-            'surname': 'surname',
-            'name': 'name',
-            'first_name': 'first_name',
-            'nationality': 'nationality',
-            'passport_number': 'passport_number',
-            'date_of_birth': 'date_of_birth',
-            'sex': 'sex',
-            'expiry_date': 'expiry_date',
-            'country': 'country',
-        }
+        # Helper to get value from guest_data with fallback aliases
+        def get_guest_value(primary_key: str, *fallback_keys: str) -> str:
+            """Get value from guest_data, trying primary key first then fallbacks."""
+            value = new_guest_data.get(primary_key)
+            if not value:
+                for key in fallback_keys:
+                    value = new_guest_data.get(key)
+                    if value:
+                        break
+            return (value or '').strip().upper()
+        
+        # Fields to compare: (mrz_field, display_name, primary_guest_key, *fallback_keys)
+        # MRZ extractor provides: surname, given_name, nationality_code, issuer_code, document_number, etc.
+        # UI/kiosk may send: name, nationality, country instead
+        field_comparisons = [
+            ('surname', 'surname', 'surname'),
+            ('given_name', 'given_name', 'given_name', 'name', 'first_name'),
+            ('nationality_code', 'nationality_code', 'nationality_code', 'nationality'),
+            ('document_number', 'passport_number', 'passport_number', 'document_number'),
+            ('birth_date', 'date_of_birth', 'date_of_birth', 'birth_date'),
+            ('sex', 'sex', 'sex', 'gender'),
+            ('expiry_date', 'expiry_date', 'expiry_date'),
+            ('issuer_code', 'issuer_code', 'issuer_code', 'country', 'issuing_country'),
+        ]
         
         changed_fields = []
         
-        for mrz_field, guest_field in field_mapping.items():
-            original_value = original_mrz.get(mrz_field, '').strip().upper() if original_mrz.get(mrz_field) else ''
-            new_value = new_guest_data.get(guest_field, '').strip().upper() if new_guest_data.get(guest_field) else ''
+        for comparison in field_comparisons:
+            mrz_field = comparison[0]
+            display_name = comparison[1]
+            primary_key = comparison[2]
+            fallback_keys = comparison[3:] if len(comparison) > 3 else ()
+            
+            original_value = (original_mrz.get(mrz_field, '') or '').strip().upper()
+            new_value = get_guest_value(primary_key, *fallback_keys)
             
             if original_value != new_value:
+                # Get the actual key that had the value for better logging
+                actual_new_value = new_guest_data.get(primary_key)
+                if not actual_new_value:
+                    for key in fallback_keys:
+                        actual_new_value = new_guest_data.get(key)
+                        if actual_new_value:
+                            break
+                
                 changed_fields.append({
-                    'field': guest_field,
+                    'field': display_name,
                     'original': original_mrz.get(mrz_field, ''),
-                    'new': new_guest_data.get(guest_field, '')
+                    'new': actual_new_value or ''
                 })
-                logger.info(f"[MRZ Compare] Field '{guest_field}' changed: '{original_mrz.get(mrz_field, '')}' -> '{new_guest_data.get(guest_field, '')}'")
+                logger.info(f"[MRZ Compare] Field '{display_name}' changed: '{original_mrz.get(mrz_field, '')}' -> '{actual_new_value or ''}'")
         
         is_edited = len(changed_fields) > 0
         
@@ -887,16 +1418,36 @@ service = MRZBackendService(
 # API Endpoints
 # ============================================================================
 
+@app.before_request
+def decompress_request():
+    """Decompress gzip-encoded request bodies for faster network transfer."""
+    if request.content_encoding == 'gzip':
+        try:
+            request._cached_data = gzip.decompress(request.get_data())
+        except Exception as e:
+            logger.warning(f"Failed to decompress gzip request: {e}")
+
+def get_json_data():
+    """Get JSON data from request, handling gzip compression."""
+    if hasattr(request, '_cached_data'):
+        return json.loads(request._cached_data)
+    return request.get_json()
+
 @app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint for service discovery and load balancers"""
     return jsonify({
         "status": "healthy",
         "service": "mrz-backend",
-        "version": "3.1.0",
-        "mode": "webrtc",
+        "version": "3.3.0",
+        "mode": "websocket_stream",
+        "target_fps": VIDEO_TARGET_FPS,
+        "websocket_enabled": True,
         "capabilities": [
-            "webrtc_stream",
+            "websocket_stream_24fps",
+            "video_stream_24fps",
+            "frame_batch_processing",
+            "video_chunk_splitting",
             "document_detection",
             "mrz_extraction", 
             "quality_assessment",
@@ -964,8 +1515,9 @@ def api_process_stream_frame():
     """
     Process a frame from WebRTC stream.
     Browser sends frames, backend detects document and tracks stability.
+    Supports gzip-compressed requests for faster network transfer.
     
-    Request (application/json):
+    Request (application/json, optionally gzip compressed):
         {
             "session_id": "uuid-here",
             "image": "base64-encoded-frame"
@@ -982,10 +1534,15 @@ def api_process_stream_frame():
             "quality_score": 72.5
         }
     """
-    if not request.is_json:
+    # Handle both gzip-compressed and regular JSON
+    try:
+        data = get_json_data()
+    except Exception as e:
+        return jsonify({"error": f"Invalid JSON: {e}", "detected": False}), 400
+    
+    if not data:
         return jsonify({"error": "JSON body required", "detected": False}), 400
     
-    data = request.get_json()
     session_id = data.get('session_id')
     image_data = data.get('image')
     
@@ -1037,6 +1594,229 @@ def api_capture_from_stream():
         return jsonify(result)
     else:
         return jsonify(result), 422
+
+
+# ============================================================================
+# Video Stream Endpoints (24 FPS - Backend Frame Splitting)
+# ============================================================================
+
+@app.route("/api/stream/video", methods=["POST"])
+def api_process_video_chunk():
+    """
+    Process a video chunk from the kiosk (24fps video stream).
+    Backend splits the video into frames and processes them.
+    
+    Request (multipart/form-data):
+        - 'video': Video chunk file (WebM/MP4)
+        - 'session_id': Stream session ID
+        - 'chunk_index': Optional chunk sequence number
+        
+    Response:
+        {
+            "detected": true,
+            "confidence": 0.95,
+            "corners": [[x1,y1], [x2,y2], [x3,y3], [x4,y4]],
+            "stable_count": 5,
+            "stable_required": 8,
+            "ready_for_capture": false,
+            "quality_score": 72.5,
+            "frames_processed": 24,
+            "chunk_index": 0
+        }
+    """
+    session_id = request.form.get('session_id')
+    chunk_index = int(request.form.get('chunk_index', 0))
+    
+    if not session_id:
+        return jsonify({"error": "session_id required", "detected": False}), 400
+    
+    if 'video' not in request.files:
+        return jsonify({"error": "video file required", "detected": False}), 400
+    
+    video_file = request.files['video']
+    video_data = video_file.read()
+    
+    if not video_data:
+        return jsonify({"error": "empty video file", "detected": False}), 400
+    
+    logger.info(f"[Video] Received chunk {chunk_index} ({len(video_data)} bytes)")
+    
+    result = service.process_video_chunk(session_id, video_data, chunk_index)
+    return jsonify(result)
+
+
+@app.route("/api/stream/video/frames", methods=["POST"])
+def api_process_video_frames():
+    """
+    Process multiple frames from a video stream (24fps batch).
+    Kiosk sends a batch of base64-encoded frames.
+    
+    Request (application/json):
+        {
+            "session_id": "uuid-here",
+            "frames": ["base64-frame-1", "base64-frame-2", ...]
+        }
+        
+    Response:
+        {
+            "detected": true,
+            "confidence": 0.95,
+            "corners": [[x1,y1], [x2,y2], [x3,y3], [x4,y4]],
+            "stable_count": 5,
+            "stable_required": 8,
+            "ready_for_capture": false,
+            "quality_score": 72.5,
+            "frames_processed": 24,
+            "total_frames": 120
+        }
+    """
+    if not request.is_json:
+        return jsonify({"error": "JSON body required", "detected": False}), 400
+    
+    data = request.get_json()
+    session_id = data.get('session_id')
+    frames = data.get('frames', [])
+    
+    if not session_id:
+        return jsonify({"error": "session_id required", "detected": False}), 400
+    
+    if not frames:
+        return jsonify({"error": "frames array required", "detected": False}), 400
+    
+    logger.debug(f"[Video] Processing batch of {len(frames)} frames")
+    
+    result = service.process_video_stream_base64(session_id, frames)
+    return jsonify(result)
+
+
+# ============================================================================
+# WebSocket Real-Time Video Stream (24 FPS - Zero HTTP Overhead)
+# ============================================================================
+
+@sock.route('/api/stream/ws')
+def websocket_video_stream(ws):
+    """
+    WebSocket endpoint for real-time video streaming at 24fps.
+    Eliminates HTTP overhead for maximum frame rate.
+    
+    Protocol:
+    1. Client sends JSON: {"action": "init", "session_id": "uuid"}
+    2. Client sends binary JPEG/WebP frames continuously
+    3. Server sends JSON detection results for each frame
+    4. Client sends JSON: {"action": "capture"} to capture best frame
+    5. Server sends JSON with MRZ data
+    6. Client sends JSON: {"action": "close"} to end session
+    """
+    session_id = None
+    frame_count = 0
+    start_time = time.time()
+    
+    logger.info("[WebSocket] New connection")
+    
+    try:
+        while True:
+            message = ws.receive()
+            
+            if message is None:
+                break
+            
+            # Binary data = video frame
+            if isinstance(message, bytes):
+                if not session_id:
+                    ws.send(json.dumps({"error": "Session not initialized", "detected": False}))
+                    continue
+                
+                frame_count += 1
+                
+                # Decode frame directly from bytes (JPEG/WebP)
+                try:
+                    nparr = np.frombuffer(message, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    
+                    if frame is None:
+                        ws.send(json.dumps({"error": "Invalid frame", "detected": False}))
+                        continue
+                    
+                    # Process frame using existing service
+                    # Convert to base64 for compatibility with existing method
+                    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    frame_b64 = base64.b64encode(buffer).decode('utf-8')
+                    
+                    result = service.process_stream_frame(session_id, frame_b64)
+                    result['frame_num'] = frame_count
+                    
+                    ws.send(json.dumps(result))
+                    
+                except Exception as e:
+                    logger.error(f"[WebSocket] Frame processing error: {e}")
+                    ws.send(json.dumps({"error": str(e), "detected": False}))
+            
+            # Text data = JSON command
+            else:
+                try:
+                    data = json.loads(message)
+                    action = data.get('action')
+                    
+                    if action == 'init':
+                        req_session_id = data.get('session_id')
+                        if not req_session_id:
+                            # Create new session (generates its own ID)
+                            session_id = service.create_stream_session()
+                        elif req_session_id not in service.stream_sessions:
+                            # Requested session doesn't exist, create new one
+                            session_id = service.create_stream_session()
+                        else:
+                            # Use existing session
+                            session_id = req_session_id
+                        
+                        logger.info(f"[WebSocket] Session initialized: {session_id}")
+                        ws.send(json.dumps({
+                            "action": "init_ok",
+                            "session_id": session_id,
+                            "message": "Session ready. Send binary frames."
+                        }))
+                    
+                    elif action == 'capture':
+                        if not session_id:
+                            ws.send(json.dumps({"success": False, "error": "No session"}))
+                            continue
+                        
+                        result = service.capture_from_stream(session_id)
+                        result['action'] = 'capture_result'
+                        ws.send(json.dumps(result))
+                        
+                        elapsed = time.time() - start_time
+                        fps = frame_count / elapsed if elapsed > 0 else 0
+                        logger.info(f"[WebSocket] Capture requested. Processed {frame_count} frames at {fps:.1f} fps")
+                    
+                    elif action == 'close':
+                        if session_id:
+                            service.close_stream_session(session_id)
+                        ws.send(json.dumps({"action": "closed"}))
+                        break
+                    
+                    elif action == 'ping':
+                        ws.send(json.dumps({"action": "pong"}))
+                    
+                    else:
+                        ws.send(json.dumps({"error": f"Unknown action: {action}"}))
+                
+                except json.JSONDecodeError as e:
+                    ws.send(json.dumps({"error": f"Invalid JSON: {e}"}))
+    
+    except Exception as e:
+        logger.error(f"[WebSocket] Connection error: {e}")
+    
+    finally:
+        if session_id:
+            try:
+                service.close_stream_session(session_id)
+            except:
+                pass
+        
+        elapsed = time.time() - start_time
+        fps = frame_count / elapsed if elapsed > 0 else 0
+        logger.info(f"[WebSocket] Connection closed. Processed {frame_count} frames in {elapsed:.1f}s ({fps:.1f} fps)")
 
 
 # ============================================================================
@@ -1151,8 +1931,10 @@ def api_status():
     return jsonify({
         "success": True,
         "service": "mrz-backend",
-        "version": "3.1.0",
-        "mode": "webrtc",
+        "version": "3.3.0",
+        "mode": "websocket_stream",
+        "target_fps": VIDEO_TARGET_FPS,
+        "websocket_enabled": True,
         "model_loaded": service._model_loaded,
         "document_filler_available": service.document_filler is not None,
         "active_stream_sessions": len(service.stream_sessions),
@@ -1166,7 +1948,10 @@ def api_status():
         },
         "endpoints": {
             "health": "/health",
+            "websocket_stream": "/api/stream/ws",
             "stream_session": "/api/stream/session",
+            "stream_video_frames": "/api/stream/video/frames",
+            "stream_video_chunk": "/api/stream/video",
             "stream_frame": "/api/stream/frame",
             "stream_capture": "/api/stream/capture",
             "extract": "/api/extract",
@@ -1197,10 +1982,13 @@ def api_mrz_update():
             "session_id": "abc123",  // Required: from /api/extract response
             "guest_data": {
                 "surname": "DOE",
-                "name": "JOHN",
-                "nationality": "USA",
+                "given_name": "JOHN",  // Use given_name (from MRZ)
+                "nationality_code": "USA",  // 3-letter code from MRZ
+                "issuer_code": "USA",  // 3-letter issuing country code from MRZ
                 "passport_number": "AB1234567",
                 "date_of_birth": "1990-01-15",
+                "expiry_date": "2030-01-15",
+                "sex": "M",
                 ...
             }
         }
@@ -1357,15 +2145,33 @@ def api_serve_pdf(session_id):
 def _convert_guest_data_to_mrz(guest_data: dict) -> dict:
     """
     Convert guest_data format to MRZ format expected by DocumentFiller.
+    
+    Handles both formats:
+    - Direct MRZ fields: given_name, nationality_code, issuer_code, document_number
+    - Legacy/UI fields: name/first_name, nationality, country, passport_number
     """
+    # Get nationality_code - prefer direct code, fallback to extracting from full name
+    nationality_code = guest_data.get('nationality_code', '')
+    if not nationality_code and guest_data.get('nationality'):
+        # If nationality is a full name, it should already be a code from MRZ
+        nat = guest_data.get('nationality', '')
+        nationality_code = nat[:3].upper() if len(nat) <= 3 else nat
+    
+    # Get issuer_code - prefer direct code, fallback to country field
+    issuer_code = guest_data.get('issuer_code', '')
+    if not issuer_code:
+        country = guest_data.get('country', guest_data.get('issuing_country', ''))
+        if country:
+            issuer_code = country[:3].upper() if len(country) <= 3 else country
+    
     return {
         'surname': guest_data.get('surname', ''),
-        'given_name': guest_data.get('name', guest_data.get('first_name', '')),
-        'nationality_code': guest_data.get('nationality_code', guest_data.get('nationality', '')[:3].upper() if guest_data.get('nationality') else ''),
-        'document_number': guest_data.get('passport_number', ''),
-        'birth_date': guest_data.get('date_of_birth', ''),
+        'given_name': guest_data.get('given_name', guest_data.get('name', guest_data.get('first_name', ''))),
+        'nationality_code': nationality_code,
+        'document_number': guest_data.get('passport_number', guest_data.get('document_number', '')),
+        'birth_date': guest_data.get('date_of_birth', guest_data.get('birth_date', '')),
         'expiry_date': guest_data.get('expiry_date', ''),
-        'issuer_code': guest_data.get('country', guest_data.get('issuing_country', ''))[:3].upper() if guest_data.get('country') or guest_data.get('issuing_country') else '',
+        'issuer_code': issuer_code,
     }
 
 
@@ -1476,10 +2282,10 @@ def serve_static(filename):
 
 if __name__ == '__main__':
     print("\n" + "=" * 60)
-    print("MRZ BACKEND MICROSERVICE v3.1.0 (WebRTC Mode)")
+    print("MRZ BACKEND MICROSERVICE v3.3.0 (WebSocket + Video Stream)")
     print("=" * 60)
     print("\n📁 Architecture:")
-    print("  Layer 1: WebRTC Stream (browser camera, YOLO detection)")
+    print("  Layer 1: Video Stream (24fps WebSocket, zero HTTP overhead)")
     print("  Layer 2: Image Enhancer (passthrough, future: filters)")
     print("  Layer 3: MRZ Extraction (OCR, field parsing)")
     print("  Layer 4: Document Filling (PDF generation)")
@@ -1490,29 +2296,32 @@ if __name__ == '__main__':
     print(f"  Logs/document_filling/")
     print(f"    ├── document_mrz/     - Finalized MRZ data (after edit)")
     print(f"    └── document_filled/  - Filled PDF documents")
-    print("\n📡 API Flow (WebRTC Stream Mode):")
-    print("  1. POST /api/stream/session   - Create stream session")
-    print("  2. POST /api/stream/frame     - Send frames (loop)")
-    print("  3. Wait for ready_for_capture = true")
-    print("  4. POST /api/stream/capture   - Capture best frame")
-    print("  5. [User can edit MRZ in frontend]")
-    print("  6. POST /api/mrz/update       - Finalize & fill document")
-    print("  7. DELETE /api/stream/session - Close session")
-    print("\n📡 API Flow (Web Upload Mode):")
-    print("  1. POST /api/extract         - Extract MRZ from uploaded image")
-    print("  2. [User can edit MRZ in frontend]")
-    print("  3. POST /api/mrz/update      - Finalize & fill document")
+    print("\n📡 API Flow (WebSocket Mode - 24fps Real-Time):")
+    print("  1. WS  /api/stream/ws             - Connect WebSocket")
+    print("  2. Send: {'action': 'init'}       - Initialize session")
+    print("  3. Send: <binary frame>           - Send JPEG/WebP frames")
+    print("  4. Recv: detection results        - Real-time feedback")
+    print("  5. Send: {'action': 'capture'}    - Capture best frame")
+    print("  6. Recv: MRZ data                 - Get extracted data")
+    print("  7. Send: {'action': 'close'}      - Close session")
+    print("\n📡 API Flow (HTTP Fallback Mode):")
+    print("  1. POST /api/stream/session       - Create stream session")
+    print("  2. POST /api/stream/frame         - Send single frames (loop)")
+    print("  3. POST /api/stream/capture       - Capture best frame")
+    print("  4. POST /api/mrz/update           - Finalize & fill document")
+    print("  5. DELETE /api/stream/session     - Close session")
     print("\n📡 All Endpoints:")
-    print("  GET  /health                 - Health check")
-    print("  GET  /api/status             - Service status")
-    print("  POST /api/stream/session     - Create stream session")
-    print("  POST /api/stream/frame       - Process stream frame")
-    print("  POST /api/stream/capture     - Capture from stream")
-    print("  DEL  /api/stream/session/:id - Close stream session")
-    print("  POST /api/extract            - Extract MRZ from upload (web)")
-    print("  POST /api/detect             - Detect document in image")
-    print("  POST /api/mrz/update         - Update MRZ & trigger doc filling")
-    print("  POST /api/document/preview   - Get document preview HTML")
+    print("  GET  /health                      - Health check")
+    print("  GET  /api/status                  - Service status")
+    print("  WS   /api/stream/ws               - WebSocket video stream (24fps)")
+    print("  POST /api/stream/session          - Create stream session")
+    print("  POST /api/stream/video/frames     - Process frame batch")
+    print("  POST /api/stream/frame            - Process single frame")
+    print("  POST /api/stream/capture          - Capture from stream")
+    print("  DEL  /api/stream/session/:id      - Close stream session")
+    print("  POST /api/extract                 - Extract MRZ from upload")
+    print("  POST /api/detect                  - Detect document in image")
+    print("  POST /api/mrz/update              - Update MRZ & trigger doc filling")
     print("\n🧪 Test Frontend:")
     print("  GET  /                       - Test frontend with browser camera")
     print("\n" + "=" * 60)

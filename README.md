@@ -108,8 +108,8 @@ flowchart TB
     NODERED --> TWILIO
     
     KIOSK -->|WebRTC| CAMERA
-    KIOSK -->|HTTPS| KIOSK_APP
-    KIOSK_APP -->|API| MRZ_BACKEND
+    KIOSK -->|HTTPS/WebSocket| KIOSK_APP
+    KIOSK_APP -->|WebSocket/API| MRZ_BACKEND
     KIOSK_APP -->|API| DASHBOARD
     
     STAFF --> DASHBOARD
@@ -126,7 +126,7 @@ flowchart TB
 | Sensor → Cloud | ESP32 → Mosquitto → Telegraf → InfluxDB | MQTT |
 | Cloud → Actuator | Dashboard → Mosquitto → ESP32 | MQTT |
 | User Authentication | Browser → Dashboard (Django) | HTTP |
-| Guest Check-in | Kiosk → MRZ Backend → Document | HTTP/REST |
+| Guest Check-in | Kiosk → MRZ Backend → Document | WebSocket (24fps) / HTTP |
 | Staff Monitoring | Dashboard → PostgreSQL/InfluxDB | HTTP/WebSocket |
 | SMS Notifications | Dashboard → MQTT → Node-RED → Twilio | MQTT/HTTPS |
 | Telegram Alerts | Dashboard → MQTT → Node-RED → Telegram | MQTT/HTTPS |
@@ -135,14 +135,14 @@ flowchart TB
 
 | Component | Description | Status | Documentation |
 | ----------- | ------------- | -------- | --------------- |
-| **Cloud Infrastructure** | Docker Compose stack with all backend services | ✅ Production | [cloud/README.md](cloud/README.md) |
-| **Dashboard** | Django-based guest monitoring interface | ✅ Production | [dashboards/README.md](dashboards/README.md) |
-| **Front Desk** | Employee reservation & document management | ✅ Production | [frontdesk/README.md](frontdesk/README.md) |
-| **Guest Kiosk** | Self-service check-in system | ✅ Production | [kiosk/README.md](kiosk/README.md) |
-| **MRZ Backend** | Passport scanning and OCR microservice | ✅ Production | [kiosk/app/README.md](kiosk/app/README.md) |
-| **ESP32 Firmware** | Sensor and actuator RTOS firmware | ✅ Production | [esp32/README.md](esp32/README.md) |
-| **ESP32-CAM** | Face recognition with TensorFlow Lite & MQTT | ✅ Production | [esp32-cam/README.md](esp32-cam/README.md) |
-| **Hardware** | PCB designs and schematics | ✅ Complete | [hardware/README.md](hardware/README.md) |
+| **Cloud Infrastructure** | Docker Compose stack with all backend services | Production | [cloud/README.md](cloud/README.md) |
+| **Dashboard** | Django-based guest monitoring interface | Production | [dashboards/README.md](dashboards/README.md) |
+| **Front Desk** | Employee reservation & document management | Production | [frontdesk/README.md](frontdesk/README.md) |
+| **Guest Kiosk** | Self-service check-in with WebSocket streaming | Production | [kiosk/README.md](kiosk/README.md) |
+| **MRZ Backend** | Passport OCR microservice (24fps WebSocket) | v3.3.0 | [kiosk/app/README.md](kiosk/app/README.md) |
+| **ESP32 Firmware** | Sensor and actuator RTOS firmware | Production | [esp32/README.md](esp32/README.md) |
+| **ESP32-CAM** | Face recognition with TensorFlow Lite & MQTT | Production | [esp32-cam/README.md](esp32-cam/README.md) |
+| **Hardware** | PCB designs and schematics | Complete | [hardware/README.md](hardware/README.md) |
 
 ## Quick Start
 
@@ -193,7 +193,7 @@ After starting, all core services are pre-configured:
 | **Grafana** | `admin` | See `.env` |
 | **InfluxDB** | `admin` | See `.env` |
 
-> **📌 Security:** Change the admin password in production!
+> **Security:** Change the admin password in production!
 
 ### Access Points
 
@@ -255,37 +255,37 @@ Detailed documentation for each component:
 
 Complete Docker Compose orchestration with InfluxDB, Grafana, Mosquitto, PostgreSQL, and all application services.
 
-📖 **[Cloud Documentation](cloud/README.md)** - Architecture, configuration, networking, volumes, troubleshooting
+**[Cloud Documentation](cloud/README.md)** - Architecture, configuration, networking, volumes, troubleshooting
 
 ### Staff Dashboard
 
 Django-based management interface with real-time WebSocket updates, MQTT integration, and role-based access control.
 
-📖 **[Dashboard Documentation](dashboards/django_app/README.md)** - Features, API reference, WebSocket endpoints, deployment
+**[Dashboard Documentation](dashboards/django_app/README.md)** - Features, API reference, WebSocket endpoints, deployment
 
 ### Guest Kiosk
 
 Self-service check-in system with passport scanning, multi-language support, and document generation.
 
-📖 **[Kiosk Documentation](kiosk/README.md)** - Guest flow, i18n, theming, MRZ integration
+**[Kiosk Documentation](kiosk/README.md)** - Guest flow, i18n, theming, MRZ integration
 
 ### Front Desk
 
 Employee management system for front desk staff with reservation management, document access, and kiosk integration.
 
-📖 **[Front Desk Documentation](frontdesk/README.md)** - Employee roles, reservation workflow, kiosk sync
+**[Front Desk Documentation](frontdesk/README.md)** - Employee roles, reservation workflow, kiosk sync
 
 ### MRZ Automation AI
 
 Production-ready passport scanning with layered architecture for capture, correction, extraction, and document filling.
 
-📖 **[MRZ Documentation](kiosk/app/README.md)** - Pipeline architecture, API, configuration, debugging
+**[MRZ Documentation](kiosk/app/README.md)** - Pipeline architecture, API, configuration, debugging
 
 ### ESP32-CAM AI Pipeline
 
 End-to-end facial recognition pipeline: model training, quantization, deployment, and ESP32-CAM firmware integration.
 
-📖 **[ESP32-CAM AI Pipeline](esp32-cam/AI/README.md)** - Model training, quantization, deployment, and technical deep dive
+**[ESP32-CAM AI Pipeline](esp32-cam/AI/README.md)** - Model training, quantization, deployment, and technical deep dive
 
 ## Hardware
 
@@ -307,13 +307,13 @@ The sensor nodes use ESP32-S modules running FreeRTOS firmware with:
 - FreeRTOS task-based architecture
 - Configurable sensor polling rates
 
-📖 **[ESP32 Firmware Documentation](esp32/README.md)** - Pin configuration, MQTT topics, build instructions
+**[ESP32 Firmware Documentation](esp32/README.md)** - Pin configuration, MQTT topics, build instructions
 
 PCB designs available in the [hardware/ESP-32S PCB](hardware/ESP-32S%20PCB) directory with Gerber files for manufacturing.
 
 ### ESP32-CAM Module
 
-✅ **Production Ready** - On-device face recognition with MQTT cloud integration.
+**Production Ready** - On-device face recognition with MQTT cloud integration.
 
 Capabilities:
 
@@ -323,8 +323,9 @@ Capabilities:
 - **VIP detection** with instant cloud notifications
 - **Remote control** via MQTT commands
 
-📖 **[ESP32-CAM Documentation](esp32-cam/README.md)** - Hardware, MQTT topics, firmware setup
-📖 **[ESP32-CAM AI Pipeline](esp32-cam/AI/README.md)** - Full AI pipeline: model training, quantization, deployment
+**[ESP32-CAM Documentation](esp32-cam/README.md)** - Hardware, MQTT topics, firmware setup
+
+**[ESP32-CAM AI Pipeline](esp32-cam/AI/README.md)** - Full AI pipeline: model training, quantization, deployment
 
 ## Development
 

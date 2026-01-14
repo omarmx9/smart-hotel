@@ -116,12 +116,21 @@ class DocumentFiller:
         try:
             # Extract and validate MRZ data
             surname = mrz_data.get('surname', '').strip()
-            given_name = mrz_data.get('given_name', '').replace('<', ' ').strip()
-            nationality = self._get_country_name(mrz_data.get('nationality_code', ''))
-            passport_no = mrz_data.get('document_number', '').strip()
-            birth_date = self._format_date(mrz_data.get('birth_date', ''))
+            given_name = mrz_data.get('given_name', '') or mrz_data.get('name', '')
+            given_name = given_name.replace('<', ' ').strip()
+            nationality = self._get_country_name(mrz_data.get('nationality_code', '') or mrz_data.get('nationality', ''))
+            passport_no = mrz_data.get('document_number', '') or mrz_data.get('passport_number', '')
+            passport_no = passport_no.strip()
+            birth_date = self._format_date(mrz_data.get('birth_date', '') or mrz_data.get('date_of_birth', ''))
             expiry_date = self._format_date(mrz_data.get('expiry_date', ''))
-            issuer_country = self._get_country_name(mrz_data.get('issuer_code', ''))
+            issuer_country = self._get_country_name(mrz_data.get('issuer_code', '') or mrz_data.get('country', ''))
+            
+            # Additional guest data fields
+            profession = mrz_data.get('profession', '').strip()
+            hometown = mrz_data.get('hometown', '').strip()
+            email = mrz_data.get('email', '').strip()
+            phone = mrz_data.get('phone', '').strip()
+            checkout_date = mrz_data.get('checkout', '').strip()
             
             # Validate critical fields
             if not surname or not given_name:
@@ -149,7 +158,12 @@ class DocumentFiller:
                 passport_no=passport_no,
                 birth_date=birth_date,
                 expiry_date=expiry_date,
-                issuer_country=issuer_country
+                issuer_country=issuer_country,
+                profession=profession,
+                hometown=hometown,
+                email=email,
+                phone=phone,
+                checkout_date=checkout_date
             )
             
             logger.info(f"✓ PDF document filled and saved: {output_filename}")
@@ -172,7 +186,8 @@ class DocumentFiller:
     
     def _overlay_data_on_template(self, output_path, surname, given_name, 
                                    nationality, passport_no, birth_date, 
-                                   expiry_date, issuer_country):
+                                   expiry_date, issuer_country, profession='',
+                                   hometown='', email='', phone='', checkout_date=''):
         """
         Overlay MRZ data on the blank PDF template
         
@@ -185,6 +200,11 @@ class DocumentFiller:
             birth_date: Date of birth (DD/MM/YYYY)
             expiry_date: Passport expiry date (DD/MM/YYYY)
             issuer_country: Passport issuing country
+            profession: Guest profession
+            hometown: Guest hometown
+            email: Guest email
+            phone: Guest phone number
+            checkout_date: Checkout date (YYYY-MM-DD)
         """
         try:
             # Read the template PDF
@@ -205,22 +225,48 @@ class DocumentFiller:
             today_month = now.strftime('%m')
             today_year = now.strftime('%y')  # Just last 2 digits (25, 26, etc.)
             
+            # Parse checkout date into components
+            checkout_day = ''
+            checkout_month = ''
+            checkout_year = ''
+            if checkout_date:
+                try:
+                    if '-' in checkout_date:
+                        checkout_obj = datetime.strptime(checkout_date, '%Y-%m-%d')
+                    else:
+                        checkout_obj = datetime.strptime(checkout_date, '%d/%m/%Y')
+                    checkout_day = checkout_obj.strftime('%d')
+                    checkout_month = checkout_obj.strftime('%m')
+                    checkout_year = checkout_obj.strftime('%y')
+                except:
+                    pass
+            
             # Field positions (x, y from bottom-left) - finalized coordinates
             # Page is Letter size: 612 x 792 pts
             
             # Draw date fields with larger font (size 12)
             can.setFont(self.font_regular, 12)
             
-            # *From: broken into day/month/year
+            # *From: broken into day/month/year (check-in date = today)
             can.drawString(75, 679, today_day)
             can.drawString(100, 679, today_month)
             can.drawString(141, 679, today_year)
+            
+            # *To: checkout date broken into day/month/year
+            if checkout_day:
+                can.drawString(75, 661, checkout_day)
+                can.drawString(100, 661, checkout_month)
+                can.drawString(141, 661, checkout_year)
             
             # *Ex.: expiry date
             can.drawString(80, 646, expiry_date)
             
             # *Date of Birth
             can.drawString(150, 561, birth_date)
+            
+            # *Profession
+            if profession:
+                can.drawString(427, 561, profession)
             
             # Draw other fields with normal font (size 10)
             can.setFont(self.font_regular, 10)
@@ -233,8 +279,18 @@ class DocumentFiller:
             can.drawString(150, 590, nationality)
             can.drawString(430, 590, passport_no)
             
-            # *Country
+            # *Hometown
+            if hometown:
+                can.drawString(180, 533, hometown)
+            
+            # *Country (issuing country)
             can.drawString(420, 533, issuer_country)
+            
+            # *Email / *Phone
+            if email:
+                can.drawString(180, 505, email)
+            if phone:
+                can.drawString(420, 505, phone)
             
             # Save the overlay
             can.save()

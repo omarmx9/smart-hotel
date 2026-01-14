@@ -33,15 +33,15 @@ services:
         python manage.py runserver 0.0.0.0:8000
       "
 
-  # Development settings for kiosk - use runserver with hot-reload
+  # Development settings for kiosk - use daphne for WebSocket support
   kiosk:
     environment:
       DEBUG: '1'
     command: >
       sh -c "
-        apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 &&
-        pip install -r requirements.txt &&
+        apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 libpq-dev &&
+        pip install -r requirements.txt daphne psycopg2-binary &&
         python manage.py migrate --noinput &&
         rm -rf staticfiles && python manage.py collectstatic --noinput &&
-        python manage.py runserver 0.0.0.0:8000
+        daphne -b 0.0.0.0 -p 8000 kiosk_project.asgi:application
       "

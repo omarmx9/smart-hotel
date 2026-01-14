@@ -63,19 +63,21 @@ Built with Django and modern web technologies, the kiosk provides a touch-friend
 
 ## Architecture
 
-The kiosk follows a **microservice architecture** where passport processing is handled by a separate MRZ backend service. This separation allows independent scaling and deployment.
+The kiosk follows a **microservice architecture** where passport processing is handled by a separate MRZ backend service. This separation allows independent scaling and deployment. Communication uses WebSocket for real-time 24fps video streaming or HTTP fallback.
 
 ```mermaid
 flowchart TB
-    subgraph KIOSK["Smart Hotel Kiosk - Django"]
+    subgraph KIOSK["Smart Hotel Kiosk - Django + Channels"]
         subgraph FRONTEND["Frontend Layer"]
             TEMPLATES["Templates<br/>(Jinja2)"]
             STATIC["Static Files<br/>CSS/JS/i18n"]
+            WSJS["WebSocket<br/>Client (24fps)"]
         end
         
         subgraph BACKEND["Backend Layer"]
             VIEWS["Views &<br/>Controllers"]
             EMULATOR["Emulator<br/>(SQLite)"]
+            WSPROXY["WebSocket<br/>Proxy"]
         end
         
         subgraph SERVICES["Services Layer"]
@@ -85,11 +87,16 @@ flowchart TB
     end
     
     subgraph MRZ_BACKEND["MRZ Backend - Flask Microservice"]
-        CAPTURE["Layer 1<br/>Capture"]
-        READJUST["Layer 2<br/>Readjustment"]
+        WSOCK["WebSocket<br/>/api/stream/ws"]
+        REST["REST API"]
+        
+        CAPTURE["Layer 1<br/>Auto-Capture"]
+        READJUST["Layer 2<br/>Enhancer"]
         EXTRACT["Layer 3<br/>MRZ Extract"]
         FILL["Layer 4<br/>Document Fill"]
         
+        WSOCK --> CAPTURE
+        REST --> CAPTURE
         CAPTURE --> READJUST
         READJUST --> EXTRACT
         EXTRACT --> FILL
@@ -102,9 +109,11 @@ flowchart TB
 
     GUEST --> TEMPLATES
     TEMPLATES <--> VIEWS
+    WSJS <-->|Binary Frames| WSPROXY
+    WSPROXY <-->|WebSocket| WSOCK
     VIEWS --> EMULATOR
     VIEWS --> MRZ_CLIENT
-    MRZ_CLIENT --> MRZ_BACKEND
+    MRZ_CLIENT --> REST
     VIEWS --> DOC_FILLER
 ```
 
@@ -112,27 +121,28 @@ flowchart TB
 
 | Component | Purpose |
 | ----------- | --------- |
-| **Kiosk (Django)** | Guest-facing web interface, session management, business logic |
-| **MRZ Backend (Flask)** | Passport image processing, OCR, document generation |
+| **Kiosk (Django + Channels)** | Guest-facing web interface, session management, WebSocket proxy, business logic |
+| **MRZ Backend (Flask)** | Passport image processing, YOLO detection, OCR, PDF generation, WebSocket streaming |
 | **Emulator Module** | In-memory/SQLite data store for demo mode |
 | **MRZ API Client** | HTTP client for microservice communication |
+| **WebSocket Proxy** | Django Channels consumer for proxying WebSocket to Flask backend |
 | **Document Filler** | DOCX template population with guest data |
 
 ### Data Flow
 
 ```mermaid
 flowchart LR
-    A["Guest"] -->|Camera Capture| B["Upload<br/>to Kiosk"]
-    B --> C["MRZ API<br/>Client"]
-    C --> D{"Service<br/>Available?"}
-    D -->|Yes| E["MRZ<br/>Service"]
-    D -->|No| F["Local<br/>Parser"]
-    E --> G["Extracted<br/>Data JSON"]
-    F --> G
-    G --> H["Form<br/>Pre-population"]
-    H --> I["Verification"]
-    I --> J["Document<br/>Signing"]
-    J --> K["Finalize"]
+    A["Guest"] -->|Camera Capture| B["Browser<br/>WebSocket"]
+    B -->|24fps Binary| C["Django<br/>Channels"]
+    C -->|WebSocket Proxy| D["MRZ Backend<br/>/api/stream/ws"]
+    D --> E["YOLO Detection<br/>+ MRZ Extract"]
+    E --> F["Detection<br/>Results JSON"]
+    F -->|WebSocket| C
+    C --> B
+    B --> G["UI Update<br/>+ MRZ Data"]
+    G --> H["Verification"]
+    H --> I["Document<br/>Signing"]
+    I --> J["Finalize"]
 ```
 
 ## Guest Journey
@@ -141,22 +151,22 @@ The kiosk follows a **strictly linear flow** - guests always progress forward, n
 
 ```mermaid
 flowchart TD
-    START[/"🏨 Advertisement Screen"/] --> LANG["🌍 Language Selection"]
-    LANG --> CHECKIN["📋 Check-in Start"]
-    CHECKIN --> PASSPORT["📷 Passport Scan<br/>+ Access Method Selection"]
-    PASSPORT --> VERIFY["✅ Verify Info"]
+    START[/"Advertisement Screen"/] --> LANG["Language Selection"]
+    LANG --> CHECKIN["Check-in Start"]
+    CHECKIN --> PASSPORT["Passport Scan<br/>+ Access Method Selection"]
+    PASSPORT --> VERIFY["Verify Info"]
     
     VERIFY --> FOUND{"Reservation<br/>Found?"}
     
-    FOUND -->|Yes| SIGN["✍️ Document Signing"]
-    FOUND -->|No| WALKIN["🚶 Walk-in Flow"]
-    WALKIN --> CREATE["📝 Create Reservation<br/>Dates & Room Preferences"]
+    FOUND -->|Yes| SIGN["Document Signing"]
+    FOUND -->|No| WALKIN["Walk-in Flow"]
+    WALKIN --> CREATE["Create Reservation<br/>Dates & Room Preferences"]
     CREATE --> SIGN
     
     SIGN --> ACCESS{"Access<br/>Method?"}
     
-    ACCESS -->|Keycard Only| FINALIZE["🎉 Finalization<br/>Room & Keycard Details"]
-    ACCESS -->|Face ID| ENROLL["👤 Face Enrollment"]
+    ACCESS -->|Keycard Only| FINALIZE["Finalization<br/>Room & Keycard Details"]
+    ACCESS -->|Face ID| ENROLL["Face Enrollment"]
     ACCESS -->|Both| ENROLL
     
     ENROLL --> FINALIZE
@@ -306,40 +316,71 @@ FILLED_DOCS_DIR = os.path.join(MEDIA_ROOT, 'filled_documents')
 
 ## API Reference
 
-### Passport Processing
+### Guest Flow Pages
 
 | Endpoint | Method | Description |
 | ---------- | -------- | ------------- |
-| `/upload-scan/` | POST | Upload passport image for MRZ extraction |
-| `/extract/status/<task_id>/` | GET | Check extraction task status |
-| `/api/save-passport-data/` | POST | Save verified passport data |
+| `/` | GET | Welcome/advertisement screen |
+| `/language/` | GET | Language selection |
+| `/checkin/start/` | GET | Check-in start |
+| `/checkin/passport/` | GET | Passport scan start |
+| `/checkin/passport-scan/` | GET | Browser camera passport scan |
+| `/verify/` | GET/POST | Verify extracted information |
+| `/call-front-desk/` | GET | Error page (Call Front Desk) |
 
-### MRZ Proxy Endpoints
-
-| Endpoint | Method | Description |
-| ---------- | -------- | ------------- |
-| `/api/mrz/detect/` | POST | Detect document in image |
-| `/api/mrz/extract/` | POST | Extract MRZ from image |
-| `/api/mrz/health/` | GET | MRZ service health check |
-
-### Registration Flow
+### Document Signing
 
 | Endpoint | Method | Description |
 | ---------- | -------- | ------------- |
-| `/verify/` | POST | Submit verified guest information |
-| `/dw-registration/` | GET | Display registration card form |
-| `/dw-registration/sign/` | POST | Submit signed registration |
-| `/dw-registration/print/` | POST | Generate PDF registration card |
+| `/document/sign/` | GET/POST | Main signing route |
+| `/document/preview-pdf/` | GET | Serve preview PDF |
+| `/document/print/` | POST | Print PDF |
 
-### Access Management
+### Walk-in & Reservation
 
 | Endpoint | Method | Description |
 | ---------- | -------- | ------------- |
+| `/walkin/` | GET | Walk-in flow |
+| `/reservation/` | GET/POST | Reservation lookup |
 | `/choose-access/<res_id>/` | GET | Access method selection |
 | `/enroll-face/<res_id>/` | GET | Facial recognition enrollment |
-| `/face-capture/<res_id>/` | POST | Capture face images |
+| `/face-capture/<res_id>/` | GET | Browser camera face capture |
 | `/save-faces/<res_id>/` | POST | Save enrolled faces |
-| `/submit-keycards/<res_id>/` | POST | Finalize keycard access |
+| `/final/<res_id>/` | GET | Finalization |
+| `/submit-keycards/<res_id>/` | POST | Submit keycards |
+| `/report-card/<res_id>/` | POST | Report stolen/lost card |
+
+### Django API Endpoints
+
+| Endpoint | Method | Description |
+| ---------- | -------- | ------------- |
+| `/api/save-passport-data/` | POST | Save passport data |
+| `/api/mrz/update/` | POST | Update document |
+| `/api/document/preview/` | POST | Preview document |
+| `/api/document/sign/` | POST | Sign document |
+| `/api/document/submit-physical/` | POST | Submit physical document |
+| `/api/documents/signed/` | GET | List signed documents |
+| `/api/document/<id>/` | GET | Get signed document |
+| `/api/passports/images/` | GET | List passport images |
+| `/api/passport/<id>/` | GET | Get passport image |
+| `/api/guest/create/` | POST | Create guest account |
+| `/api/guest/deactivate/` | POST | Deactivate guest account |
+| `/api/rfid/revoke/` | POST | Revoke RFID card |
+
+### MRZ Backend Proxy Endpoints (Django → Flask)
+
+| Endpoint | Method | Description |
+| ---------- | -------- | ------------- |
+| `/api/mrz/stream/ws/` | **WebSocket** | Real-time 24fps video streaming proxy |
+| `/api/mrz/detect/` | POST | Proxy to Flask `/api/detect` |
+| `/api/mrz/extract/` | POST | Proxy to Flask `/api/extract` |
+| `/api/mrz/health/` | GET | Proxy to Flask `/health` |
+| `/api/mrz/stream/session/` | POST | Create stream session |
+| `/api/mrz/stream/session/<id>/` | DELETE | Close stream session |
+| `/api/mrz/stream/frame/` | POST | Process single frame |
+| `/api/mrz/stream/capture/` | POST | Capture best frame |
+| `/api/mrz/stream/video/frames/` | POST | Process batch of frames |
+| `/api/mrz/stream/video/` | POST | Process video chunk |
 
 ## Project Structure
 
@@ -351,8 +392,10 @@ kiosk/
 ├── docker-entrypoint.sh        # Container startup script
 │
 ├── kiosk/                      # Main application
-│   ├── views.py                # View controllers (952 lines)
+│   ├── views.py                # View controllers
 │   ├── urls.py                 # URL routing
+│   ├── routing.py              # WebSocket URL routing (Channels)
+│   ├── consumers.py            # WebSocket consumers (MRZ proxy)
 │   ├── emulator.py             # In-memory data store
 │   ├── mrz_parser.py           # Local MRZ parsing
 │   ├── mrz_api_client.py       # MRZ service client
@@ -360,15 +403,16 @@ kiosk/
 │   └── context_processors.py   # Template context
 │
 ├── kiosk_project/              # Django project settings
-│   ├── settings.py             # Configuration
+│   ├── settings.py             # Configuration (includes Channels)
 │   ├── urls.py                 # Root URL config
-│   └── wsgi.py                 # WSGI application
+│   ├── asgi.py                 # ASGI application (Daphne + WebSocket)
+│   └── wsgi.py                 # WSGI application (fallback)
 │
 ├── templates/                  # HTML templates
 │   ├── base.html               # Base layout with theme
 │   └── kiosk/                  # Kiosk-specific templates
 │       ├── start.html
-│       ├── passport_scan.html
+│       ├── passport_scan.html  # WebSocket video streaming
 │       ├── verify.html
 │       ├── dw_registration.html
 │       └── ...
@@ -386,12 +430,13 @@ kiosk/
 │   └── filled_documents/       # Generated PDFs
 │
 └── app/                        # MRZ Backend (Flask)
-    ├── app.py                  # Flask application
+    ├── app.py                  # Flask application (v3.3.0)
     ├── requirements.txt        # Flask dependencies
-    └── layer1_capture/         # Camera handling
-    └── layer2_readjustment/    # Image processing
-    └── layer3_mrz/             # MRZ extraction
-    └── layer4_document_filling/ # Document generation
+    ├── README.md               # MRZ Backend documentation
+    ├── layer1_auto_capture/    # YOLO detection, stability
+    ├── layer2_image_enhancer/  # Image processing
+    ├── layer3_mrz/             # MRZ extraction (OCR)
+    └── layer4_document_filling/ # PDF generation
 ```
 
 ## Internationalization
@@ -420,7 +465,7 @@ Language selection persists in browser session storage.
 
 ## Theming
 
-### Current Theme: Winter Holiday 🎄
+### Current Theme: Winter Holiday
 
 The kiosk features a professional winter holiday theme with:
 

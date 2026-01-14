@@ -40,8 +40,8 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label required" for="nationality" data-i18n="nationality">Nationality</label>
-                    <input type="text" class="form-control" id="nationality" name="nationality" value="{{ initial.nationality }}" required>
-                    <input type="hidden" name="nationality_code" value="{{ initial.nationality_code }}">
+                    <input type="text" class="form-control" id="nationality" name="nationality" value="{{ initial.nationality }}" required maxlength="3" placeholder="GBR">
+                    <small class="form-text text-muted">3-letter country code</small>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label required" for="passport_number" data-i18n="passport_number">Passport Number</label>
@@ -52,8 +52,21 @@
                     <input type="date" class="form-control" id="date_of_birth" name="date_of_birth" value="{{ initial.date_of_birth }}" required>
                 </div>
                 <div class="col-md-6">
+                    <label class="form-label required" for="sex" data-i18n="sex">Sex</label>
+                    <select class="form-control" id="sex" name="sex" required>
+                        <option value="">Select...</option>
+                        <option value="M" {% if initial.sex == 'M' %}selected{% endif %}>Male (M)</option>
+                        <option value="F" {% if initial.sex == 'F' %}selected{% endif %}>Female (F)</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
                     <label class="form-label" for="country" data-i18n="issuing_country">Issuing Country</label>
-                    <input type="text" class="form-control" id="country" name="country" value="{{ initial.country }}">
+                    <input type="text" class="form-control" id="country" name="country" value="{{ initial.issuer_code }}" maxlength="3" placeholder="GBR">
+                    <small class="form-text text-muted">3-letter code of country that issued passport</small>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="expiry_date" data-i18n="expiry_date">Passport Expiry Date</label>
+                    <input type="date" class="form-control" id="expiry_date" name="expiry_date" value="{{ initial.expiry_date }}">
                 </div>
             </div>
 

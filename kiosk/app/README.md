@@ -1,15 +1,16 @@
-# MRZ Backend Service v3.1
+# MRZ Backend Service v3.3.0
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg)
-![Flask](https://img.shields.io/badge/Flask-2.3+-lightgrey.svg)
+![Flask](https://img.shields.io/badge/Flask-3.1+-lightgrey.svg)
 ![YOLO](https://img.shields.io/badge/YOLO-Ultralytics-purple.svg)
+![WebSocket](https://img.shields.io/badge/WebSocket-24fps-blue.svg)
 ![Mode](https://img.shields.io/badge/mode-WebRTC-orange.svg)
 ![Status](https://img.shields.io/badge/status-production-success.svg)
 
-> **WebRTC Backend Mode** - Camera handled by browser, server processes frames
+> **WebRTC Backend Mode** - Camera handled by browser, server processes frames via WebSocket or HTTP
 
-A production-grade Flask microservice for passport/ID document processing with MRZ (Machine Readable Zone) extraction, document detection, and PDF generation.
+A production-grade Flask microservice for passport/ID document processing with MRZ (Machine Readable Zone) extraction, document detection, and PDF generation. Supports real-time 24fps video streaming via WebSocket for optimal performance.
 
 ---
 
@@ -17,36 +18,44 @@ A production-grade Flask microservice for passport/ID document processing with M
 
 ```mermaid
 flowchart TB
-    subgraph Browser["🌐 Browser (Frontend)"]
-        CAM["📷 getUserMedia<br/>Camera Access"]
-        WS["🔄 WebRTC Stream<br/>Frame Sender"]
-        UI["📱 User Interface"]
+    subgraph Browser["Browser (Frontend)"]
+        CAM["getUserMedia<br/>Camera Access"]
+        WS["WebSocket Stream<br/>24fps Binary Frames"]
+        HTTP["HTTP Fallback<br/>Frame Batching"]
+        UI["User Interface"]
     end
     
-    subgraph Backend["🖥️ Flask Backend (Port 5000)"]
+    subgraph Backend["Flask Backend (Port 5000)"]
+        WSOCK["WebSocket<br/>/api/stream/ws"]
+        REST["REST API<br/>/api/stream/*"]
+        
         subgraph L1["Layer 1: Auto-Capture"]
-            DET["🎯 YOLO Detection<br/>Corner Tracking"]
-            STAB["📊 Stability<br/>Monitor"]
-            QUAL["✨ Quality<br/>Assessor"]
+            DET["YOLO Detection<br/>Corner Tracking"]
+            STAB["Stability<br/>Monitor"]
+            QUAL["Quality<br/>Assessor"]
         end
         
         subgraph L2["Layer 2: Image Enhancer"]
-            ENH["🔧 Passthrough<br/>(Future: Filters)"]
+            ENH["Passthrough<br/>(Future: Filters)"]
         end
         
         subgraph L3["Layer 3: MRZ Extraction"]
-            OCR["📝 Tesseract OCR"]
-            PARSE["🔍 Field Parser"]
+            OCR["Tesseract OCR"]
+            PARSE["Field Parser"]
         end
         
         subgraph L4["Layer 4: Document Filling"]
-            PDF["📄 PDF Generator"]
-            TPL["📋 Template Engine"]
+            PDF["PDF Generator"]
+            TPL["Template Engine"]
         end
     end
     
     CAM --> WS
-    WS -->|"Base64 Frames"| DET
+    CAM --> HTTP
+    WS -->|"Binary JPEG/WebP"| WSOCK
+    HTTP -->|"Base64 Frames"| REST
+    WSOCK --> DET
+    REST --> DET
     DET --> STAB
     STAB --> QUAL
     QUAL -->|"Best Frame"| ENH
@@ -60,6 +69,7 @@ flowchart TB
     style L2 fill:#f3e5f5
     style L3 fill:#e8f5e9
     style L4 fill:#fff3e0
+    style WSOCK fill:#bbdefb
 ```
 
 ---
@@ -67,14 +77,28 @@ flowchart TB
 ## Key Features
 
 ### Layer 1 — Auto-Capture (WebRTC Mode)
+
 - **YOLO-based document detection** with 4-corner keypoint tracking
 - **Virtual padding** for better edge detection
 - **Stability tracking** - waits for document to be still
 - **Burst capture** - captures multiple frames for quality selection
 - **Quality assessment** - sharpness, contrast, brightness, noise analysis
 - **Stream session management** - handles multiple concurrent sessions
+- **Async background detection** - non-blocking YOLO inference
+
+### Real-time Streaming Options
+
+- **WebSocket (Recommended)** - `/api/stream/ws` for 24fps real-time streaming
+  - Binary JPEG/WebP frames for zero encoding overhead
+  - Bi-directional JSON commands and detection results
+  - Lowest latency, highest throughput
+- **HTTP Batch** - `/api/stream/video/frames` for frame batching
+  - Gzip compression support for bandwidth optimization
+  - Fallback when WebSocket unavailable
+- **HTTP Single Frame** - `/api/stream/frame` for simple integration
 
 ### Layer 2 — Image Enhancer
+
 - **Passthrough mode** by default
 - **Future enhancements ready**:
   - INTER_LANCZOS4 upscaling
@@ -83,11 +107,13 @@ flowchart TB
   - FastNlMeans denoising
 
 ### Layer 3 — MRZ Extraction
+
 - Tesseract OCR with MRZ-optimized training data
 - Field parsing and validation
 - JSON output with all passport fields
 
 ### Layer 4 — Document Filling
+
 - PDF template filling
 - Automatic field mapping
 - Registration card generation
@@ -96,7 +122,44 @@ flowchart TB
 
 ## API Flow
 
-### WebRTC Stream Mode (Kiosk/Camera)
+### WebSocket Mode (Recommended - 24fps Real-time)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant W as WebSocket /api/stream/ws
+    participant M as YOLO Model
+    participant O as OCR Engine
+    
+    B->>W: Connect WebSocket
+    W-->>B: Connection established
+    
+    B->>W: JSON: {"action": "init"}
+    W-->>B: JSON: {"action": "init_ok", "session_id": "uuid"}
+    
+    rect rgb(230, 245, 255)
+        Note over B,W: Real-time Frame Loop (24fps)
+        loop Every ~41ms
+            B->>W: Binary: JPEG/WebP frame bytes
+            W->>M: Detect Corners (async)
+            M-->>W: corners, confidence
+            W-->>B: JSON: {detected, stable_count, ready_for_capture}
+        end
+    end
+    
+    Note over B: ready_for_capture = true
+    B->>W: JSON: {"action": "capture"}
+    W->>O: Extract MRZ from best frame
+    O-->>W: MRZ Fields
+    W-->>B: JSON: {action: "capture_result", data, quality}
+    
+    Note over B: User reviews/edits data
+    B->>W: JSON: {"action": "close"}
+    W-->>B: JSON: {"action": "closed"}
+```
+
+### HTTP Stream Mode Flow (Fallback)
 
 ```mermaid
 sequenceDiagram
@@ -131,23 +194,6 @@ sequenceDiagram
     
     B->>S: DELETE /api/stream/session/{id}
     S-->>B: Session closed
-```
-
-### Web Upload Mode
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant B as Browser
-    participant S as Backend Server
-    participant O as OCR Engine
-    
-    B->>S: POST /api/extract<br/>{image file or base64}
-    S->>O: Extract MRZ
-    O-->>S: MRZ Fields
-    S-->>B: {session_id, data, quality}
-    
-    Note over B: User reviews/edits data
     B->>S: POST /api/mrz/update<br/>{session_id, guest_data}
     S-->>B: {filled_document, is_edited}
 ```
@@ -159,30 +205,52 @@ sequenceDiagram
 ### Health & Status
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check for load balancers |
-| `/api/status` | GET | Detailed service status |
+| ---------- | -------- | ------------- |
+| `/health` | GET | Health check with model status, WebSocket support, active sessions |
+| `/api/status` | GET | Detailed service status and all endpoint listing |
 
-### Stream Mode (WebRTC)
+### WebSocket Real-time Streaming (24fps)
+
+| Endpoint | Protocol | Description |
+| ---------- | -------- | ------------- |
+| `/api/stream/ws` | **WebSocket** | Real-time binary frame streaming. See protocol below. |
+
+**WebSocket Protocol:**
+
+| Message Type | Direction | Format | Description |
+| -------------- | --------- | -------- | ------------- |
+| Init | Client→Server | `{"action": "init", "session_id": "optional"}` | Initialize session |
+| Init OK | Server→Client | `{"action": "init_ok", "session_id": "uuid"}` | Session ready |
+| Frame | Client→Server | Binary JPEG/WebP bytes | Send video frame |
+| Detection | Server→Client | `{"detected": true, "stable_count": N, ...}` | Detection result |
+| Capture | Client→Server | `{"action": "capture"}` | Trigger MRZ extraction |
+| Capture Result | Server→Client | `{"action": "capture_result", "data": {...}}` | MRZ data |
+| Close | Client→Server | `{"action": "close"}` | End session |
+| Ping | Client→Server | `{"action": "ping"}` | Keep-alive |
+| Pong | Server→Client | `{"action": "pong"}` | Keep-alive response |
+
+### HTTP Stream Mode (Fallback)
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/api/stream/session` | POST | Create new stream session |
 | `/api/stream/session/<id>` | DELETE | Close stream session |
-| `/api/stream/frame` | POST | Process frame from stream |
+| `/api/stream/frame` | POST | Process single frame (supports gzip) |
 | `/api/stream/capture` | POST | Capture best frame from session |
+| `/api/stream/video` | POST | Process video chunk (WebM/MP4) |
+| `/api/stream/video/frames` | POST | Process batch of base64/WebP frames |
 
-### Upload Mode
+### Upload Mode (Single Image)
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/api/extract` | POST | Extract MRZ from uploaded image |
 | `/api/detect` | POST | Detect document in single image |
 
 ### Document Processing
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/api/mrz/update` | POST | Finalize MRZ & generate PDF |
 | `/api/document/preview` | POST | Get document preview HTML |
 | `/api/document/pdf/<id>` | GET | Serve generated PDF |
@@ -203,7 +271,47 @@ pip install -r requirements.txt
 python app.py
 ```
 
-### 3. API Flow (WebRTC Mode)
+### 3. API Flow (WebSocket Mode - Recommended)
+
+```python
+import asyncio
+import websockets
+import json
+
+async def websocket_stream():
+    uri = "ws://localhost:5000/api/stream/ws"
+    async with websockets.connect(uri) as ws:
+        # 1. Initialize session
+        await ws.send(json.dumps({"action": "init"}))
+        response = json.loads(await ws.recv())
+        session_id = response["session_id"]
+        print(f"Session: {session_id}")
+        
+        # 2. Send frames (in real app, capture from camera)
+        with open("frame.jpg", "rb") as f:
+            frame_bytes = f.read()
+        
+        for i in range(24):  # Send 1 second of frames
+            await ws.send(frame_bytes)  # Binary frame
+            result = json.loads(await ws.recv())
+            print(f"Frame {i}: detected={result['detected']}, stable={result.get('stable_count', 0)}")
+            
+            if result.get("ready_for_capture"):
+                break
+            await asyncio.sleep(1/24)  # 24fps
+        
+        # 3. Capture when ready
+        await ws.send(json.dumps({"action": "capture"}))
+        capture = json.loads(await ws.recv())
+        print(f"MRZ Data: {capture.get('data')}")
+        
+        # 4. Close session
+        await ws.send(json.dumps({"action": "close"}))
+
+asyncio.run(websocket_stream())
+```
+
+### 4. API Flow (HTTP Mode - Fallback)
 
 ```python
 import requests
@@ -214,8 +322,6 @@ session = requests.post("http://localhost:5000/api/stream/session").json()
 session_id = session["session_id"]
 
 # 2. Send frames in a loop (from browser via JS)
-# Frontend code: capture frame from video, convert to base64, POST to /api/stream/frame
-# Example single frame:
 with open("frame.jpg", "rb") as f:
     frame_b64 = base64.b64encode(f.read()).decode()
 
@@ -250,11 +356,11 @@ requests.delete(f"http://localhost:5000/api/stream/session/{session_id}")
 
 ## Directory Structure
 
-```
+```text
 app/
-├── app.py                      # Main Flask application (v3.1)
+├── app.py                      # Main Flask application (v3.3.0)
 ├── error_handlers.py           # Unified error handling
-├── api_endpoints.txt           # API documentation
+├── requirements.txt            # Flask dependencies
 ├── README.md                   # This file
 │
 ├── layer1_auto_capture/        # Document detection & capture
@@ -267,22 +373,26 @@ app/
 │   ├── __init__.py
 │   └── bridge.py               # ImageBridge (passthrough + future filters)
 │
-├── layer3_readjustment/        # MRZ extraction
+├── layer3_mrz/                 # MRZ extraction
 │   ├── __init__.py
 │   ├── mrz_extractor.py        # OCR & field parsing
 │   └── image_saver.py          # Image persistence
 │
-├── layer4_doc_filling/         # PDF generation
+├── layer4_document_filling/    # PDF generation
 │   ├── __init__.py
 │   └── doc_filler.py           # Template filling
 │
 ├── models/                     # AI models
 │   └── CornerDetection.pt      # YOLO document detection model
 │
+├── templates/                  # PDF templates
+│   └── DWA_Registration_Card.pdf
+│
 ├── web/                        # Test frontend
 │   └── index.html
 │
 └── Logs/                       # Runtime data
+    ├── auto_capture/           # Detection debug frames
     ├── captured_passports/
     │   ├── captured_images/    # Processed images
     │   └── captured_json/      # Initial MRZ extractions
@@ -307,7 +417,7 @@ pie title Quality Score Weights
 ```
 
 | Metric | Weight | Threshold | Description |
-|--------|--------|-----------|-------------|
+| -------- | -------- | ----------- | ------------- |
 | Sharpness | 35% | ≥ 50 | Laplacian variance (higher = sharper) |
 | Contrast | 25% | ≥ 40 | Standard deviation of luminance |
 | Brightness | 15% | 30-80 | Mean luminance (not too dark/bright) |
@@ -369,7 +479,7 @@ All errors use a consistent format:
 ### Error Codes
 
 | Code | Description |
-|------|-------------|
+| -------- | ------------- |
 | `INVALID_SESSION` | Stream session not found |
 | `CAPTURE_FAILED` | No stable frame available |
 | `INVALID_IMAGE` | Could not decode image |
@@ -381,9 +491,14 @@ All errors use a consistent format:
 
 ## Requirements
 
-```
-flask>=2.3.0
+```text
+flask>=3.1.0
 flask-cors
+flask-compress
+flask-sock
+gevent
+gevent-websocket
+gunicorn
 opencv-python>=4.8.0
 numpy>=1.24.0
 ultralytics>=8.0.0       # YOLO
@@ -395,10 +510,29 @@ reportlab
 
 ---
 
+## Deployment
+
+### Development
+
+```bash
+python app.py
+```
+
+### Production (with WebSocket support)
+
+```bash
+gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
+    -w 1 -b 0.0.0.0:5000 app:app
+```
+
+---
+
 ## Version History
 
 | Version | Date | Changes |
-|---------|------|---------|
+| --------- | ------ | --------- |
+| 3.3.0 | 2026-01-12 | WebSocket 24fps streaming, async YOLO detection, gzip compression |
+| 3.2.0 | 2026-01-11 | Video frame batching, WebP support |
 | 3.1.0 | 2026-01-10 | WebRTC backend mode, renamed layer2 to image_enhancer |
 | 3.0.0 | 2026-01-09 | Auto-capture with local camera |
 | 2.0.0 | 2026-01-08 | Layer architecture, quality metrics |

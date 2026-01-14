@@ -175,6 +175,82 @@ class MRZAPIClient:
             image_data = f.read()
         filename = os.path.basename(file_path)
         return self.extract_from_image(image_data, filename)
+    
+    # =========================================================================
+    # Video Streaming Methods (24 FPS)
+    # =========================================================================
+    
+    def send_video_frames(self, session_id: str, frames: list) -> dict:
+        """
+        Send a batch of video frames for processing.
+        Used for 24fps video streaming mode.
+        
+        Args:
+            session_id: Stream session ID
+            frames: List of base64-encoded JPEG frames
+        
+        Returns:
+            dict: Detection result with corners, stability, quality
+        
+        Raises:
+            MRZAPIError: If processing fails
+        """
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/stream/video/frames",
+                json={
+                    'session_id': session_id,
+                    'frames': frames
+                },
+                timeout=self.timeout
+            )
+            return response.json()
+        except requests.RequestException as e:
+            logger.error(f"Failed to send video frames: {e}")
+            return {
+                'detected': False,
+                'error': str(e),
+                'frames_processed': 0
+            }
+    
+    def send_video_chunk(self, session_id: str, video_data: bytes, 
+                          chunk_index: int = 0) -> dict:
+        """
+        Send a video chunk (raw WebM/MP4) for processing.
+        Backend splits the video into frames.
+        
+        Args:
+            session_id: Stream session ID
+            video_data: Raw video bytes
+            chunk_index: Chunk sequence number
+        
+        Returns:
+            dict: Detection result with frames_processed count
+        
+        Raises:
+            MRZAPIError: If processing fails
+        """
+        try:
+            files = {'video': ('chunk.webm', video_data, 'video/webm')}
+            data = {
+                'session_id': session_id,
+                'chunk_index': str(chunk_index)
+            }
+            
+            response = self.session.post(
+                f"{self.base_url}/api/stream/video",
+                files=files,
+                data=data,
+                timeout=self.timeout
+            )
+            return response.json()
+        except requests.RequestException as e:
+            logger.error(f"Failed to send video chunk: {e}")
+            return {
+                'detected': False,
+                'error': str(e),
+                'frames_processed': 0
+            }
 
 
 # Singleton instance
@@ -199,16 +275,14 @@ def convert_mrz_to_kiosk_format(mrz_data: dict) -> dict:
     Convert MRZ API response data to kiosk format.
     
     Args:
-        mrz_data: Raw MRZ data from API.
+        mrz_data: Raw MRZ data from API (from MRZ extractor).
+            Expected fields: surname, given_name, document_number, birth_date,
+            nationality_code, issuer_code, sex, expiry_date
     
     Returns:
-        dict: Kiosk-formatted data with fields:
-            - first_name
-            - last_name
-            - passport_number
-            - date_of_birth
-            - nationality
-            - gender
+        dict: Kiosk-formatted data with fields for both display and API submission.
+            Includes both legacy names (first_name, nationality) and 
+            MRZ-compatible names (given_name, nationality_code, issuer_code).
     """
     # Handle date format conversion
     dob = mrz_data.get('birth_date', '')
@@ -218,13 +292,23 @@ def convert_mrz_to_kiosk_format(mrz_data: dict) -> dict:
         century = 20 if year <= 30 else 19
         dob = f"{century}{dob[:2]}-{dob[2:4]}-{dob[4:6]}"
     
+    given_name = mrz_data.get('given_name', '').replace('<', ' ').strip()
+    surname = mrz_data.get('surname', '').replace('<', ' ').strip()
+    
     return {
-        'first_name': mrz_data.get('given_name', '').replace('<', ' ').strip(),
-        'last_name': mrz_data.get('surname', '').replace('<', ' ').strip(),
+        # MRZ-compatible field names (for /api/mrz/update)
+        'surname': surname,
+        'given_name': given_name,
+        'nationality_code': mrz_data.get('nationality_code', ''),
+        'issuer_code': mrz_data.get('issuer_code', ''),
         'passport_number': mrz_data.get('document_number', ''),
         'date_of_birth': dob,
+        'expiry_date': mrz_data.get('expiry_date', ''),
+        'sex': mrz_data.get('sex', ''),
+        # Legacy field names (for UI display compatibility)
+        'first_name': given_name,
+        'last_name': surname,
         'nationality': mrz_data.get('nationality_code', ''),
-        'nationality_code': mrz_data.get('nationality_code', ''),
         'gender': mrz_data.get('sex', ''),
         'issuer_country': mrz_data.get('issuer_code', ''),
     }

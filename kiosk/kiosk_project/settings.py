@@ -21,6 +21,8 @@ USE_X_FORWARDED_PORT = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 INSTALLED_APPS = [
+    'daphne',  # ASGI server for WebSocket support
+    'channels',  # Django Channels for WebSocket
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -62,6 +64,15 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'kiosk_project.wsgi.application'
+ASGI_APPLICATION = 'kiosk_project.asgi.application'
+
+# Channel layers for WebSocket support
+# Use in-memory for single-server deployment, Redis for multi-server
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    },
+}
 
 # SQLite database for kiosk sessions and local data
 # Use /app/data path if it exists (Docker), otherwise use BASE_DIR

@@ -375,36 +375,69 @@ def extract_status(request, task_id):
 def verify_info(request):
     """
     Verify guest info and redirect to next step.
-    Supports both AJAX (returns JSON) and regular form submission (redirects).
+    
+    Flow: dw_registration_card → verify_info → reservation_entry
+    
+    Gets data from session (dw_registration_data) which was set by dw_registration_card.
+    Creates/finds guest in database and looks up existing reservation.
     """
-    if request.method == "POST":
+    if request.method == "POST" or request.session.get("dw_registration_data"):
         # Check if this is an AJAX request
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or \
                   request.headers.get('Accept', '').startswith('application/json')
         
-        data = dict(request.POST)
-        # normalize
-        first_name = data.get("first_name", [""])[0]
-        last_name = data.get("last_name", [""])[0]
-        passport = data.get("passport_number", [""])[0]
-        dob = parse_date(data.get("date_of_birth", [""])[0])
+        # Get data from session (set by dw_registration_card) or POST
+        reg_data = request.session.get("dw_registration_data", {})
+        
+        if reg_data:
+            # Data from dw_registration_card (via session)
+            first_name = reg_data.get("name", "") or reg_data.get("given_name", "")
+            last_name = reg_data.get("surname", "")
+            passport = reg_data.get("passport_number", "")
+            dob = parse_date(reg_data.get("date_of_birth", ""))
+            nationality = reg_data.get("nationality", "")
+            nationality_code = reg_data.get("nationality_code", "") or nationality
+            issuer_code = reg_data.get("issuer_code", "")
+            sex = reg_data.get("sex", "")
+            expiry_date = reg_data.get("expiry_date", "")
+            document_session_id = request.session.get("document_session_id", "")
+            
+            logger.info("VERIFY_INFO: Using data from dw_registration_data session")
+        else:
+            # Legacy: Data from direct POST (passport_scan)
+            data = dict(request.POST)
+            
+            # DEBUG: Log all POST data received
+            logger.info("=" * 60)
+            logger.info("VERIFY_INFO: Received POST data (legacy):")
+            for key, value in data.items():
+                logger.info(f"  {key}: {value}")
+            logger.info("=" * 60)
+            
+            first_name = data.get("first_name", [""])[0]
+            last_name = data.get("last_name", [""])[0]
+            passport = data.get("passport_number", [""])[0]
+            dob = parse_date(data.get("date_of_birth", [""])[0])
+            nationality = data.get("nationality", [""])[0]
+            nationality_code = data.get("nationality_code", [""])[0] or nationality
+            issuer_code = data.get("issuer_code", [""])[0]
+            sex = data.get("sex", [""])[0]
+            expiry_date = data.get("expiry_date", [""])[0]
+            document_session_id = data.get("document_session_id", [""])[0]
+        
+        # DEBUG: Log extracted fields
+        logger.info("VERIFY_INFO: Extracted fields:")
+        logger.info(f"  first_name: '{first_name}'")
+        logger.info(f"  last_name: '{last_name}'")
+        logger.info(f"  nationality_code: '{nationality_code}'")
+        logger.info(f"  issuer_code: '{issuer_code}'")
+        
+        # Store document_session_id for later use
+        if document_session_id:
+            request.session["document_session_id"] = document_session_id
 
-        # Handle multiselect access methods (access_keycard, access_face)
-        access_methods = []
-        if data.get("access_keycard", [""])[0]:
-            access_methods.append("keycard")
-        if data.get("access_face", [""])[0]:
-            access_methods.append("face")
-
-        # Fallback to legacy single access_method field
-        if not access_methods:
-            legacy_method = data.get("access_method", ["keycard"])[0]
-            if legacy_method:
-                access_methods = [m.strip() for m in legacy_method.split(",") if m.strip()]
-
-        # Default to keycard if nothing selected
-        if not access_methods:
-            access_methods = ["keycard"]
+        # NOTE: Access method selection is handled AFTER signing in select_access_method view
+        # We don't process access methods here anymore to avoid duplicate selection
 
         # Validate required fields
         if not first_name or not last_name:
@@ -422,83 +455,100 @@ def verify_info(request):
 
         try:
             guest = db.get_or_create_guest(first_name, last_name, passport, dob)
+            request.session["guest_id"] = guest["id"]
+            logger.info(f"Guest created/found in database: {guest['id']}")
         except Exception as e:
+            # FIX 7: Database errors should show error page, not continue silently
             logger.error(f"Database error creating guest: {e}")
             if is_ajax:
                 return JsonResponse({
                     "success": False,
-                    "error": "We're experiencing technical difficulties. Please contact the front desk.",
+                    "error": "We're experiencing database issues. Please contact the front desk.",
                     "error_code": "DATABASE_ERROR",
                 }, status=500)
             return render_error(
                 request,
-                "We're experiencing technical difficulties. Please contact the front desk.",
+                "We're experiencing database issues. Please contact the front desk for assistance.",
                 error_code="DATABASE_ERROR",
             )
-
-        request.session["guest_id"] = guest["id"]
-        request.session["access_method"] = ",".join(access_methods)
-        request.session["pending_access_methods"] = access_methods
 
         # Try find reservation by reservation_number or guest
-        res_number = data.get("reservation_number", [""])[0]
+        # Get reservation number from session data or POST data
+        if reg_data:
+            res_number = reg_data.get("reservation_number", "")
+        else:
+            res_number = data.get("reservation_number", [""])[0] if 'data' in dir() else ""
         reservation = None
 
-        try:
-            if res_number:
-                reservation = db.get_reservation_by_number(res_number)
+        if guest:  # Only look up reservation if guest was created
+            try:
+                if res_number:
+                    reservation = db.get_reservation_by_number(res_number)
+                    logger.info(f"Reservation found by number: {res_number}")
 
-            if not reservation:
-                # Try to find by guest
-                res_qs = db.get_reservations_by_guest(guest)
-                if res_qs:
-                    reservation = res_qs[0]
-        except Exception as e:
-            logger.error(f"Database error finding reservation: {e}")
-            if is_ajax:
-                return JsonResponse({
-                    "success": False,
-                    "error": "We're experiencing technical difficulties. Please contact the front desk.",
-                    "error_code": "DATABASE_ERROR",
-                }, status=500)
-            return render_error(
-                request,
-                "We're experiencing technical difficulties. Please contact the front desk.",
-                error_code="DATABASE_ERROR",
-            )
+                if not reservation:
+                    # Try to find by guest
+                    res_qs = db.get_reservations_by_guest(guest)
+                    if res_qs:
+                        reservation = res_qs[0]
+                        logger.info(f"Reservation found for guest: {guest['id']}")
+            except Exception as e:
+                logger.warning(f"Database error finding reservation: {e}. Will continue to document filling.")
+                reservation = None  # Mark as failed but continue
+
+        # Store reservation if found
+        if reservation and guest:
+            request.session["reservation_id"] = reservation["id"]
 
         # Get the flow type from session
         flow_type = request.session.get("flow_type", "checkin")
 
-        if reservation:
-            # Reservation found - store it and determine redirect
-            request.session["reservation_id"] = reservation["id"]
-
-            if flow_type == "checkout":
-                redirect_url = reverse("kiosk:finalize", kwargs={"reservation_id": reservation["id"]})
-            else:
-                redirect_url = reverse("kiosk:pdf_sign_document")
-
-            if is_ajax:
-                return JsonResponse({"success": True, "redirect": redirect_url})
-            return redirect(redirect_url)
-
-        # No reservation found
+        # FIX 2 & 6: Handle checkout flow properly
         if flow_type == "checkout":
-            if is_ajax:
-                return JsonResponse({
-                    "success": False,
-                    "error": "No reservation found for check-out. If you made a reservation, please contact the front desk with your confirmation number. If you're a walk-in guest, please select 'Check In' instead.",
-                    "error_code": "NO_RESERVATION_CHECKOUT",
-                }, status=400)
-            return render_error(
-                request,
-                "No reservation found for check-out. If you made a reservation, please contact the front desk with your confirmation number. If you're a walk-in guest, please select 'Check In' instead.",
-                error_code="NO_RESERVATION_CHECKOUT",
-            )
+            if reservation and guest:
+                # Valid checkout: has reservation - still go through document signing for audit trail
+                # Mark as checkout mode so document signing knows to skip certain steps
+                request.session["checkout_mode"] = True
+                request.session["checkout_reservation_id"] = reservation["id"]
+                logger.info(f"Checkout flow: proceeding to document signing for reservation {reservation['id']}")
+            else:
+                # FIX 6: Walk-in trying to checkout without reservation - show clear error
+                logger.warning(f"Walk-in checkout attempt: guest={guest is not None}, reservation={reservation is not None}")
+                if is_ajax:
+                    return JsonResponse({
+                        "success": False,
+                        "error": "Only guests with a reservation can check out. Please contact the front desk.",
+                        "error_code": "CHECKOUT_NO_RESERVATION",
+                    }, status=400)
+                return render_error(
+                    request,
+                    "Only guests with a reservation can check out. If you need to check out, please contact the front desk for assistance.",
+                    error_code="CHECKOUT_NO_RESERVATION",
+                )
 
-        # Checkin flow without reservation - go to walk-in page
-        redirect_url = reverse("kiosk:walkin")
+        # For checkin with pre-booked reservation, show reservation details first
+        # For checkin without reservation (walk-in), go to reservation_entry
+        # For checkout, always go to document signing (already handled above)
+        if flow_type == "checkin":
+            if reservation and guest:
+                # Pre-booked guest - show reservation confirmation page
+                logger.info(f"Checkin with pre-booked reservation: redirecting to reservation details")
+                redirect_url = reverse("kiosk:reservation_entry")
+                if is_ajax:
+                    return JsonResponse({"success": True, "redirect": redirect_url})
+                return redirect(redirect_url)
+            else:
+                # Walk-in guest - go to reservation entry to create new reservation
+                logger.info(f"Checkin without reservation: redirecting to reservation entry for walk-in")
+                redirect_url = reverse("kiosk:reservation_entry")
+                if is_ajax:
+                    return JsonResponse({"success": True, "redirect": redirect_url})
+                return redirect(redirect_url)
+        
+        # Checkout already handled above
+        # Fallback to document filling (shouldn't reach here in normal flow)
+        logger.info(f"Redirecting to document filling for PDF generation (flow_type={flow_type})")
+        redirect_url = reverse("kiosk:dw_registration_card")
         if is_ajax:
             return JsonResponse({"success": True, "redirect": redirect_url})
         return redirect(redirect_url)
@@ -534,7 +584,12 @@ def checkin(request):
         flow_type = request.POST.get("flow_type", "checkin")
         request.session["flow_type"] = flow_type
         # Clear any stale session data from previous flow
-        keys_to_clear = ["guest_id", "reservation_id", "access_method", "room_payload", "pending_access_methods"]
+        keys_to_clear = [
+            "guest_id", "reservation_id", "access_method", "room_payload", 
+            "pending_access_methods", "dw_registration_data", "registration_data",
+            "document_session_id", "mrz_pdf_filename", "registration_complete",
+            "dw_signature_path", "signed_document_id"
+        ]
         for key in keys_to_clear:
             request.session.pop(key, None)
 
@@ -894,6 +949,7 @@ def walkin(request):
     extracted_data = request.session.get("extracted_passport_data", {})
     
     # Build prefill data from MRZ extraction (always provide all keys)
+    # Support both MRZ field names (given_name, nationality_code) and legacy names
     prefill_data = {
         "first_name": "",
         "last_name": "",
@@ -904,12 +960,12 @@ def walkin(request):
     }
     if extracted_data:
         prefill_data = {
-            "first_name": extracted_data.get("first_name", "") or extracted_data.get("given_names", ""),
-            "last_name": extracted_data.get("last_name", "") or extracted_data.get("surname", ""),
+            "first_name": extracted_data.get("given_name", "") or extracted_data.get("first_name", "") or extracted_data.get("given_names", ""),
+            "last_name": extracted_data.get("surname", "") or extracted_data.get("last_name", ""),
             "passport_number": extracted_data.get("passport_number", "") or extracted_data.get("document_number", ""),
-            "date_of_birth": extracted_data.get("date_of_birth", ""),
-            "nationality": extracted_data.get("nationality", "") or extracted_data.get("country", ""),
-            "sex": extracted_data.get("sex", ""),
+            "date_of_birth": extracted_data.get("date_of_birth", "") or extracted_data.get("birth_date", ""),
+            "nationality": extracted_data.get("nationality_code", "") or extracted_data.get("nationality", ""),
+            "sex": extracted_data.get("sex", "") or extracted_data.get("gender", ""),
         }
         logger.info(f"Pre-filling walkin form with MRZ data: {prefill_data.get('first_name')} {prefill_data.get('last_name')}")
 
@@ -1039,34 +1095,107 @@ def reservation_entry(request):
             timezone.now().date() + datetime.timedelta(days=1)
         )
 
-        # Auto-generate reservation number if not provided
-        if not resnum:
-            import secrets
+        # Check if this is a pre-booked guest
+        existing_reservation = None
+        try:
+            res_qs = db.get_reservations_by_guest(guest)
+            if res_qs:
+                existing_reservation = res_qs[0]
+        except Exception as e:
+            logger.warning(f"Error checking for existing reservation: {e}")
 
-            resnum = f"RES-{timezone.now().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}"
+        # If pre-booked, use existing reservation; otherwise create new one
+        if existing_reservation:
+            # Pre-booked guest - use their existing reservation
+            res = existing_reservation
+            request.session["reservation_id"] = existing_reservation["id"]
+            logger.info(f"Using pre-booked reservation for guest: {existing_reservation.get('confirmation_number')}")
+            checkin = parse_date(existing_reservation.get("checkin")) or checkin
+            checkout = parse_date(existing_reservation.get("checkout")) or checkout
+        else:
+            # Walk-in guest - create new reservation
+            # Auto-generate reservation number if not provided
+            if not resnum:
+                import secrets
+                resnum = f"RES-{timezone.now().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}"
+
+            try:
+                res = db.create_reservation(
+                    resnum, guest, checkin, checkout, room_count=room_count, people_count=people_count
+                )
+            except Exception as e:
+                logger.error(f"Database error creating reservation: {e}")
+                return render_error(
+                    request,
+                    "We couldn't create your reservation. Please contact the front desk.",
+                    error_code="RESERVATION_CREATE_ERROR",
+                )
+
+            # Store reservation ID
+            request.session["reservation_id"] = res["id"]
+            logger.info(f"Created new walk-in reservation: {resnum}")
+
+        # Update registration data with checkout date
+        registration_data = request.session.get("dw_registration_data", {})
+        registration_data["checkout"] = checkout.strftime("%Y-%m-%d") if checkout else ""
+        registration_data["checkin"] = checkin.strftime("%Y-%m-%d") if checkin else ""
+        request.session["dw_registration_data"] = registration_data
+
+        # Generate PDF via MRZ backend (AFTER registration data is complete)
+        import uuid
+        document_session_id = request.session.get("document_session_id")
+        if not document_session_id:
+            document_session_id = str(uuid.uuid4())
+            request.session["document_session_id"] = document_session_id
 
         try:
-            res = db.create_reservation(
-                resnum, guest, checkin, checkout, room_count=room_count, people_count=people_count
+            doc_client = get_document_client()
+            result = doc_client.update_document(
+                session_id=document_session_id,
+                guest_data=registration_data,
+                accompanying_guests=registration_data.get("accompanying_guests", [])
             )
+            if result.get("filled_document"):
+                request.session["mrz_pdf_filename"] = result["filled_document"].get("filename")
+                logger.info(f"PDF generated via MRZ backend: {result['filled_document'].get('filename')}")
+            else:
+                raise MRZAPIError("No PDF generated by MRZ backend")
         except Exception as e:
-            logger.error(f"Database error creating reservation: {e}")
+            logger.error(f"MRZ document API failed: {e}")
             return render_error(
                 request,
-                "We couldn't create your reservation. Please contact the front desk.",
-                error_code="RESERVATION_CREATE_ERROR",
+                "Failed to generate registration document. Please try again or contact the front desk.",
+                error_code="PDF_GENERATION_FAILED",
             )
 
-        # Store reservation and go forward to PDF document signing
-        request.session["reservation_id"] = res["id"]
+        # Forward to PDF signing page
         return redirect("kiosk:pdf_sign_document")
 
-    # Auto-generate suggested reservation number
-    import secrets
+    # Check if guest already has a pre-booked reservation
+    existing_reservation = None
+    reservation_type = "walk_in"  # Default to walk-in
+    
+    try:
+        res_qs = db.get_reservations_by_guest(guest)
+        if res_qs:
+            existing_reservation = res_qs[0]
+            reservation_type = "pre_booked"
+            # Store in session for later use
+            request.session["reservation_id"] = existing_reservation["id"]
+            logger.info(f"Found pre-booked reservation for guest: {existing_reservation.get('confirmation_number')}")
+    except Exception as e:
+        logger.warning(f"Error checking for existing reservation: {e}")
 
+    # Auto-generate suggested reservation number for walk-ins
+    import secrets
     suggested_resnum = f"RES-{timezone.now().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}"
 
-    return render(request, "kiosk/reservation_entry.html", {"guest": guest, "suggested_resnum": suggested_resnum})
+    return render(request, "kiosk/reservation_entry.html", {
+        "guest": guest, 
+        "suggested_resnum": suggested_resnum,
+        "existing_reservation": existing_reservation,
+        "reservation_type": reservation_type,
+    })
 
 
 @handle_kiosk_errors
@@ -1234,6 +1363,17 @@ def submit_keycards(request, reservation_id):
             # Try by room number
             deactivate_dashboard_guest_account(room_number=room_number)
 
+        # FIX 5: Revoke RFID token on checkout to prevent unauthorized room access
+        rfid_token = room_payload.get("rfid_token")
+        if rfid_token:
+            try:
+                from .mqtt_client import revoke_rfid_token
+                revoke_rfid_token(rfid_token, room_number, reason="checkout")
+                logger.info(f"Revoked RFID token for room {room_number} on checkout")
+            except Exception as rfid_error:
+                # Log but don't fail checkout - security team can revoke manually if needed
+                logger.error(f"Failed to revoke RFID token on checkout: {rfid_error}")
+
     except Exception as e:
         logger.error(f"Database error finalizing payment: {e}")
         return render_error(
@@ -1359,29 +1499,87 @@ def dw_registration_card(request):
     Display and fill the DW Registration Card with guest data from passport extraction.
     Uses MRZ backend for document processing.
 
+    Flow: passport_scan → dw_registration_card → verify_info → reservation_entry → pdf_sign_document
+
     GET: Show form pre-filled with data from session or query params
-    POST: Send edited data to MRZ backend and proceed to signing
+    POST from passport_scan: Store data in session, show form
+    POST from this form: Store edited data and proceed to verify_info
     """
     import uuid
 
-    # Get or create session ID for document workflow
+    # Get session ID from MRZ backend or create new one
     document_session_id = request.session.get("document_session_id")
     if not document_session_id:
         document_session_id = str(uuid.uuid4())
         request.session["document_session_id"] = document_session_id
+        logger.warning(f"No document_session_id found in session, created new: {document_session_id}")
+    else:
+        logger.info(f"Using document_session_id from session: {document_session_id}")
+
+    # Check if this is a POST from passport_scan (has basic passport fields but no signature_method)
+    # vs a POST from this form itself (has signature_method)
+    is_from_passport_scan = request.method == "POST" and not request.POST.get("signature_method")
+    
+    if is_from_passport_scan:
+        # Store passport data in session and display the form for editing
+        passport_data = {
+            "surname": request.POST.get("last_name", "").strip(),
+            "name": request.POST.get("first_name", "").strip(),
+            "given_name": request.POST.get("first_name", "").strip(),
+            "nationality": request.POST.get("nationality", "").strip(),
+            "nationality_code": request.POST.get("nationality_code", "").strip() or request.POST.get("nationality", "").strip(),
+            "passport_number": request.POST.get("passport_number", "").strip(),
+            "date_of_birth": request.POST.get("date_of_birth", "").strip(),
+            "sex": request.POST.get("sex", "").strip(),
+            "expiry_date": request.POST.get("expiry_date", "").strip(),
+            "country": request.POST.get("issuer_code", "").strip() or request.POST.get("nationality", "").strip(),
+            "issuer_code": request.POST.get("issuer_code", "").strip() or request.POST.get("nationality_code", "").strip(),
+        }
+        
+        # Store document_session_id if provided from passport scan
+        if request.POST.get("document_session_id"):
+            document_session_id = request.POST.get("document_session_id")
+            request.session["document_session_id"] = document_session_id
+            
+        request.session["extracted_passport_data"] = passport_data
+        logger.info(f"Received passport data from scan, displaying registration form")
+        
+        # Show form with passport data
+        initial_data = {
+            **passport_data,
+            "checkin": str(timezone.now().date()),
+            "checkout": "",
+            "people_count": "1",
+            "profession": "",
+            "hometown": "",
+            "email": "",
+            "phone": "",
+        }
+        return render(request, "kiosk/dw_registration_card.html", {"initial": initial_data})
 
     # Get extracted data from session or query params
     extracted_data = request.session.get("extracted_passport_data", {})
+    
+    # DEBUG: Log extracted data from session
+    logger.info("=" * 60)
+    logger.info("DW_REGISTRATION_CARD: Session extracted_passport_data:")
+    for key, value in extracted_data.items():
+        logger.info(f"  {key}: '{value}'")
+    logger.info("=" * 60)
 
     # Merge with query params (allows pre-filling from /document/ link)
+    # Support both MRZ field names (given_name, nationality_code, issuer_code) and UI names
     initial_data = {
-        "surname": request.GET.get("surname") or request.GET.get("last_name") or extracted_data.get("last_name", ""),
-        "name": request.GET.get("name") or request.GET.get("first_name") or extracted_data.get("first_name", ""),
-        "nationality": request.GET.get("nationality") or extracted_data.get("nationality", ""),
-        "nationality_code": request.GET.get("nationality_code") or extracted_data.get("nationality_code", ""),
-        "passport_number": request.GET.get("passport_number") or extracted_data.get("passport_number", ""),
-        "date_of_birth": request.GET.get("date_of_birth") or extracted_data.get("date_of_birth", ""),
-        "country": request.GET.get("country") or extracted_data.get("issuer_country", ""),
+        "surname": request.GET.get("surname") or request.GET.get("last_name") or extracted_data.get("surname", "") or extracted_data.get("last_name", ""),
+        "name": request.GET.get("name") or request.GET.get("first_name") or extracted_data.get("given_name", "") or extracted_data.get("first_name", ""),
+        "nationality": request.GET.get("nationality") or extracted_data.get("nationality_code", "") or extracted_data.get("nationality", ""),
+        "nationality_code": request.GET.get("nationality_code") or extracted_data.get("nationality_code", "") or extracted_data.get("nationality", ""),
+        "passport_number": request.GET.get("passport_number") or extracted_data.get("passport_number", "") or extracted_data.get("document_number", ""),
+        "date_of_birth": request.GET.get("date_of_birth") or extracted_data.get("date_of_birth", "") or extracted_data.get("birth_date", ""),
+        "sex": extracted_data.get("sex", "") or extracted_data.get("gender", ""),
+        "expiry_date": extracted_data.get("expiry_date", ""),
+        "country": request.GET.get("country") or extracted_data.get("issuer_code", "") or extracted_data.get("issuer_country", ""),
+        "issuer_code": request.GET.get("issuer_code") or extracted_data.get("issuer_code", "") or extracted_data.get("issuer_country", ""),
         "profession": request.GET.get("profession", ""),
         "hometown": request.GET.get("hometown", ""),
         "email": request.GET.get("email", ""),
@@ -1392,17 +1590,22 @@ def dw_registration_card(request):
     }
 
     if request.method == "POST":
-        # Collect form data
+        # Collect form data - include both UI names and MRZ-compatible names
+        # IMPORTANT: Always preserve MRZ-extracted values even if visible fields are empty
         form_data = {
             "surname": request.POST.get("surname", "").strip(),
             "name": request.POST.get("name", "").strip(),
+            "given_name": request.POST.get("name", "").strip(),  # MRZ-compatible alias
             "nationality": request.POST.get("nationality", "").strip(),
-            "nationality_code": request.POST.get("nationality_code", "").strip(),
+            "nationality_code": request.POST.get("nationality", "").strip(),  # Now comes from visible field
             "passport_number": request.POST.get("passport_number", "").strip(),
             "date_of_birth": request.POST.get("date_of_birth", "").strip(),
+            "sex": request.POST.get("sex", "").strip(),
+            "expiry_date": request.POST.get("expiry_date", "").strip(),
             "profession": request.POST.get("profession", "").strip(),
             "hometown": request.POST.get("hometown", "").strip(),
             "country": request.POST.get("country", "").strip(),
+            "issuer_code": request.POST.get("country", "").strip(),  # country field now contains issuer_code
             "email": request.POST.get("email", "").strip(),
             "phone": request.POST.get("phone", "").strip(),
             "checkin": request.POST.get("checkin", "").strip(),
@@ -1430,31 +1633,12 @@ def dw_registration_card(request):
         form_data["accompanying_guests"] = accompanying
         form_data["signature_method"] = request.POST.get("signature_method", "physical")
 
-        # Store in session for signing step
+        # Store in session for next steps
         request.session["dw_registration_data"] = form_data
+        logger.info(f"Stored dw_registration_data in session, redirecting to verify_info")
 
-        # Generate PDF via MRZ backend (required)
-        try:
-            doc_client = get_document_client()
-            result = doc_client.update_document(
-                session_id=document_session_id, guest_data=form_data, accompanying_guests=accompanying
-            )
-            # Store PDF info from MRZ backend for later use
-            if result.get("filled_document"):
-                request.session["mrz_pdf_filename"] = result["filled_document"].get("filename")
-                logger.info(f"PDF generated via MRZ backend: {result['filled_document'].get('filename')}")
-            else:
-                raise MRZAPIError("No PDF generated by MRZ backend")
-        except MRZAPIError as e:
-            logger.error(f"MRZ document API failed: {e}")
-            return render_error(
-                request,
-                f"Failed to generate registration document. Please try again or contact the front desk.",
-                error_code="PDF_GENERATION_FAILED",
-            )
-
-        # Redirect to PDF signing page
-        return redirect("kiosk:pdf_sign_document")
+        # Redirect to verify_info to create guest and look up reservation
+        return redirect("kiosk:verify_info")
 
     return render(request, "kiosk/dw_registration_card.html", {"initial": initial_data})
 
@@ -1875,8 +2059,17 @@ def pdf_sign_document(request):
         # Store completed registration
         request.session["registration_complete"] = True
 
-        # FORWARD ONLY: access method selection page
-        return redirect("kiosk:select_access_method")
+        # FORWARD based on flow type:
+        # - checkout: go to submit_keycards (return keycards and finalize payment)
+        # - checkin: go to select_access_method (get new keycards/face enrollment)
+        checkout_mode = request.session.get("checkout_mode", False)
+        checkout_reservation_id = request.session.get("checkout_reservation_id")
+        
+        if checkout_mode and checkout_reservation_id:
+            logger.info(f"Checkout flow: redirecting to submit_keycards for reservation {checkout_reservation_id}")
+            return redirect("kiosk:submit_keycards", reservation_id=checkout_reservation_id)
+        else:
+            return redirect("kiosk:select_access_method")
 
     return render(
         request,
@@ -2140,6 +2333,254 @@ def mrz_extract(request):
             return JsonResponse(result, status=422)
 
     except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
+# =============================================================================
+# WebRTC Stream API Proxy Endpoints
+# =============================================================================
+
+
+@csrf_exempt
+def mrz_stream_session(request):
+    """
+    Create a new WebRTC stream session.
+    Proxies to Flask /api/stream/session endpoint.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=400)
+
+    if not USE_MRZ_SERVICE:
+        return JsonResponse({"success": False, "error": "MRZ service not configured"}, status=503)
+
+    try:
+        import requests
+        from .mrz_api_client import MRZ_SERVICE_URL
+
+        response = requests.post(f"{MRZ_SERVICE_URL}/api/stream/session", timeout=5)
+        return JsonResponse(response.json())
+    except Exception as e:
+        logger.error(f"Stream session creation failed: {e}")
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
+def mrz_stream_session_delete(request, session_id):
+    """
+    Close and cleanup a stream session.
+    Proxies to Flask DELETE /api/stream/session/<session_id> endpoint.
+    """
+    if request.method != "DELETE":
+        return JsonResponse({"error": "DELETE only"}, status=400)
+
+    if not USE_MRZ_SERVICE:
+        return JsonResponse({"success": False, "error": "MRZ service not configured"}, status=503)
+
+    try:
+        import requests
+        from .mrz_api_client import MRZ_SERVICE_URL
+
+        response = requests.delete(f"{MRZ_SERVICE_URL}/api/stream/session/{session_id}", timeout=5)
+        return JsonResponse(response.json())
+    except Exception as e:
+        logger.error(f"Stream session delete failed: {e}")
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
+def mrz_stream_frame(request):
+    """
+    Process a frame from WebRTC stream.
+    Proxies to Flask /api/stream/frame endpoint.
+    
+    This is called at ~20fps (every 50ms) for real-time detection.
+    Returns detection status, corners, stability count, quality score.
+    """
+    import requests
+    
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=400)
+
+    if not USE_MRZ_SERVICE:
+        return JsonResponse({
+            "detected": False, 
+            "error": "MRZ service not configured",
+            "stable_count": 0,
+            "ready_for_capture": False
+        })
+
+    try:
+        from .mrz_api_client import MRZ_SERVICE_URL
+
+        body = json.loads(request.body) if request.body else {}
+        response = requests.post(
+            f"{MRZ_SERVICE_URL}/api/stream/frame",
+            json=body,
+            timeout=2  # Short timeout for real-time
+        )
+        return JsonResponse(response.json())
+    except requests.exceptions.Timeout:
+        return JsonResponse({
+            "detected": False,
+            "error": "Backend timeout",
+            "stable_count": 0,
+            "ready_for_capture": False
+        })
+    except Exception as e:
+        return JsonResponse({
+            "detected": False,
+            "error": str(e),
+            "stable_count": 0,
+            "ready_for_capture": False
+        })
+
+
+@csrf_exempt
+def mrz_stream_video_frames(request):
+    """
+    Process a batch of video frames (24fps video stream).
+    Proxies to Flask /api/stream/video/frames endpoint.
+    
+    The kiosk captures at 24fps and sends batches of frames.
+    Backend processes frames and returns detection results.
+    """
+    import requests
+    
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=400)
+
+    if not USE_MRZ_SERVICE:
+        return JsonResponse({
+            "detected": False, 
+            "error": "MRZ service not configured",
+            "frames_processed": 0,
+            "ready_for_capture": False
+        })
+
+    try:
+        from .mrz_api_client import MRZ_SERVICE_URL
+
+        body = json.loads(request.body) if request.body else {}
+        response = requests.post(
+            f"{MRZ_SERVICE_URL}/api/stream/video/frames",
+            json=body,
+            timeout=5  # Slightly longer timeout for batch processing
+        )
+        return JsonResponse(response.json())
+    except requests.exceptions.Timeout:
+        return JsonResponse({
+            "detected": False,
+            "error": "Backend timeout",
+            "frames_processed": 0,
+            "ready_for_capture": False
+        })
+    except Exception as e:
+        return JsonResponse({
+            "detected": False,
+            "error": str(e),
+            "frames_processed": 0,
+            "ready_for_capture": False
+        })
+
+
+@csrf_exempt
+def mrz_stream_video_chunk(request):
+    """
+    Process a video chunk (raw WebM/MP4 video data).
+    Proxies to Flask /api/stream/video endpoint.
+    
+    Backend splits the video into frames and processes them.
+    """
+    import requests
+    
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=400)
+
+    if not USE_MRZ_SERVICE:
+        return JsonResponse({
+            "detected": False, 
+            "error": "MRZ service not configured",
+            "frames_processed": 0,
+            "ready_for_capture": False
+        })
+
+    try:
+        from .mrz_api_client import MRZ_SERVICE_URL
+
+        # Forward the multipart form data
+        session_id = request.POST.get('session_id')
+        chunk_index = request.POST.get('chunk_index', '0')
+        video_file = request.FILES.get('video')
+        
+        if not session_id or not video_file:
+            return JsonResponse({
+                "detected": False,
+                "error": "session_id and video file required",
+                "frames_processed": 0
+            }, status=400)
+        
+        files = {'video': (video_file.name, video_file.read(), video_file.content_type)}
+        data = {'session_id': session_id, 'chunk_index': chunk_index}
+        
+        response = requests.post(
+            f"{MRZ_SERVICE_URL}/api/stream/video",
+            files=files,
+            data=data,
+            timeout=10  # Longer timeout for video processing
+        )
+        return JsonResponse(response.json())
+    except requests.exceptions.Timeout:
+        return JsonResponse({
+            "detected": False,
+            "error": "Backend timeout",
+            "frames_processed": 0,
+            "ready_for_capture": False
+        })
+    except Exception as e:
+        logger.error(f"Video chunk proxy error: {e}")
+        return JsonResponse({
+            "detected": False,
+            "error": str(e),
+            "frames_processed": 0,
+            "ready_for_capture": False
+        })
+
+
+@csrf_exempt
+def mrz_stream_capture(request):
+    """
+    Capture the best frame from stream session and extract MRZ.
+    Proxies to Flask /api/stream/capture endpoint.
+    
+    Called when ready_for_capture is true.
+    Returns extracted MRZ data.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=400)
+
+    if not USE_MRZ_SERVICE:
+        return JsonResponse({"success": False, "error": "MRZ service not configured"}, status=503)
+
+    try:
+        import requests
+        from .mrz_api_client import MRZ_SERVICE_URL
+
+        body = json.loads(request.body) if request.body else {}
+        response = requests.post(
+            f"{MRZ_SERVICE_URL}/api/stream/capture",
+            json=body,
+            timeout=30  # Longer timeout for MRZ extraction
+        )
+        result = response.json()
+
+        if result.get("success"):
+            # Convert to kiosk format for form population
+            kiosk_data = convert_mrz_to_kiosk_format(result.get("data", {}))
+            result["kiosk_data"] = kiosk_data
+
+        return JsonResponse(result)
+    except Exception as e:
+        logger.error(f"Stream capture failed: {e}")
         return JsonResponse({"success": False, "error": str(e)}, status=500)
 
 

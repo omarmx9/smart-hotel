@@ -336,10 +336,10 @@ services:
     command: >
       sh -c "
         apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 libpq-dev &&
-        pip install -r requirements.txt gunicorn psycopg2-binary &&
+        pip install -r requirements.txt daphne psycopg2-binary &&
         python manage.py migrate --noinput &&
         rm -rf staticfiles && python manage.py collectstatic --noinput &&
-        gunicorn --bind 0.0.0.0:8000 kiosk_project.wsgi:application --workers 2
+        daphne -b 0.0.0.0 -p 8000 kiosk_project.asgi:application
       "
     depends_on:
       - mrz-backend
@@ -365,8 +365,8 @@ services:
     command: >
       sh -c "
         apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgl1 libglib2.0-0 &&
-        pip install -r requirements.txt flask gunicorn &&
-        gunicorn --bind 0.0.0.0:5000 app:app --workers 2
+        pip install -r requirements.txt &&
+        gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker --bind 0.0.0.0:5000 app:app --workers 1
       "
     restart: unless-stopped
     networks:

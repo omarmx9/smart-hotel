@@ -4,6 +4,10 @@ whitenoise
 requests
 paho-mqtt
 django-cors-headers
+# WebSocket support for real-time video streaming
+channels
+daphne
+websockets
 # MRZ extraction and document generation
 fastmrz
 opencv-python-headless

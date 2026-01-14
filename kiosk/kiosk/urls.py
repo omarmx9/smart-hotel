@@ -25,8 +25,10 @@ urlpatterns = [
     # Access Method Selection (separate page)
     path('select-access-method/', views.select_access_method, name='select_access_method'),
     
+    # DW Registration Card - shows form with ALL MRZ data for user to review/edit
+    path('dw-registration/', views.dw_registration_card, name='dw_registration_card'),
+    
     # Legacy routes (redirect to new flow for backwards compatibility)
-    path('dw-registration/', views.redirect_to_pdf_sign, name='dw_registration_card'),
     path('dw-registration/sign/', views.redirect_to_pdf_sign, name='dw_sign_document'),
     path('dw-registration/pdf-sign/', views.redirect_to_pdf_sign, name='dw_pdf_sign'),
     path('document/', views.redirect_to_pdf_sign, name='documentation'),
@@ -69,4 +71,14 @@ urlpatterns = [
     path('api/mrz/detect/', views.mrz_detect, name='mrz_detect'),
     path('api/mrz/extract/', views.mrz_extract, name='mrz_extract'),
     path('api/mrz/health/', views.mrz_service_health, name='mrz_service_health'),
+    
+    # WebRTC Stream API proxy endpoints (real-time detection loop)
+    path('api/mrz/stream/session/', views.mrz_stream_session, name='mrz_stream_session'),
+    path('api/mrz/stream/session/<str:session_id>/', views.mrz_stream_session_delete, name='mrz_stream_session_delete'),
+    path('api/mrz/stream/frame/', views.mrz_stream_frame, name='mrz_stream_frame'),
+    path('api/mrz/stream/capture/', views.mrz_stream_capture, name='mrz_stream_capture'),
+    
+    # Video Stream API proxy endpoints (24fps video streaming)
+    path('api/mrz/stream/video/frames/', views.mrz_stream_video_frames, name='mrz_stream_video_frames'),
+    path('api/mrz/stream/video/', views.mrz_stream_video_chunk, name='mrz_stream_video_chunk'),
 ]

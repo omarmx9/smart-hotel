@@ -145,9 +145,9 @@ flowchart LR
 | Service | Build Context | Port | Description |
 | --------- | --------------- | ------ | ------------- |
 | **Dashboard** | `../dashboards/django_app` | 8001 | Staff management interface |
-| **Kiosk** | `../kiosk` | 8002 | Guest self check-in |
+| **Kiosk** | `../kiosk` | 8002 | Guest self check-in (Django + Channels/Daphne) |
 | **Front Desk** | `../frontdesk` | 8003 | Employee reservation management |
-| **MRZ Backend** | `../kiosk/app` | 5000 (dev only) | Passport processing API |
+| **MRZ Backend** | `../kiosk/app` | 5000 (dev only) | Passport OCR API v3.3.0 (Flask + WebSocket) |
 
 ## Quick Start
 
@@ -235,6 +235,8 @@ docker compose -f docker-compose.yml -f docker-compose-dev.yml up --build -d
 - Flask debug mode with auto-reload
 - Django debug mode enabled
 - Verbose logging
+- Kiosk uses Daphne ASGI for WebSocket support
+- MRZ Backend uses gevent-websocket for WebSocket support
 
 ### Stopping Services
 
@@ -242,7 +244,7 @@ docker compose -f docker-compose.yml -f docker-compose-dev.yml up --build -d
 # Stop all services (preserves data)
 docker compose down
 
-# Stop and remove volumes (⚠️ deletes all data)
+# Stop and remove volumes (WARNING: deletes all data)
 docker compose down -v
 ```
 
@@ -717,11 +719,15 @@ flowchart TB
     dashboard <--> influxdb
     dashboard <--> grafana
     dashboard <--> postgres
+  end
+  
   subgraph kiosk_network ["kiosk-network"]
     kiosk
     mrz_backend
     kiosk --> mrz_backend
   end
+  
+  default_network ~~~ kiosk_network
 ```
 
 ### Port Mappings
@@ -906,7 +912,7 @@ docker compose up -d
 
 ## Security Notes
 
-⚠️ **Production Checklist:**
+**Production Checklist:**
 
 1. **Run `./generate-env.sh`** to create secure secrets automatically
 2. **Change default admin password** - update via Django admin panel

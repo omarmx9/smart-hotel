@@ -29,7 +29,7 @@ The ESP32-CAM module provides real-time face recognition capabilities for the Sm
 ### Key Capabilities
 
 | Feature | Description |
-|---------|-------------|
+| --------- | ------------- |
 | **On-Device AI** | MobileNetV2 model running locally on ESP32 |
 | **Real-time Recognition** | ~10 FPS inference with 96x96 input |
 | **MQTT Publishing** | Recognition events sent to cloud dashboard |
@@ -80,7 +80,7 @@ Real-time events published to the Smart Hotel cloud:
 ### ESP32-CAM AI-Thinker Module
 
 | Specification | Value |
-|---------------|-------|
+| --------- | ------------- |
 | **MCU** | ESP32-S (dual-core 240MHz) |
 | **Camera** | OV2640 (2MP) |
 | **Flash** | 4MB (32Mbit) |
@@ -153,7 +153,7 @@ graph TB
 ### Model Specifications
 
 | Parameter | Value |
-|-----------|-------|
+| --------- | ------- |
 | **Architecture** | MobileNetV2 |
 | **Input Size** | 96 × 96 × 3 (RGB) |
 | **Output Classes** | 5 (configurable) |
@@ -172,7 +172,7 @@ graph TB
 
 ### Required Libraries
 
-```
+```text
 - TensorFlow Lite Micro for ESP32
 - PubSubClient (MQTT)
 - ArduinoJson
@@ -192,12 +192,12 @@ graph TB
 #define MQTT_CLIENT_ID      "esp32cam-kiosk-01"
 ```
 
-2. **Arduino IDE Setup**:
+1. **Arduino IDE Setup**:
    - Board: "AI Thinker ESP32-CAM"
    - Partition Scheme: "Huge APP (3MB No OTA/1MB SPIFFS)"
    - PSRAM: "Enabled"
 
-3. **Programming Mode**:
+2. **Programming Mode**:
    - Connect GPIO 0 to GND
    - Press Reset button
    - Upload sketch
@@ -206,11 +206,11 @@ graph TB
 
 ### First Boot Output
 
-```
+```text
 --- ESP32-CAM Face Recognition ---
 Sensor: OV2640
 Camera initialized
-✓ Camera test OK - captured 320x240 frame
+Camera test OK - captured 320x240 frame
 PSRAM found: 4194304 bytes
 Model loaded successfully!
 Input: [1, 96, 96, 3] type=3
@@ -294,7 +294,8 @@ sequenceDiagram
 ### Published Topics
 
 #### Face Recognized
-```
+
+```text
 Topic: hotel/kiosk/{device_id}/face/recognized
 Payload: {
     "name": "person_name",
@@ -305,7 +306,8 @@ Payload: {
 ```
 
 #### Unknown Face
-```
+
+```text
 Topic: hotel/kiosk/{device_id}/face/unknown
 Payload: {
     "confidence": 0.45,
@@ -315,7 +317,8 @@ Payload: {
 ```
 
 #### Device Status
-```
+
+```text
 Topic: hotel/kiosk/{device_id}/status
 Payload: {
     "status": "online",
@@ -328,7 +331,8 @@ Payload: {
 ```
 
 #### Heartbeat
-```
+
+```text
 Topic: hotel/kiosk/{device_id}/heartbeat
 Payload: {
     "uptime": 12345,
@@ -339,7 +343,7 @@ Payload: {
 
 ### Control Commands (Subscribed)
 
-```
+```text
 Topic: hotel/kiosk/{device_id}/control
 Payload: {"command": "status"}    # Request status update
 Payload: {"command": "restart"}   # Restart device
@@ -401,7 +405,7 @@ python convert_tflite_to_c.py
 
 ## Project Structure
 
-```
+```text
 esp32-cam/
 ├── README.md                       # This file
 ├── fix_dataset_index.py            # Dataset utility
@@ -436,45 +440,25 @@ esp32-cam/
 
 ### Camera Issues
 
-**"Camera init failed"**
-- Check board selection matches hardware
-- Verify PSRAM is enabled
-- Ensure proper power supply (5V, 500mA+)
+- **"Camera init failed"**: Check board selection matches hardware. Verify PSRAM is enabled. Ensure proper power supply (5V, 500mA+).
 
-**"Camera test FAILED"**
-- Camera ribbon cable may be loose
-- Try different camera module
-- Check for physical damage
+- **"Camera test FAILED"**: Camera ribbon cable may be loose. Try different camera module. Check for physical damage.
 
 ### Model Issues
 
-**"AllocateTensors failed"**
-- Increase `kTensorArenaSize`
-- Enable PSRAM in board settings
-- Check model fits in available memory
+- **"AllocateTensors failed"**: Increase `kTensorArenaSize`. Enable PSRAM in board settings. Check model fits in available memory.
 
-**"Model version mismatch"**
-- Regenerate model with matching TFLite version
-- Update TensorFlow Lite Micro library
+- **"Model version mismatch"**: Regenerate model with matching TFLite version. Update TensorFlow Lite Micro library.
 
 ### MQTT Issues
 
-**"Connection failed, rc=-2"**
-- Verify broker address and port
-- Check WiFi connectivity
-- Ensure broker is running
+- **"Connection failed, rc=-2"**: Verify broker address and port. Check WiFi connectivity. Ensure broker is running.
 
-**Messages not appearing in dashboard**
-- Verify topic structure matches subscription
-- Check MQTT broker logs
-- Test with MQTT client (mosquitto_sub)
+- **Messages not appearing in dashboard**: Verify topic structure matches subscription. Check MQTT broker logs. Test with MQTT client (mosquitto_sub).
 
 ### Performance Issues
 
-**Low FPS / Slow inference**
-- Reduce camera resolution
-- Check for memory fragmentation
-- Monitor free heap in serial output
+- **Low FPS / Slow inference**: Reduce camera resolution. Check for memory fragmentation. Monitor free heap in serial output.
 
 ---
 
