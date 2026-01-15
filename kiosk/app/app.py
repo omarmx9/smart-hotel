@@ -2149,6 +2149,7 @@ def _convert_guest_data_to_mrz(guest_data: dict) -> dict:
     Handles both formats:
     - Direct MRZ fields: given_name, nationality_code, issuer_code, document_number
     - Legacy/UI fields: name/first_name, nationality, country, passport_number
+    - Additional form fields: profession, hometown, email, phone, checkout, checkin
     """
     # Get nationality_code - prefer direct code, fallback to extracting from full name
     nationality_code = guest_data.get('nationality_code', '')
@@ -2165,6 +2166,7 @@ def _convert_guest_data_to_mrz(guest_data: dict) -> dict:
             issuer_code = country[:3].upper() if len(country) <= 3 else country
     
     return {
+        # Core MRZ fields
         'surname': guest_data.get('surname', ''),
         'given_name': guest_data.get('given_name', guest_data.get('name', guest_data.get('first_name', ''))),
         'nationality_code': nationality_code,
@@ -2172,6 +2174,13 @@ def _convert_guest_data_to_mrz(guest_data: dict) -> dict:
         'birth_date': guest_data.get('date_of_birth', guest_data.get('birth_date', '')),
         'expiry_date': guest_data.get('expiry_date', ''),
         'issuer_code': issuer_code,
+        # Additional guest form fields - MUST be passed to filler
+        'profession': guest_data.get('profession', ''),
+        'hometown': guest_data.get('hometown', ''),
+        'email': guest_data.get('email', ''),
+        'phone': guest_data.get('phone', ''),
+        'checkout': guest_data.get('checkout', ''),
+        'checkin': guest_data.get('checkin', ''),
     }
 
 

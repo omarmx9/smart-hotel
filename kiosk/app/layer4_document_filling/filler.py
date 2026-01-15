@@ -261,6 +261,10 @@ class DocumentFiller:
             # *Ex.: expiry date
             can.drawString(80, 646, expiry_date)
             
+            # *Surname / *Name
+            can.drawString(150, 619, surname)
+            can.drawString(400, 619, given_name)
+            
             # *Date of Birth
             can.drawString(150, 561, birth_date)
             
@@ -268,12 +272,8 @@ class DocumentFiller:
             if profession:
                 can.drawString(427, 561, profession)
             
-            # Draw other fields with normal font (size 10)
-            can.setFont(self.font_regular, 10)
-            
-            # *Surname / *Name
-            can.drawString(150, 619, surname)
-            can.drawString(400, 619, given_name)
+            # # Draw other fields with normal font (size 10)
+            # can.setFont(self.font_regular, 10)
             
             # *Nationality / *Passport No.
             can.drawString(150, 590, nationality)
@@ -281,14 +281,14 @@ class DocumentFiller:
             
             # *Hometown
             if hometown:
-                can.drawString(180, 533, hometown)
+                can.drawString(170, 533, hometown)
             
             # *Country (issuing country)
             can.drawString(420, 533, issuer_country)
             
             # *Email / *Phone
             if email:
-                can.drawString(180, 505, email)
+                can.drawString(150, 505, email)
             if phone:
                 can.drawString(420, 505, phone)
             
