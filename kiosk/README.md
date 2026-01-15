@@ -4,9 +4,9 @@
 ![Django](https://img.shields.io/badge/Django-4.2+-green.svg)
 ![Bootstrap](https://img.shields.io/badge/Bootstrap-5.3-purple.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+![Status](https://img.shields.io/badge/status-production-success.svg)
 
-> A modern, multilingual self-service check-in kiosk system for hotels featuring passport scanning, MRZ extraction, document generation, and multiple access methods.
+> A production-ready, multilingual self-service check-in kiosk system for hotels featuring passport scanning, MRZ extraction, document generation, and multiple access methods.
 
 ## Table of Contents
 
@@ -20,6 +20,7 @@
 - [Project Structure](#project-structure)
 - [Internationalization](#internationalization)
 - [Theming](#theming)
+- [Implementation Status](#implementation-status)
 - [Security](#security)
 
 ## Overview
@@ -496,6 +497,20 @@ To create a new theme:
 3. Update decorative elements (snowfall, trees, etc.)
 4. Link new stylesheet in `base.html`
 
+## Implementation Status
+
+✅ **Production Ready** - All core features implemented and security issues resolved.
+
+### Completed Features
+- ✅ **RFID token revocation on checkout** - Tokens are properly revoked when guests check out
+- ✅ **Dashboard account deactivation** - Guest accounts are deactivated on checkout
+- ✅ **Full document signing flow** - Complete audit trail for check-in/checkout
+- ✅ **Error handling** - All error pages show "Call Front Desk" with graceful degradation
+- ✅ **MRZ proxy endpoints** - Full WebSocket and HTTP streaming support
+- ✅ **WebSocket 24fps streaming** - Real-time passport scanning via Django Channels
+
+For development documentation, see [.readme/](.readme/) folder.
+
 ## Security
 
 ### Production Recommendations
@@ -505,6 +520,7 @@ To create a new theme:
 - **Configure ALLOWED_HOSTS** with specific hostnames
 - **Use HTTPS** for all kiosk communications
 - **Restrict MRZ service** to internal network only
+- **Review access logs** regularly for suspicious activity
 
 ### Data Handling
 

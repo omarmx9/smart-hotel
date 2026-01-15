@@ -135,14 +135,16 @@ flowchart TB
 
 | Component | Description | Status | Documentation |
 | ----------- | ------------- | -------- | --------------- |
-| **Cloud Infrastructure** | Docker Compose stack with all backend services | Production | [cloud/README.md](cloud/README.md) |
-| **Dashboard** | Django-based guest monitoring interface | Production | [dashboards/README.md](dashboards/README.md) |
-| **Front Desk** | Employee reservation & document management | Production | [frontdesk/README.md](frontdesk/README.md) |
-| **Guest Kiosk** | Self-service check-in with WebSocket streaming | Production | [kiosk/README.md](kiosk/README.md) |
-| **MRZ Backend** | Passport OCR microservice (24fps WebSocket) | v3.3.0 | [kiosk/app/README.md](kiosk/app/README.md) |
-| **ESP32 Firmware** | Sensor and actuator RTOS firmware | Production | [esp32/README.md](esp32/README.md) |
-| **ESP32-CAM** | Face recognition with TensorFlow Lite & MQTT | Production | [esp32-cam/README.md](esp32-cam/README.md) |
-| **Hardware** | PCB designs and schematics | Complete | [hardware/README.md](hardware/README.md) |
+| **Cloud Infrastructure** | Docker Compose stack with all backend services | ✅ Production | [cloud/README.md](cloud/README.md) |
+| **Dashboard** | Django-based guest monitoring interface | ✅ Production | [dashboards/README.md](dashboards/README.md) |
+| **Front Desk** | Employee reservation & document management | ✅ Production | [frontdesk/README.md](frontdesk/README.md) |
+| **Guest Kiosk** | Self-service check-in with WebSocket streaming | ✅ Production | [kiosk/README.md](kiosk/README.md) |
+| **MRZ Backend** | Passport OCR microservice (24fps WebSocket) | ✅ v3.3.0 | [kiosk/app/README.md](kiosk/app/README.md) |
+| **ESP32 Firmware** | Sensor and actuator RTOS firmware | ✅ Production | [esp32/README.md](esp32/README.md) |
+| **ESP32-CAM** | Face recognition with TensorFlow Lite & MQTT | ✅ Production | [esp32-cam/README.md](esp32-cam/README.md) |
+| **Hardware** | PCB designs and schematics | ✅ Complete | [hardware/README.md](hardware/README.md) |
+
+> ✅ **KIOSK STATUS:** The kiosk application is production-ready with full passport scanning, MRZ extraction, document signing, RFID token management, and guest account lifecycle support.
 
 ## Quick Start
 
