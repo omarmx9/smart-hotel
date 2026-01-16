@@ -2,6 +2,11 @@ backports.tarfile
 fastmrz
 flask
 flask-cors
+flask-compress
+flask-sock
+gevent
+gevent-websocket
+gunicorn
 hikvision-isapi-py
 importlib-metadata
 jaraco.collections
@@ -14,6 +19,8 @@ tomli
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchvision
+# YOLO for document detection
+ultralytics
 # PDF processing for document filling
 PyPDF2
 reportlab

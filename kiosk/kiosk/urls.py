@@ -4,6 +4,9 @@ from . import views
 app_name = 'kiosk'
 
 urlpatterns = [
+    # Error page (Call Front Desk)
+    path('error/', views.error_page, name='error'),
+    
     # Main kiosk flow
     path('', views.advertisement, name='advertisement'),
     path('language/', views.choose_language, name='choose_language'),
@@ -14,14 +17,22 @@ urlpatterns = [
     path('extract/status/<int:task_id>/', views.extract_status, name='extract_status'),
     path('verify/', views.verify_info, name='verify_info'),
     
-    # DW Registration Card (DW R.C.) routes
-    path('dw-registration/', views.dw_registration_card, name='dw_registration_card'),
-    path('dw-registration/sign/', views.dw_sign_document, name='dw_sign_document'),
-    path('dw-registration/print/', views.dw_generate_pdf, name='dw_generate_pdf'),
+    # Document Signing (unified PDF flow)
+    path('document/sign/', views.pdf_sign_document, name='pdf_sign_document'),  # Main signing route
+    path('document/preview-pdf/', views.serve_preview_pdf, name='serve_preview_pdf'),  # Serve preview PDF
+    path('document/print/', views.dw_generate_pdf, name='dw_generate_pdf'),  # Print PDF
     
-    # Legacy document routes (kept for compatibility)
-    path('document/', views.documentation, name='documentation'),
-    path('document/sign/', views.document_signing, name='document_signing'),
+    # Access Method Selection (separate page)
+    path('select-access-method/', views.select_access_method, name='select_access_method'),
+    
+    # DW Registration Card - shows form with ALL MRZ data for user to review/edit
+    path('dw-registration/', views.dw_registration_card, name='dw_registration_card'),
+    
+    # Legacy routes (redirect to new flow for backwards compatibility)
+    path('dw-registration/sign/', views.redirect_to_pdf_sign, name='dw_sign_document'),
+    path('dw-registration/pdf-sign/', views.redirect_to_pdf_sign, name='dw_pdf_sign'),
+    path('document/', views.redirect_to_pdf_sign, name='documentation'),
+    path('document/signing/', views.redirect_to_pdf_sign, name='document_signing'),
     
     # Walk-in and Reservation
     path('walkin/', views.walkin, name='walkin'),
@@ -37,7 +48,19 @@ urlpatterns = [
     # API endpoints
     path('api/save-passport-data/', views.save_passport_extraction, name='save_passport_extraction'),
     
-    # Guest Account API (Authentik integration)
+    # Document Management API (kiosk handles signatures and storage)
+    path('api/document/update/', views.document_update_api, name='document_update_api'),
+    path('api/document/preview/', views.document_preview_api, name='document_preview_api'),
+    path('api/document/sign/', views.document_sign_api, name='document_sign_api'),
+    path('api/document/submit-physical/', views.document_submit_physical_api, name='document_submit_physical_api'),
+    path('api/document/list/', views.list_signed_documents_api, name='list_signed_documents_api'),
+    path('api/document/<str:document_id>/', views.get_signed_document_api, name='get_signed_document_api'),
+    
+    # Passport Image Storage API
+    path('api/passport/list/', views.list_passport_images_api, name='list_passport_images_api'),
+    path('api/passport/<str:passport_image_id>/', views.get_passport_image_api, name='get_passport_image_api'),
+    
+    # Guest Account API (Dashboard integration)
     path('api/guest/create/', views.create_guest_account_api, name='create_guest_account'),
     path('api/guest/deactivate/', views.deactivate_guest_account_api, name='deactivate_guest_account'),
     
@@ -48,4 +71,14 @@ urlpatterns = [
     path('api/mrz/detect/', views.mrz_detect, name='mrz_detect'),
     path('api/mrz/extract/', views.mrz_extract, name='mrz_extract'),
     path('api/mrz/health/', views.mrz_service_health, name='mrz_service_health'),
+    
+    # WebRTC Stream API proxy endpoints (real-time detection loop)
+    path('api/mrz/stream/session/', views.mrz_stream_session, name='mrz_stream_session'),
+    path('api/mrz/stream/session/<str:session_id>/', views.mrz_stream_session_delete, name='mrz_stream_session_delete'),
+    path('api/mrz/stream/frame/', views.mrz_stream_frame, name='mrz_stream_frame'),
+    path('api/mrz/stream/capture/', views.mrz_stream_capture, name='mrz_stream_capture'),
+    
+    # Video Stream API proxy endpoints (24fps video streaming)
+    path('api/mrz/stream/video/frames/', views.mrz_stream_video_frames, name='mrz_stream_video_frames'),
+    path('api/mrz/stream/video/', views.mrz_stream_video_chunk, name='mrz_stream_video_chunk'),
 ]

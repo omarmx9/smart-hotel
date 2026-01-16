@@ -52,6 +52,34 @@
     .room-status.vacant { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
     .room-status.maintenance { background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange); }
 
+    /* Sensor online/offline status */
+    .sensor-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        font-size: 10px;
+        font-weight: 500;
+        border-radius: 10px;
+        text-transform: uppercase;
+    }
+    .sensor-status.online { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .sensor-status.offline { background-color: rgba(234, 67, 53, 0.15); color: var(--color-accent-red); }
+
+    /* Door status indicator */
+    .door-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: 500;
+        border-radius: 12px;
+    }
+    .door-status.closed { background-color: rgba(100, 100, 100, 0.15); color: var(--color-text-secondary); }
+    .door-status.open { background-color: rgba(52, 168, 83, 0.2); color: var(--color-accent-green); animation: pulse 1s infinite; }
+    .door-status svg { width: 14px; height: 14px; }
+
     .room-body {
         padding: 20px;
     }
@@ -174,8 +202,28 @@
     {% for room in rooms %}
     <div class="room-card" data-room-id="{{ room.id }}">
         <div class="room-header">
-            <span class="room-number">Room {{ room.room_number }}</span>
-            <span class="room-status {{ room.status }}">{{ room.get_status_display }}</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="room-number">Room {{ room.room_number }}</span>
+                <span class="sensor-status {{ room.sensor_status }}" data-sensor-status>
+                    <span class="status-dot {% if room.is_sensor_online %}connected{% endif %}"></span>
+                    {{ room.sensor_status|upper }}
+                </span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="door-status {% if room.door_open %}open{% else %}closed{% endif %}" data-door-status>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        {% if room.door_open %}
+                        <path d="M3 21V5a2 2 0 0 1 2-2h14l-5 18H3z"/>
+                        <path d="M9 12h.01"/>
+                        {% else %}
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <path d="M9 12h.01"/>
+                        {% endif %}
+                    </svg>
+                    {% if room.door_open %}OPEN{% else %}CLOSED{% endif %}
+                </span>
+                <span class="room-status {{ room.status }}">{{ room.get_status_display }}</span>
+            </div>
         </div>
         <div class="room-body">
             <div class="sensor-grid">
@@ -274,6 +322,27 @@
 
             const gasIndicator = card.querySelector('.sensor-item:last-child .alert-indicator');
             gasIndicator.className = 'alert-indicator ' + room.gas_alert;
+
+            // Update sensor online/offline status
+            const sensorStatus = card.querySelector('[data-sensor-status]');
+            if (sensorStatus) {
+                sensorStatus.className = 'sensor-status ' + room.sensor_status;
+                const statusDot = sensorStatus.querySelector('.status-dot');
+                if (statusDot) {
+                    statusDot.className = 'status-dot ' + (room.sensor_online ? 'connected' : '');
+                }
+                sensorStatus.lastChild.textContent = room.sensor_status.toUpperCase();
+            }
+
+            // Update door status
+            const doorStatus = card.querySelector('[data-door-status]');
+            if (doorStatus) {
+                doorStatus.className = 'door-status ' + (room.door_open ? 'open' : 'closed');
+                const doorText = doorStatus.lastChild;
+                if (doorText && doorText.nodeType === Node.TEXT_NODE) {
+                    doorText.textContent = room.door_open ? 'OPEN' : 'CLOSED';
+                }
+            }
         });
     }
 

@@ -1,0 +1,435 @@
+{% extends 'base.html' %}
+
+{% block title %}Select Access Method - Smart Hotel{% endblock %}
+
+{% block extra_css %}
+<style>
+.access-page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.access-page .card {
+    background: var(--card-bg);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    border: none;
+    overflow: hidden;
+}
+
+.access-header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+
+.access-header .icon-box {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.5rem;
+    box-shadow: 0 12px 32px rgba(15, 118, 110, 0.25);
+}
+
+.access-header .icon-box svg {
+    width: 48px;
+    height: 48px;
+    color: #fff;
+}
+
+.access-header h1 {
+    font-size: var(--kiosk-font-2xl);
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.75rem;
+}
+
+.access-header p {
+    color: var(--text-muted);
+    font-size: var(--kiosk-font-lg);
+    margin: 0;
+}
+
+.access-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 600px) {
+    .access-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.access-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 2.5rem 1.5rem;
+    background: var(--card-bg);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    font-family: inherit;
+    width: 100%;
+    min-height: 240px;
+    position: relative;
+    -webkit-appearance: none;
+    appearance: none;
+    overflow: hidden;
+}
+
+.access-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(14,165,233,0.12) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.access-btn:hover::before {
+    opacity: 1;
+}
+
+.access-btn:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: var(--shadow-xl), 0 0 40px rgba(14,165,233,0.15);
+    border-color: var(--accent);
+}
+
+.access-btn:active {
+    transform: translateY(-2px) scale(0.98);
+    transition-duration: 0.1s;
+}
+
+.access-btn[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: linear-gradient(180deg, rgba(14, 165, 233, 0.08) 0%, transparent 100%);
+    box-shadow: 0 0 0 4px rgba(14,165,233,0.15), 0 12px 32px rgba(14,165,233,0.15);
+}
+
+.access-btn .icon-container {
+    width: 90px;
+    height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    border-radius: 50%;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    color: var(--brand);
+}
+
+.access-btn:hover .icon-container {
+    background: rgba(14, 165, 233, 0.15);
+    color: var(--accent-dark);
+    transform: scale(1.1) rotate(-5deg);
+    box-shadow: 0 8px 24px rgba(14,165,233,0.2);
+}
+
+.access-btn[aria-pressed="true"] .icon-container {
+    background: var(--accent);
+    color: white;
+    transform: scale(1.1);
+    box-shadow: 0 8px 24px rgba(14,165,233,0.3);
+}
+
+.access-btn .title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-top: 0.5rem;
+}
+
+.access-btn[aria-pressed="true"] .title {
+    color: var(--accent-dark);
+}
+
+.access-btn .desc {
+    font-size: 1rem;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1.5;
+    max-width: 200px;
+}
+
+.access-btn .badge {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 2rem;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.access-btn[aria-pressed="true"] .badge {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.info-callout {
+    background: var(--info-light);
+    border-left: 4px solid var(--info);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.info-callout svg {
+    flex-shrink: 0;
+    color: var(--info);
+    margin-top: 2px;
+}
+
+.info-callout p {
+    margin: 0;
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+}
+
+.action-buttons .btn {
+    flex: 1;
+    padding: 1.25rem 2rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    transition: all var(--transition);
+}
+
+.action-buttons .btn-primary {
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+    border: none;
+    color: white;
+    box-shadow: 0 8px 24px rgba(15, 118, 110, 0.25);
+}
+
+.action-buttons .btn-primary:hover {
+    background: linear-gradient(135deg, var(--brand-light) 0%, var(--brand) 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(15, 118, 110, 0.35);
+}
+
+.action-buttons .btn-primary:active {
+    transform: translateY(0);
+}
+
+.action-buttons .btn-outline-secondary {
+    border: 2px solid var(--border);
+    color: var(--text-muted);
+    background: transparent;
+}
+
+.action-buttons .btn-outline-secondary:hover {
+    background: var(--bg);
+    border-color: var(--text-muted);
+    color: var(--text);
+}
+
+.alert-danger {
+    background: var(--danger-light);
+    border: none;
+    border-left: 4px solid var(--danger);
+    color: var(--danger);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="access-page">
+    <div class="card p-4 p-md-5">
+        <div class="access-header">
+            <div class="icon-box">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+                </svg>
+            </div>
+            <h1 data-i18n="select_access_method">Select Access Method</h1>
+            <p data-i18n="choose_how_to_access_room">Choose how you would like to access your room</p>
+        </div>
+
+        <form method="post" id="accessMethodForm">
+            {% csrf_token %}
+            
+            {% if error %}
+            <div class="alert alert-danger mb-4" role="alert">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                    <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
+                </svg>
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <div class="access-grid">
+                <button type="button" class="access-btn" id="keycardBtn" aria-pressed="{% if preselected_keycard %}true{% else %}false{% endif %}">
+                    <input type="hidden" name="access_keycard" id="access_keycard" value="{% if preselected_keycard %}1{% endif %}">
+                    <span class="badge">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
+                        </svg>
+                        <span data-i18n="selected">Selected</span>
+                    </span>
+                    <div class="icon-container">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v1h14V4a1 1 0 0 0-1-1H2zm13 4H1v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7z"/>
+                            <path d="M2 10a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-1z"/>
+                        </svg>
+                    </div>
+                    <span class="title" data-i18n="keycard">Keycard</span>
+                    <span class="desc" data-i18n="keycard_description">Traditional room keycard - pick up from the slot below</span>
+                </button>
+
+                <button type="button" class="access-btn" id="faceBtn" aria-pressed="{% if preselected_face %}true{% else %}false{% endif %}">
+                    <input type="hidden" name="access_face" id="access_face" value="{% if preselected_face %}1{% endif %}">
+                    <span class="badge">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
+                        </svg>
+                        <span data-i18n="selected">Selected</span>
+                    </span>
+                    <div class="icon-container">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
+                        </svg>
+                    </div>
+                    <span class="title" data-i18n="face_id">Face ID</span>
+                    <span class="desc" data-i18n="face_id_description">Contactless entry using facial recognition</span>
+                </button>
+            </div>
+
+            <div class="info-callout">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                </svg>
+                <p data-i18n="access_method_tip">You can select both options for backup access. Face ID provides quick contactless entry, while a keycard is always a reliable backup.</p>
+            </div>
+
+            <div class="action-buttons">
+                <a href="{% url 'kiosk:pdf_sign_document' %}" class="btn btn-outline-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+                    </svg>
+                    <span data-i18n="back">Back</span>
+                </a>
+                <button type="submit" class="btn btn-primary" id="continueBtn">
+                    <span data-i18n="continue">Continue</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const keycardBtn = document.getElementById('keycardBtn');
+    const faceBtn = document.getElementById('faceBtn');
+    const keycardInput = document.getElementById('access_keycard');
+    const faceInput = document.getElementById('access_face');
+    
+    // Toggle function for multi-select
+    function toggleAccess(btn, input) {
+        const isPressed = btn.getAttribute('aria-pressed') === 'true';
+        const newState = !isPressed;
+        
+        btn.setAttribute('aria-pressed', String(newState));
+        input.value = newState ? '1' : '';
+    }
+    
+    // Click handlers
+    keycardBtn.addEventListener('click', function() {
+        toggleAccess(keycardBtn, keycardInput);
+    });
+    
+    faceBtn.addEventListener('click', function() {
+        toggleAccess(faceBtn, faceInput);
+    });
+    
+    // Form validation
+    document.getElementById('accessMethodForm').addEventListener('submit', function(e) {
+        const keycardSelected = keycardInput.value === '1';
+        const faceSelected = faceInput.value === '1';
+        
+        if (!keycardSelected && !faceSelected) {
+            e.preventDefault();
+            
+            // Shake both buttons to indicate error
+            keycardBtn.style.animation = 'none';
+            faceBtn.style.animation = 'none';
+            keycardBtn.offsetHeight; // Trigger reflow
+            faceBtn.offsetHeight;
+            keycardBtn.style.animation = 'shake 0.5s ease';
+            faceBtn.style.animation = 'shake 0.5s ease';
+            
+            // Show tooltip or alert
+            alert('Please select at least one access method.');
+            return false;
+        }
+        
+        // Show loading state
+        const submitBtn = document.getElementById('continueBtn');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Processing...';
+    });
+    
+    // Sync initial state from server-side preselection
+    if (keycardInput.value === '1') {
+        keycardBtn.setAttribute('aria-pressed', 'true');
+    }
+    if (faceInput.value === '1') {
+        faceBtn.setAttribute('aria-pressed', 'true');
+    }
+});
+</script>
+
+<style>
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+</style>
+{% endblock %}

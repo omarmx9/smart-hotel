@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Rooms{% endblock %}
+{% block page_title %}Room Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex gap-2">
+        <select id="statusFilter" class="form-select" style="width: auto;">
+            <option value="">All Statuses</option>
+            {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select id="typeFilter" class="form-select" style="width: auto;">
+            <option value="">All Types</option>
+            {% for value, label in type_choices %}
+            <option value="{{ value }}" {% if request.GET.type == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <a href="{% url 'reservations:room_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i> Add Room
+    </a>
+</div>
+
+<div class="row g-3">
+    {% for room in rooms %}
+    <div class="col-sm-6 col-md-4 col-lg-3">
+        <div class="table-card h-100">
+            <div class="card-body p-3 text-center">
+                <h3 class="mb-1">{{ room.room_number }}</h3>
+                <p class="text-muted mb-2">{{ room.get_room_type_display }}</p>
+                <span class="badge-status badge-{{ room.status }}">
+                    {{ room.get_status_display }}
+                </span>
+                <hr>
+                <div class="d-flex justify-content-between text-muted small">
+                    <span><i class="bi bi-stairs me-1"></i> Floor {{ room.floor }}</span>
+                    <span><i class="bi bi-people me-1"></i> {{ room.max_guests }} guests</span>
+                </div>
+                <div class="mt-2">
+                    <span class="fw-bold">${{ room.base_rate }}</span>
+                    <small class="text-muted">/ night</small>
+                </div>
+                <div class="mt-3">
+                    <a href="{% url 'reservations:room_detail' room.pk %}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-eye"></i>
+                    </a>
+                    <a href="{% url 'reservations:room_edit' room.pk %}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-pencil"></i>
+                    </a>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                            Status
+                        </button>
+                        <ul class="dropdown-menu">
+                            {% for value, label in status_choices %}
+                            <li>
+                                <a class="dropdown-item {% if room.status == value %}active{% endif %}" 
+                                   href="#" onclick="updateRoomStatus({{ room.pk }}, '{{ value }}')">
+                                    {{ label }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-door-closed fs-1 d-block mb-2"></i>
+            No rooms found
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('statusFilter').addEventListener('change', function() {
+    updateFilters();
+});
+document.getElementById('typeFilter').addEventListener('change', function() {
+    updateFilters();
+});
+
+function updateFilters() {
+    const status = document.getElementById('statusFilter').value;
+    const type = document.getElementById('typeFilter').value;
+    let url = '{% url "reservations:room_list" %}?';
+    if (status) url += 'status=' + status + '&';
+    if (type) url += 'type=' + type;
+    window.location.href = url;
+}
+
+function updateRoomStatus(roomId, status) {
+    fetch(`/reservations/rooms/${roomId}/status/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: 'status=' + status
+    }).then(response => response.json()).then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Failed to update room status');
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -365,6 +365,158 @@ class DocumentFiller:
         """
         
         return html
+    
+    def generate_pdf(self, data, timestamp=None):
+        """
+        Generate a PDF version of the registration card.
+        
+        Returns dict with pdf_path and pdf_filename.
+        """
+        try:
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.units import mm
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+        except ImportError:
+            return {"pdf_error": "ReportLab not installed"}
+        
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Output path
+        safe_name = f"{data['surname']}_{data['name']}".replace(" ", "_")[:50]
+        pdf_filename = f"registration_{safe_name}_{timestamp}.pdf"
+        pdf_path = os.path.join(self.output_dir, pdf_filename)
+        
+        # Create PDF
+        c = canvas.Canvas(pdf_path, pagesize=A4)
+        width, height = A4
+        
+        # Try to use custom fonts, fallback to Helvetica
+        try:
+            font_regular = 'Helvetica'
+            font_bold = 'Helvetica-Bold'
+        except:
+            font_regular = 'Helvetica'
+            font_bold = 'Helvetica-Bold'
+        
+        # Header
+        c.setFont(font_bold, 20)
+        c.drawCentredString(width/2, height - 40*mm, "DW Registration Card")
+        
+        c.setFont(font_regular, 12)
+        c.drawCentredString(width/2, height - 50*mm, "Guest Registration Form")
+        
+        # Line separator
+        c.line(20*mm, height - 55*mm, width - 20*mm, height - 55*mm)
+        
+        y_pos = height - 70*mm
+        line_height = 8*mm
+        
+        # Personal Information Section
+        c.setFont(font_bold, 14)
+        c.drawString(20*mm, y_pos, "Personal Information")
+        y_pos -= line_height * 1.5
+        
+        c.setFont(font_regular, 11)
+        fields = [
+            ("Surname:", data['surname']),
+            ("Name:", data['name']),
+            ("Nationality:", data['nationality']),
+            ("Passport No.:", data['passport_number']),
+            ("Date of Birth:", data['date_of_birth']),
+            ("Country:", data['country']),
+        ]
+        
+        for label, value in fields:
+            c.setFont(font_bold, 10)
+            c.drawString(20*mm, y_pos, label)
+            c.setFont(font_regular, 10)
+            c.drawString(60*mm, y_pos, value or "—")
+            y_pos -= line_height
+        
+        y_pos -= line_height * 0.5
+        
+        # Additional Information
+        c.setFont(font_bold, 14)
+        c.drawString(20*mm, y_pos, "Additional Information")
+        y_pos -= line_height * 1.5
+        
+        c.setFont(font_regular, 11)
+        extra_fields = [
+            ("Profession:", data['profession'] or "—"),
+            ("Hometown:", data['hometown'] or "—"),
+            ("Email:", data['email'] or "—"),
+            ("Phone:", data['phone'] or "—"),
+        ]
+        
+        for label, value in extra_fields:
+            c.setFont(font_bold, 10)
+            c.drawString(20*mm, y_pos, label)
+            c.setFont(font_regular, 10)
+            c.drawString(60*mm, y_pos, value)
+            y_pos -= line_height
+        
+        y_pos -= line_height * 0.5
+        
+        # Stay Details
+        c.setFont(font_bold, 14)
+        c.drawString(20*mm, y_pos, "Stay Details")
+        y_pos -= line_height * 1.5
+        
+        c.setFont(font_bold, 10)
+        c.drawString(20*mm, y_pos, "Check-in:")
+        c.setFont(font_regular, 10)
+        c.drawString(60*mm, y_pos, data['checkin'])
+        
+        c.setFont(font_bold, 10)
+        c.drawString(100*mm, y_pos, "Check-out:")
+        c.setFont(font_regular, 10)
+        c.drawString(130*mm, y_pos, data['checkout'] or "—")
+        y_pos -= line_height * 2
+        
+        # Accompanying Guests
+        if data.get('accompanying_guests'):
+            c.setFont(font_bold, 14)
+            c.drawString(20*mm, y_pos, "Accompanying Guests")
+            y_pos -= line_height * 1.5
+            
+            for i, guest in enumerate(data['accompanying_guests'], 1):
+                c.setFont(font_regular, 10)
+                guest_text = f"{i}. {guest.get('name', '')} - {guest.get('nationality', '')} - {guest.get('passport', '')}"
+                c.drawString(25*mm, y_pos, guest_text)
+                y_pos -= line_height
+            
+            y_pos -= line_height * 0.5
+        
+        # Signature Section
+        c.setFont(font_bold, 14)
+        c.drawString(20*mm, y_pos, "Guest Signature")
+        y_pos -= line_height * 1.5
+        
+        c.setFont(font_regular, 10)
+        c.drawString(20*mm, y_pos, "I confirm that all information provided is correct.")
+        y_pos -= line_height * 3
+        
+        # Signature line
+        c.line(20*mm, y_pos, 100*mm, y_pos)
+        y_pos -= line_height * 0.5
+        c.setFont(font_regular, 9)
+        c.drawString(20*mm, y_pos, "Signature")
+        
+        c.drawString(120*mm, y_pos + line_height * 0.5, f"Date: {datetime.now().strftime('%d/%m/%Y')}")
+        
+        # Legal notice at bottom
+        c.setFont(font_regular, 8)
+        c.drawString(20*mm, 20*mm, "By signing this document, you agree to the hotel's terms and conditions.")
+        
+        c.save()
+        
+        return {
+            "pdf_path": pdf_path,
+            "pdf_filename": pdf_filename,
+        }
 
 
 # Singleton instance
@@ -382,7 +534,14 @@ def fill_registration_card(guest_data, timestamp=None):
     """
     Convenience function to fill a registration card.
     
-    Returns dict with html_preview and optionally output_path for DOCX.
+    Returns dict with html_preview, pdf_path, and optionally output_path for DOCX.
     """
     filler = get_document_filler()
-    return filler.fill_registration_card(guest_data, timestamp)
+    result = filler.fill_registration_card(guest_data, timestamp)
+    
+    # Also generate PDF
+    data = filler._normalize_guest_data(guest_data)
+    pdf_result = filler.generate_pdf(data, timestamp or result.get('timestamp'))
+    result.update(pdf_result)
+    
+    return result

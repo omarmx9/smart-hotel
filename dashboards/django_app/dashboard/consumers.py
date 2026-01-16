@@ -170,8 +170,7 @@ class AdminConsumer(AsyncWebsocketConsumer):
     """
     WebSocket consumer for admin operations.
     
-    Note: With Authentik integration, guest account creation is now handled
-    through Authentik. This consumer provides read-only access to synced guests.
+    Provides read-only access to guest accounts and room assignments.
     """
     
     async def connect(self):
@@ -214,7 +213,7 @@ class AdminConsumer(AsyncWebsocketConsumer):
     
     @database_sync_to_async
     def get_active_guests(self):
-        """Get list of active guest users synced from Authentik"""
+        """Get list of active guest users"""
         from accounts.models import User
         guests = User.objects.filter(
             role=User.ROLE_GUEST,

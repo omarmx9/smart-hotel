@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>{% block title %}Front Desk{% endblock %} | Smart Hotel</title>
+    
+    {% load static %}
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="{% static 'css/bootstrap.min.css' %}" as="style">
+    <link rel="preload" href="{% static 'css/fonts/bootstrap-icons.woff2' %}" as="font" type="font/woff2" crossorigin>
+    
+    <!-- Local Bootstrap 5 CSS -->
+    <link href="{% static 'css/bootstrap.min.css' %}" rel="stylesheet">
+    <!-- Local Bootstrap Icons -->
+    <link href="{% static 'css/bootstrap-icons.min.css' %}" rel="stylesheet">
+    
+    <!-- DNS Prefetch disabled - all resources are local -->
+    <meta http-equiv="x-dns-prefetch-control" content="off">
+    
+    <style>
+        :root {
+            --sidebar-width: 260px;
+            --primary-color: #2c3e50;
+            --accent-color: #3498db;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: var(--primary-color);
+            color: white;
+            z-index: 1000;
+            transition: all 0.3s;
+        }
+        
+        .sidebar-header {
+            padding: 20px;
+            background: rgba(0,0,0,0.1);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .sidebar-header h3 {
+            margin: 0;
+            font-size: 1.3rem;
+        }
+        
+        .sidebar-header small {
+            opacity: 0.7;
+        }
+        
+        .sidebar-nav {
+            padding: 15px 0;
+        }
+        
+        .sidebar-nav .nav-section {
+            padding: 10px 20px 5px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            opacity: 0.5;
+            letter-spacing: 1px;
+        }
+        
+        .sidebar-nav .nav-link {
+            color: rgba(255,255,255,0.8);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        
+        .sidebar-nav .nav-link:hover {
+            color: white;
+            background: rgba(255,255,255,0.1);
+            border-left-color: var(--accent-color);
+        }
+        
+        .sidebar-nav .nav-link.active {
+            color: white;
+            background: rgba(255,255,255,0.15);
+            border-left-color: var(--accent-color);
+        }
+        
+        .sidebar-nav .nav-link i {
+            width: 20px;
+            text-align: center;
+        }
+        
+        /* Main content */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+        }
+        
+        /* Top navbar */
+        .top-navbar {
+            background: white;
+            padding: 15px 25px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .top-navbar h1 {
+            font-size: 1.5rem;
+            margin: 0;
+            color: var(--primary-color);
+        }
+        
+        /* Content area */
+        .content-area {
+            padding: 25px;
+        }
+        
+        /* Cards */
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .stat-card .stat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .stat-card .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+        
+        .stat-card .stat-label {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        
+        /* Tables */
+        .table-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+        
+        .table-card .card-header {
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 15px 20px;
+            font-weight: 600;
+        }
+        
+        .table-card .table {
+            margin: 0;
+        }
+        
+        .table-card .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: #6c757d;
+            border-bottom: none;
+        }
+        
+        /* Status badges */
+        .badge-status {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .badge-pending { background: #fff3cd; color: #856404; }
+        .badge-confirmed { background: #cce5ff; color: #004085; }
+        .badge-checked-in { background: #d4edda; color: #155724; }
+        .badge-checked-out { background: #e2e3e5; color: #383d41; }
+        .badge-cancelled { background: #f8d7da; color: #721c24; }
+        
+        .badge-available { background: #d4edda; color: #155724; }
+        .badge-occupied { background: #cce5ff; color: #004085; }
+        .badge-maintenance { background: #fff3cd; color: #856404; }
+        .badge-cleaning { background: #e2e3e5; color: #383d41; }
+        
+        /* User dropdown */
+        .user-dropdown {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+        
+        /* Quick actions */
+        .quick-action-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        /* Alerts */
+        .alert-floating {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 300px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+        
+        /* VIP badge */
+        .vip-badge {
+            background: linear-gradient(135deg, #f5af19, #f12711);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+        
+        /* Responsive */
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h3><i class="bi bi-building"></i> Smart Hotel</h3>
+            <small>Front Desk System</small>
+        </div>
+        
+        <div class="sidebar-nav">
+            <div class="nav-section">Main</div>
+            <a href="{% url 'reservations:dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </a>
+            
+            <div class="nav-section">Operations</div>
+            <a href="{% url 'reservations:arrivals' %}" class="nav-link {% if 'arrivals' in request.path %}active{% endif %}">
+                <i class="bi bi-box-arrow-in-right"></i> Arrivals
+            </a>
+            <a href="{% url 'reservations:departures' %}" class="nav-link {% if 'departures' in request.path %}active{% endif %}">
+                <i class="bi bi-box-arrow-right"></i> Departures
+            </a>
+            <a href="{% url 'reservations:in_house' %}" class="nav-link {% if 'in-house' in request.path %}active{% endif %}">
+                <i class="bi bi-people"></i> In-House
+            </a>
+            
+            <div class="nav-section">Management</div>
+            <a href="{% url 'reservations:reservation_list' %}" class="nav-link {% if 'reservations/list' in request.path %}active{% endif %}">
+                <i class="bi bi-calendar-check"></i> Reservations
+            </a>
+            <a href="{% url 'reservations:guest_list' %}" class="nav-link {% if 'guests' in request.path %}active{% endif %}">
+                <i class="bi bi-person-badge"></i> Guests
+            </a>
+            <a href="{% url 'reservations:room_list' %}" class="nav-link {% if 'rooms' in request.path %}active{% endif %}">
+                <i class="bi bi-door-open"></i> Rooms
+            </a>
+            
+            <div class="nav-section">Documents</div>
+            <a href="{% url 'documents:list' %}" class="nav-link {% if 'documents' in request.path and 'passports' not in request.path %}active{% endif %}">
+                <i class="bi bi-file-earmark-text"></i> All Documents
+            </a>
+            <a href="{% url 'documents:passports_today' %}" class="nav-link {% if 'passports' in request.path %}active{% endif %}">
+                <i class="bi bi-passport"></i> Today's Passports
+            </a>
+            
+            {% if user.can_manage_employees %}
+            <div class="nav-section">Administration</div>
+            <a href="{% url 'employees:list' %}" class="nav-link {% if 'employees' in request.path and 'activity' not in request.path %}active{% endif %}">
+                <i class="bi bi-people-fill"></i> Employees
+            </a>
+            {% endif %}
+            
+            {% if user.can_access_reports %}
+            <a href="{% url 'employees:activity_logs' %}" class="nav-link {% if 'activity' in request.path %}active{% endif %}">
+                <i class="bi bi-journal-text"></i> Activity Logs
+            </a>
+            {% endif %}
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Navbar -->
+        <div class="top-navbar">
+            <div>
+                <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <!-- Quick Actions -->
+                <a href="{% url 'reservations:quick_reservation' %}" class="btn btn-primary quick-action-btn">
+                    <i class="bi bi-plus-lg"></i> Walk-In
+                </a>
+                
+                <!-- User Dropdown -->
+                <div class="dropdown">
+                    <a href="#" class="user-dropdown text-decoration-none" data-bs-toggle="dropdown">
+                        <div class="user-avatar">
+                            {{ user.first_name.0 }}{{ user.last_name.0 }}
+                        </div>
+                        <div class="d-none d-md-block">
+                            <div class="fw-semibold text-dark">{{ user.get_full_name }}</div>
+                            <small class="text-muted">{{ user.get_role_display }}</small>
+                        </div>
+                        <i class="bi bi-chevron-down text-muted"></i>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="{% url 'employees:profile' %}"><i class="bi bi-person me-2"></i> Profile</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-danger" href="{% url 'employees:logout' %}"><i class="bi bi-box-arrow-right me-2"></i> Logout</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Content Area -->
+        <div class="content-area">
+            <!-- Messages -->
+            {% if messages %}
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+    
+    {% load static %}
+    <!-- Local Bootstrap JS (deferred for performance) -->
+    <script src="{% static 'js/bootstrap.bundle.min.js' %}" defer></script>
+    
+    <script>
+        // Auto-hide alerts after 5 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.alert').forEach(function(alert) {
+                setTimeout(function() {
+                    var bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }, 5000);
+            });
+        });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Room {{ room.room_number }}{% endblock %}
+{% block page_title %}Room {{ room.room_number }}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-door-open me-2"></i> Room Details</span>
+                <a href="{% url 'reservations:room_edit' room.pk %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-pencil"></i>
+                </a>
+            </div>
+            <div class="card-body p-4 text-center">
+                <h1 class="display-4 mb-1">{{ room.room_number }}</h1>
+                <p class="text-muted mb-3">{{ room.get_room_type_display }}</p>
+                <span class="badge-status badge-{{ room.status }} fs-6">
+                    {{ room.get_status_display }}
+                </span>
+                
+                <hr>
+                
+                <div class="row text-start">
+                    <div class="col-6 mb-2">
+                        <small class="text-muted">Floor</small>
+                        <p class="mb-0 fw-bold">{{ room.floor }}</p>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <small class="text-muted">Max Guests</small>
+                        <p class="mb-0 fw-bold">{{ room.max_guests }}</p>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">Rate per Night</small>
+                        <p class="mb-0 fw-bold">${{ room.base_rate }}</p>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="d-flex justify-content-center gap-3">
+                    {% if room.has_balcony %}
+                    <span class="badge bg-light text-dark"><i class="bi bi-flower1 me-1"></i> Balcony</span>
+                    {% endif %}
+                    {% if room.has_sea_view %}
+                    <span class="badge bg-light text-dark"><i class="bi bi-water me-1"></i> Sea View</span>
+                    {% endif %}
+                    {% if room.has_kitchen %}
+                    <span class="badge bg-light text-dark"><i class="bi bi-cup-hot me-1"></i> Kitchen</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-8">
+        {% if current_reservation %}
+        <div class="table-card mb-4">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-person-check me-2"></i> Current Guest
+            </div>
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5>{{ current_reservation.guest.full_name }}</h5>
+                        <p class="mb-1">
+                            <i class="bi bi-calendar me-2 text-muted"></i>
+                            {{ current_reservation.check_in_date }} - {{ current_reservation.check_out_date }}
+                        </p>
+                        <p class="mb-0">
+                            <i class="bi bi-hash me-2 text-muted"></i>
+                            {{ current_reservation.reservation_number }}
+                        </p>
+                    </div>
+                    <a href="{% url 'reservations:check_out' current_reservation.pk %}" class="btn btn-warning">
+                        <i class="bi bi-box-arrow-right me-1"></i> Check Out
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="table-card">
+            <div class="card-header">
+                <i class="bi bi-calendar-week me-2"></i> Upcoming Reservations
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Guest</th>
+                            <th>Check-In</th>
+                            <th>Check-Out</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for res in upcoming_reservations %}
+                        <tr>
+                            <td>{{ res.guest.full_name }}</td>
+                            <td>{{ res.check_in_date }}</td>
+                            <td>{{ res.check_out_date }}</td>
+                            <td>
+                                <span class="badge-status badge-{{ res.status|slugify }}">
+                                    {{ res.get_status_display }}
+                                </span>
+                            </td>
+                            <td>
+                                <a href="{% url 'reservations:reservation_detail' res.pk %}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">No upcoming reservations</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

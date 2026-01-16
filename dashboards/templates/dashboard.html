@@ -600,20 +600,20 @@
                     </div>
                 </div>
 
-                <!-- Luminosity Card -->
+                <!-- Light Sensor Card -->
                 <div class="card luminosity-card">
                     <div class="card-header">
                         <div class="card-title">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-                            Luminosity
+                            Light Sensor
                         </div>
                     </div>
                     <div class="card-body">
                         <div class="metric-value">
                             <span id="luminosity">--</span>
-                            <span class="metric-unit">lux</span>
+                            <span class="metric-unit">%</span>
                         </div>
-                        <div class="metric-label">Light intensity</div>
+                        <div class="metric-label">Ambient light level</div>
                     </div>
                 </div>
 
@@ -764,7 +764,7 @@
                         pointBackgroundColor: chartColors.humidity.border
                     },
                     {
-                        label: 'Luminosity (lux)',
+                        label: 'Light Level (%)',
                         data: [],
                         borderColor: chartColors.luminosity.border,
                         backgroundColor: chartColors.luminosity.background,
@@ -879,7 +879,7 @@
                 .then(data => {
                     document.getElementById('temperature').textContent = data.temperature.toFixed(1);
                     document.getElementById('humidity').textContent = data.humidity.toFixed(0);
-                    document.getElementById('luminosity').textContent = data.luminosity || '--';
+                    document.getElementById('luminosity').textContent = data.ldr_percentage || '--';
                     document.getElementById('gas-value').textContent = data.gas_level || 0;
                     document.getElementById('last-update').textContent = data.last_update || '--';
 
@@ -901,12 +901,12 @@
                         const labels = data.history.map(h => h.timestamp.split(' ')[1]);
                         const temps = data.history.map(h => h.temperature);
                         const humidity = data.history.map(h => h.humidity);
-                        const luminosity = data.history.map(h => h.luminosity || 0);
+                        const ldrPercentage = data.history.map(h => h.ldr_percentage || 0);
 
                         chart.data.labels = labels;
                         chart.data.datasets[0].data = temps;
                         chart.data.datasets[1].data = humidity;
-                        chart.data.datasets[2].data = luminosity;
+                        chart.data.datasets[2].data = ldrPercentage;
                         chart.update('none');
                     }
                 })

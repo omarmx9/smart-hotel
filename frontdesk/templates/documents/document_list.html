@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Documents{% endblock %}
+{% block page_title %}Document Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <form method="get" class="d-flex gap-2 flex-grow-1 me-3">
+        <input type="text" name="query" value="{{ request.GET.query }}" class="form-control" placeholder="Search documents..." style="max-width: 300px;">
+        <select name="document_type" class="form-select" style="width: auto;">
+            <option value="">All Types</option>
+            {% for value, label in form.fields.document_type.choices %}
+            {% if value %}
+            <option value="{{ value }}" {% if request.GET.document_type == value %}selected{% endif %}>{{ label }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+        <select name="verified" class="form-select" style="width: auto;">
+            <option value="">All Status</option>
+            <option value="true" {% if request.GET.verified == 'true' %}selected{% endif %}>Verified</option>
+            <option value="false" {% if request.GET.verified == 'false' %}selected{% endif %}>Unverified</option>
+        </select>
+        <button type="submit" class="btn btn-outline-primary">
+            <i class="bi bi-search"></i>
+        </button>
+    </form>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Guest</th>
+                    <th>Type</th>
+                    <th>Document #</th>
+                    <th>Source</th>
+                    <th>Uploaded</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td>
+                        <a href="{% url 'reservations:guest_detail' doc.guest.pk %}" class="text-decoration-none">
+                            {{ doc.guest.full_name }}
+                        </a>
+                    </td>
+                    <td>
+                        <i class="bi bi-file-earmark-text me-1"></i>
+                        {{ doc.get_document_type_display }}
+                    </td>
+                    <td>{{ doc.document_number|default:"-" }}</td>
+                    <td>
+                        <span class="badge {% if doc.source == 'kiosk' %}bg-info{% else %}bg-secondary{% endif %}">
+                            {{ doc.get_source_display }}
+                        </span>
+                    </td>
+                    <td>{{ doc.uploaded_at|date:"M d, Y H:i" }}</td>
+                    <td>
+                        {% if doc.verified %}
+                        <span class="badge bg-success">Verified</span>
+                        {% else %}
+                        <span class="badge bg-warning text-dark">Unverified</span>
+                        {% endif %}
+                        {% if doc.is_expired %}
+                        <span class="badge bg-danger ms-1">Expired</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'documents:detail' doc.pk %}" class="btn btn-outline-secondary" title="View">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            {% if doc.has_file %}
+                            <a href="{% url 'documents:download' doc.pk %}" class="btn btn-outline-primary" title="Download">
+                                <i class="bi bi-download"></i>
+                            </a>
+                            {% endif %}
+                            {% if not doc.verified %}
+                            <button onclick="verifyDocument({{ doc.pk }})" class="btn btn-outline-success" title="Verify">
+                                <i class="bi bi-check-lg"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-5">
+                        <i class="bi bi-file-earmark-x fs-1 d-block mb-2"></i>
+                        No documents found
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if documents.has_other_pages %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if documents.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ documents.previous_page_number }}">Previous</a>
+        </li>
+        {% endif %}
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ documents.number }} of {{ documents.paginator.num_pages }}</span>
+        </li>
+        {% if documents.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ documents.next_page_number }}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function verifyDocument(pk) {
+    fetch(`/documents/${pk}/verify/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        }
+    });
+}
+</script>
+{% endblock %}

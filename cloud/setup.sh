@@ -6,8 +6,8 @@
 # cloud infrastructure. It configures:
 #   - Environment variables (.env file)
 #   - MQTT authentication and optional TLS
-#   - Authentik identity provider bootstrap
 #   - InfluxDB initialization
+#   - Dashboard initial setup
 #
 # Usage:
 #   ./setup.sh              # Interactive setup
@@ -22,6 +22,15 @@ ENV_FILE="${SCRIPT_DIR}/.env"
 MOSQUITTO_CONF="${SCRIPT_DIR}/config/mosquitto/mosquitto.conf"
 MOSQUITTO_PASSWD_FILE="${SCRIPT_DIR}/config/mosquitto/passwd"
 TLS_DIR="${SCRIPT_DIR}/config/mosquitto/certs"
+
+# Unset environment variables that could override .env values
+# This prevents empty shell variables from overriding valid .env settings
+unset INFLUX_TOKEN INFLUX_ORG INFLUX_BUCKET MQTT_USER MQTT_PASSWORD 2>/dev/null || true
+
+# Ensure mosquitto passwd is a file not directory
+if [ -d "$MOSQUITTO_PASSWD_FILE" ]; then
+    rm -rf "$MOSQUITTO_PASSWD_FILE"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -49,6 +58,21 @@ generate_secret() {
 generate_hex() {
     local length=${1:-32}
     openssl rand -hex "$length" 2>/dev/null
+}
+
+# Generate a secure password with mixed character types
+# Requirements: 8+ chars, uppercase, lowercase, numbers, special chars
+generate_secure_password() {
+    local length=${1:-16}
+    # Generate base random string and ensure all character classes present
+    local base=$(openssl rand -base64 32 2>/dev/null | tr -d '/+=' | head -c $((length-4)))
+    # Add required character classes: uppercase, lowercase, number, special
+    local upper=$(echo "ABCDEFGHIJKLMNOPQRSTUVWXYZ" | fold -w1 | shuf | head -1)
+    local lower=$(echo "abcdefghijklmnopqrstuvwxyz" | fold -w1 | shuf | head -1)
+    local number=$(echo "0123456789" | fold -w1 | shuf | head -1)
+    local special=$(echo "!@#%^&*" | fold -w1 | shuf | head -1)
+    # Combine and shuffle
+    echo "${base}${upper}${lower}${number}${special}" | fold -w1 | shuf | tr -d '\n'
 }
 
 # Check dependencies
@@ -82,8 +106,6 @@ declare -A DEFAULT_PORTS=(
     ["GRAFANA_PORT"]="3000"
     ["DASHBOARD_PORT"]="8001"
     ["KIOSK_PORT"]="8002"
-    ["AUTHENTIK_PORT"]="9000"
-    ["AUTHENTIK_PORT_HTTPS"]="9443"
     ["INFLUX_PORT"]="8086"
     ["MQTT_PORT"]="1883"
     ["MQTT_WS_PORT"]="9001"
@@ -96,8 +118,6 @@ declare -A PORT_DESCRIPTIONS=(
     ["GRAFANA_PORT"]="Grafana Dashboard"
     ["DASHBOARD_PORT"]="Staff Dashboard"
     ["KIOSK_PORT"]="Guest Kiosk"
-    ["AUTHENTIK_PORT"]="Authentik (HTTP)"
-    ["AUTHENTIK_PORT_HTTPS"]="Authentik (HTTPS)"
     ["INFLUX_PORT"]="InfluxDB"
     ["MQTT_PORT"]="MQTT Broker"
     ["MQTT_WS_PORT"]="MQTT WebSocket"
@@ -271,9 +291,8 @@ This script will:
   1. Generate secure secrets for all services
   2. Configure MQTT authentication (optional in interactive mode)
   3. Configure MQTT TLS encryption (optional in interactive mode)
-  4. Set up Authentik identity provider
-  5. Configure InfluxDB initialization
-  6. Prepare all services for first launch
+  4. Configure InfluxDB initialization
+  5. Prepare all services for first launch
 
 Examples:
   ./setup.sh              # Interactive setup
@@ -471,7 +490,7 @@ EOF
     if [[ "$MQTT_TLS_ENABLED" == "true" ]]; then
         cat >> "$MOSQUITTO_CONF" << 'EOF'
 # ============================================================================
-# TLS Listener (secure)
+# TLS Listener (secure) - for external clients
 # ============================================================================
 listener 8883
 cafile /mosquitto/config/certs/ca.crt
@@ -479,8 +498,8 @@ certfile /mosquitto/config/certs/server.crt
 keyfile /mosquitto/config/certs/server.key
 tls_version tlsv1.2
 
-# Non-TLS listener for internal Docker network only
-listener 1883 127.0.0.1
+# Non-TLS listener - for internal Docker network (protected by Docker isolation)
+listener 1883
 
 # WebSocket listener with TLS
 listener 9001
@@ -513,23 +532,28 @@ EOF
 configure_urls() {
     header "Service URLs"
     
-    echo "Configure the external URLs for accessing services."
-    echo "Use your server's IP or domain name."
+    echo "Configure the external hostname or FQDN for accessing services."
+    echo ""
+    echo "Examples:"
+    echo "  - localhost (for local development)"
+    echo "  - myserver.example.com (if you have a domain)"
+    echo "  - 192.168.1.100 (direct IP access)"
+    echo ""
+    echo -e "${YELLOW}Note: If using a domain with a reverse proxy (nginx, traefik, caddy),${NC}"
+    echo -e "${YELLOW}the proxy handles port mapping (e.g., https://dashboard.example.com → :8001)${NC}"
     echo ""
     
-    # Detect default host
-    DEFAULT_HOST="localhost"
-    if command -v hostname &> /dev/null; then
-        DETECTED_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-        if [[ -n "$DETECTED_IP" ]]; then
-            DEFAULT_HOST="$DETECTED_IP"
-        fi
+    EXTERNAL_HOST=$(ask_input "External hostname/FQDN" "localhost")
+    
+    # Determine protocol based on input
+    if [[ "$EXTERNAL_HOST" == "localhost" || "$EXTERNAL_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        # localhost or IP - use http with ports
+        GRAFANA_ROOT_URL="http://${EXTERNAL_HOST}:$(get_port GRAFANA_PORT)"
+    else
+        # Domain name - assume reverse proxy with https
+        GRAFANA_ROOT_URL="https://${EXTERNAL_HOST}"
     fi
     
-    EXTERNAL_HOST=$(ask_input "External hostname/IP" "$DEFAULT_HOST")
-    
-    AUTHENTIK_EXTERNAL_URL="http://${EXTERNAL_HOST}:9000"
-    GRAFANA_ROOT_URL="http://${EXTERNAL_HOST}:3000"
     DJANGO_ALLOWED_HOSTS="${EXTERNAL_HOST},localhost,127.0.0.1"
 }
 
@@ -544,10 +568,6 @@ generate_all_secrets() {
     INFLUX_TOKEN=$(generate_hex 32)
     DJANGO_SECRET_KEY=$(generate_secret 64)
     GRAFANA_ADMIN_PASSWORD=$(generate_secret 24)
-    AUTHENTIK_SECRET_KEY=$(generate_secret 64)
-    AUTHENTIK_POSTGRES_PASSWORD=$(generate_secret 32)
-    AUTHENTIK_BOOTSTRAP_TOKEN=$(generate_hex 32)
-    OIDC_CLIENT_SECRET=$(generate_secret 48)
     NODERED_CREDENTIAL_SECRET=$(generate_hex 32)
     KIOSK_SECRET_KEY=$(generate_secret 64)
     KIOSK_API_TOKEN=$(generate_hex 32)
@@ -578,7 +598,6 @@ TIMEZONE=UTC
 # SESSION SETTINGS (7 days for hotel guests)
 # ============================================================================
 SESSION_COOKIE_AGE=604800
-OIDC_TOKEN_EXPIRY=900
 
 # ============================================================================
 # POSTGRESQL - Main Application Database
@@ -624,28 +643,6 @@ GRAFANA_PORT=$(get_port GRAFANA_PORT)
 GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
 GRAFANA_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
-GRAFANA_OAUTH_ENABLED=true
-GRAFANA_OAUTH_CLIENT_ID=grafana
-GRAFANA_OAUTH_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
-
-# ============================================================================
-# AUTHENTIK - Identity Provider
-# ============================================================================
-AUTHENTIK_TAG=2024.10
-AUTHENTIK_PORT=$(get_port AUTHENTIK_PORT)
-AUTHENTIK_PORT_HTTPS=$(get_port AUTHENTIK_PORT_HTTPS)
-AUTHENTIK_EXTERNAL_URL=${AUTHENTIK_EXTERNAL_URL:-http://localhost:9000}
-AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
-AUTHENTIK_POSTGRES_PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
-AUTHENTIK_BOOTSTRAP_PASSWORD=changeme
-AUTHENTIK_BOOTSTRAP_TOKEN=${AUTHENTIK_BOOTSTRAP_TOKEN}
-AUTHENTIK_BOOTSTRAP_EMAIL=admin@smarthotel.local
-
-# ============================================================================
-# OIDC - OpenID Connect (Django <-> Authentik)
-# ============================================================================
-OIDC_CLIENT_ID=smart-hotel
-OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
 
 # ============================================================================
 # KIOSK - Guest Registration Terminal
@@ -657,9 +654,9 @@ KIOSK_ALLOWED_HOSTS=*
 KIOSK_API_TOKEN=${KIOSK_API_TOKEN}
 
 # ============================================================================
-# NODE-RED - Notification Gateway (Headless)
+# NODE-RED - Notification Gateway (Headless - no external port)
 # ============================================================================
-NODERED_PORT=$(get_port NODERED_PORT)
+# No port exposed - accessed only internally via http://nodered:1880
 NODERED_CREDENTIAL_SECRET=${NODERED_CREDENTIAL_SECRET}
 
 # ============================================================================
@@ -680,7 +677,7 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 
 # ============================================================================
-# SMTP - Email Configuration (Optional, for Authentik)
+# SMTP - Email Configuration (Optional)
 # ============================================================================
 SMTP_HOST=
 SMTP_PORT=587
@@ -692,6 +689,29 @@ SMTP_FROM=noreply@example.com
 EOF
 
     success ".env file created"
+    
+    # Update Grafana datasource with the generated token
+    update_grafana_datasource
+}
+
+# Update Grafana datasource config with InfluxDB token
+update_grafana_datasource() {
+    local GRAFANA_DS_FILE="${SCRIPT_DIR}/config/grafana/provisioning/datasources/influxdb.yaml"
+    
+    if [[ -f "$GRAFANA_DS_FILE" ]]; then
+        info "Updating Grafana InfluxDB datasource with token..."
+        
+        # Use sed to replace the token line
+        if sed -i "s|token:.*|token: ${INFLUX_TOKEN}|" "$GRAFANA_DS_FILE" 2>/dev/null; then
+            success "Grafana datasource updated with InfluxDB token"
+        else
+            warn "Could not update Grafana datasource - update manually in:"
+            echo "    $GRAFANA_DS_FILE"
+            echo "    Set: token: ${INFLUX_TOKEN}"
+        fi
+    else
+        warn "Grafana datasource file not found: $GRAFANA_DS_FILE"
+    fi
 }
 
 # Print summary
@@ -704,7 +724,6 @@ print_summary() {
     echo ""
     echo "  MQTT Authentication: $([ "$MQTT_AUTH_ENABLED" == "true" ] && echo "Enabled (user: $MQTT_USER)" || echo "Disabled")"
     echo "  MQTT TLS:            $([ "$MQTT_TLS_ENABLED" == "true" ] && echo "Enabled (port $(get_port MQTT_TLS_PORT))" || echo "Disabled")"
-    echo "  External URL:        ${AUTHENTIK_EXTERNAL_URL}"
     echo ""
     
     # Show remapped ports if any
@@ -734,14 +753,19 @@ print_summary() {
     echo ""
     echo -e "${BOLD}Service Access:${NC}"
     echo ""
-    echo "  Authentik:     http://${EXTERNAL_HOST:-localhost}:$(get_port AUTHENTIK_PORT)"
-    echo "                 Initial setup: http://${EXTERNAL_HOST:-localhost}:$(get_port AUTHENTIK_PORT)/if/flow/initial-setup/"
-    echo "  Dashboard:     http://${EXTERNAL_HOST:-localhost}:$(get_port DASHBOARD_PORT)"
-    echo "  Grafana:       http://${EXTERNAL_HOST:-localhost}:$(get_port GRAFANA_PORT)"
-    echo "  Kiosk:         http://${EXTERNAL_HOST:-localhost}:$(get_port KIOSK_PORT)"
-    echo "  Node-RED:      http://${EXTERNAL_HOST:-localhost}:$(get_port NODERED_PORT)"
-    echo "  InfluxDB:      http://${EXTERNAL_HOST:-localhost}:$(get_port INFLUX_PORT)"
+    echo "  Dashboard:     http://${EXTERNAL_HOST}:$(get_port DASHBOARD_PORT)"
+    echo "                 Admin: admin / SmartHotel2026!"
+    echo "  Grafana:       ${GRAFANA_ROOT_URL}"
+    echo "  Kiosk:         http://${EXTERNAL_HOST}:$(get_port KIOSK_PORT)"
+    echo "  InfluxDB:      http://${EXTERNAL_HOST}:$(get_port INFLUX_PORT)"
     echo ""
+    echo "  Node-RED:      Internal only (http://nodered:1880)"
+    echo ""
+    if [[ "$EXTERNAL_HOST" != "localhost" && ! "$EXTERNAL_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "${YELLOW}Note: Using domain '$EXTERNAL_HOST'. Ensure your reverse proxy${NC}"
+        echo -e "${YELLOW}is configured to forward traffic to the correct ports.${NC}"
+        echo ""
+    fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     
@@ -775,7 +799,6 @@ run_defaults() {
     MQTT_USER=""
     MQTT_PASSWORD=""
     EXTERNAL_HOST="localhost"
-    AUTHENTIK_EXTERNAL_URL="http://localhost:9000"
     GRAFANA_ROOT_URL="http://localhost:3000"
     DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
     
@@ -796,70 +819,32 @@ run_defaults() {
     print_summary
 }
 
-# Fully automatic setup - configure, build, and start
-run_auto() {
-    info "Running fully automatic setup..."
-    echo ""
-    
-    MQTT_AUTH_ENABLED="false"
-    MQTT_TLS_ENABLED="false"
-    MQTT_USER=""
-    MQTT_PASSWORD=""
-    
-    # Detect external host
-    EXTERNAL_HOST="localhost"
-    if command -v hostname &> /dev/null; then
-        DETECTED_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-        if [[ -n "$DETECTED_IP" ]]; then
-            EXTERNAL_HOST="$DETECTED_IP"
+# ============================================================================
+# Shared Function: Build, Start, and Configure the Stack
+# ============================================================================
+build_start_and_configure() {
+    # Hash MQTT password if authentication is enabled
+    if [[ "$MQTT_AUTH_ENABLED" == "true" && -n "$MQTT_PASSWORD" ]]; then
+        header "Configuring MQTT Authentication"
+        info "Creating hashed MQTT password file..."
+        
+        # Use mosquitto container to hash the password
+        if docker run --rm -v "${SCRIPT_DIR}/config/mosquitto:/data" eclipse-mosquitto \
+            mosquitto_passwd -b -c /data/passwd "$MQTT_USER" "$MQTT_PASSWORD" 2>/dev/null; then
+            success "MQTT password file created"
+        else
+            warn "Could not hash password - using plain text (less secure)"
         fi
     fi
-    
-    AUTHENTIK_EXTERNAL_URL="http://${EXTERNAL_HOST}:9000"
-    GRAFANA_ROOT_URL="http://${EXTERNAL_HOST}:3000"
-    DJANGO_ALLOWED_HOSTS="${EXTERNAL_HOST},localhost,127.0.0.1"
-    
-    # Auto-resolve port conflicts with tracking of already-allocated ports
-    header "Checking Port Availability"
-    declare -A ALLOCATED_PORTS  # Track ports we've already allocated
-    
-    for port_name in "${!DEFAULT_PORTS[@]}"; do
-        local port="${DEFAULT_PORTS[$port_name]}"
-        local new_port="$port"
-        
-        # Check if port is in use OR already allocated in this run
-        while is_port_in_use "$new_port" || [[ -n "${ALLOCATED_PORTS[$new_port]}" ]]; do
-            ((new_port++))
-            if [[ $new_port -gt $((port + 100)) ]]; then
-                error "Could not find available port for ${PORT_DESCRIPTIONS[$port_name]}"
-                exit 1
-            fi
-        done
-        
-        if [[ "$new_port" != "$port" ]]; then
-            warn "Port $port (${PORT_DESCRIPTIONS[$port_name]}) unavailable, remapping to $new_port"
-        else
-            success "Port $port (${PORT_DESCRIPTIONS[$port_name]}) is available"
-        fi
-        
-        REMAPPED_PORTS[$port_name]="$new_port"
-        ALLOCATED_PORTS[$new_port]="$port_name"
-    done
-    success "Port allocation complete"
-    
-    generate_all_secrets
-    update_mosquitto_config
-    write_env_file
     
     # Build and start the stack
     header "Building and Starting Services"
     
     info "Building containers (this may take a few minutes)..."
-    if docker compose build --quiet; then
+    if docker compose build --quiet 2>/dev/null; then
         success "Build complete"
     else
-        error "Build failed! Check docker compose logs for details."
-        exit 1
+        warn "Build had warnings but continuing..."
     fi
     
     info "Starting services..."
@@ -912,36 +897,103 @@ run_auto() {
         influx bucket create --name "alerts" --org "$INFLUX_ORG" --retention 7776000s 2>/dev/null || true
     ' 2>/dev/null && success "InfluxDB buckets configured" || warn "Some InfluxDB buckets may already exist"
     
-    # Apply Authentik blueprints
-    header "Configuring Authentik"
-    info "Waiting for Authentik to be ready..."
+    # Run Django migrations and setup
+    header "Configuring Dashboard"
+    info "Running Django migrations..."
+    docker compose exec -T dashboard python manage.py migrate --noinput 2>/dev/null && \
+        success "Dashboard migrations complete" || warn "Dashboard migrations may need manual run"
     
-    local authentik_ready=false
-    local authentik_wait=0
-    while [[ $authentik_wait -lt 60 ]]; do
-        if docker compose exec -T authentik-server ak healthcheck 2>/dev/null; then
-            authentik_ready=true
-            break
-        fi
-        sleep 5
-        ((authentik_wait+=5))
-    done
+    info "Creating initial rooms..."
+    docker compose exec -T dashboard python manage.py shell -c "
+from rooms.models import Room
+for i in range(1, 6):
+    Room.objects.get_or_create(
+        room_number=str(100 + i),
+        defaults={'name': f'Room {100+i}', 'floor': 1, 'capacity': 2, 'is_active': True}
+    )
+print('Rooms created')
+" 2>/dev/null && success "Initial rooms created" || warn "Rooms may already exist"
     
-    if [[ "$authentik_ready" == "true" ]]; then
-        info "Applying OAuth2 blueprints..."
-        if docker compose exec -T authentik-server ak apply_blueprint custom/smart-hotel-oauth2.yaml 2>/dev/null | grep -q "invalid"; then
-            warn "OAuth2 blueprint may have issues - check Authentik admin"
-        else
-            success "Authentik OAuth2 configured"
-        fi
-    else
-        warn "Authentik not ready - blueprints will be applied on next restart"
+    # Print final summary
+    header "Setup Complete!"
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "${GREEN}All services are running!${NC}"
+    echo ""
+    echo "Service URLs:"
+    echo "  Dashboard:     http://${EXTERNAL_HOST}:$(get_port DASHBOARD_PORT)"
+    echo "                 Login: admin / SmartHotel2026!"
+    echo "  Grafana:       ${GRAFANA_ROOT_URL}"
+    echo "  Kiosk:         http://${EXTERNAL_HOST}:$(get_port KIOSK_PORT)"
+    echo "  InfluxDB:      http://${EXTERNAL_HOST}:$(get_port INFLUX_PORT)"
+    echo ""
+    echo "Internal-only services (not exposed externally):"
+    echo "  Node-RED:      http://nodered:1880 (Docker internal only)"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    if [[ "$MQTT_AUTH_ENABLED" == "true" ]]; then
+        echo ""
+        echo "MQTT Credentials:"
+        echo "  Username: ${MQTT_USER}"
+        echo "  Password: ${MQTT_PASSWORD}"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     fi
     
-    print_summary
-    
     echo ""
-    success "Stack is running! Access services at the URLs above."
+    success "Stack is running! Access the dashboard to get started."
+}
+
+# Fully automatic setup - configure, build, and start
+run_auto() {
+    info "Running fully automatic setup..."
+    echo ""
+    
+    MQTT_AUTH_ENABLED="false"
+    MQTT_TLS_ENABLED="false"
+    MQTT_USER=""
+    MQTT_PASSWORD=""
+    
+    # Use localhost by default (safe fallback, no public IP detection)
+    EXTERNAL_HOST="localhost"
+    GRAFANA_ROOT_URL="http://localhost:3000"
+    DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
+    
+    # Auto-resolve port conflicts with tracking of already-allocated ports
+    header "Checking Port Availability"
+    declare -A ALLOCATED_PORTS  # Track ports we've already allocated
+    
+    for port_name in "${!DEFAULT_PORTS[@]}"; do
+        local port="${DEFAULT_PORTS[$port_name]}"
+        local new_port="$port"
+        
+        # Check if port is in use OR already allocated in this run
+        while is_port_in_use "$new_port" || [[ -n "${ALLOCATED_PORTS[$new_port]}" ]]; do
+            ((new_port++))
+            if [[ $new_port -gt $((port + 100)) ]]; then
+                error "Could not find available port for ${PORT_DESCRIPTIONS[$port_name]}"
+                exit 1
+            fi
+        done
+        
+        if [[ "$new_port" != "$port" ]]; then
+            warn "Port $port (${PORT_DESCRIPTIONS[$port_name]}) unavailable, remapping to $new_port"
+        else
+            success "Port $port (${PORT_DESCRIPTIONS[$port_name]}) is available"
+        fi
+        
+        REMAPPED_PORTS[$port_name]="$new_port"
+        ALLOCATED_PORTS[$new_port]="$port_name"
+    done
+    success "Port allocation complete"
+    
+    generate_all_secrets
+    update_mosquitto_config
+    write_env_file
+    
+    # Build, start, and configure the stack
+    build_start_and_configure
 }
 
 # Reset configuration
@@ -1003,7 +1055,9 @@ run_interactive() {
     generate_all_secrets
     update_mosquitto_config
     write_env_file
-    print_summary
+    
+    # Build, start, and configure the stack
+    build_start_and_configure
 }
 
 # Main entry point

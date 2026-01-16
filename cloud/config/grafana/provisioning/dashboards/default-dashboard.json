@@ -15,140 +15,591 @@
       }
     ]
   },
-  "description": "Default dashboard",
+  "description": "Smart Hotel Room Sensors Dashboard - Real-time monitoring of temperature, humidity, luminosity, and gas sensors from all rooms. Supports both JSON telemetry (new) and legacy plain value formats.",
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
-  "id": 1,
+  "graphTooltip": 1,
+  "id": null,
   "links": [],
   "panels": [
     {
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
+      "gridPos": {"h": 2, "w": 24, "x": 0, "y": 0},
+      "id": 100,
       "options": {
-        "code": {
-          "language": "plaintext",
-          "showLineNumbers": false,
-          "showMiniMap": false
-        },
-        "content": "# Welcome\n\nThis is the default dashboard.",
+        "content": "# Smart Hotel - Room Sensors Dashboard\n\nReal-time monitoring of ESP32 sensor data from all hotel rooms. Data flows: **ESP32 → MQTT (JSON) → Telegraf → InfluxDB → Grafana**",
         "mode": "markdown"
       },
-      "pluginVersion": "12.3.1",
-      "title": "Welcome",
+      "title": "",
+      "transparent": true,
       "type": "text"
     },
     {
-      "datasource": "influxdb",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 2},
+      "id": 50,
+      "panels": [],
+      "title": " Temperature by Room",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": {"mode": "palette-classic"},
           "custom": {
             "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
+            "axisLabel": "Temperature (°C)",
             "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": true,
+            "thresholdsStyle": {"mode": "line+area"}
           },
-          "mappings": [],
+          "min": 15, "max": 35,
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
+              {"color": "blue", "value": null},
+              {"color": "green", "value": 18},
+              {"color": "yellow", "value": 26},
+              {"color": "red", "value": 30}
             ]
-          }
-        },
-        "overrides": []
+          },
+          "unit": "celsius"
+        }
       },
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 5
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 3},
+      "id": 1,
+      "options": {
+        "legend": {"calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
       },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "// Query both JSON format (temperature field) and legacy format (sensor_type=temperature)\njson_data = from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"temperature\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n\nlegacy_data = from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r.sensor_type == \"temperature\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n\nunion(tables: [json_data, legacy_data])",
+        "refId": "A"
+      }],
+      "title": "Temperature - All Rooms",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "min": 15, "max": 35,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "blue", "value": null},
+              {"color": "green", "value": 18},
+              {"color": "yellow", "value": 26},
+              {"color": "red", "value": 30}
+            ]
+          },
+          "unit": "celsius"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 3},
+      "id": 2,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "values": false},
+        "showThresholdMarkers": true
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "json_data = from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"temperature\")\n  |> last()\n  |> group(columns: [\"room_id\"])\n\nlegacy_data = from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r.sensor_type == \"temperature\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> last()\n  |> group(columns: [\"room_id\"])\n\nunion(tables: [json_data, legacy_data])",
+        "refId": "A"
+      }],
+      "title": "Current Temperature by Room",
+      "type": "gauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 11},
+      "id": 51,
+      "panels": [],
+      "title": " Humidity by Room",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "Humidity (%)",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": true,
+            "thresholdsStyle": {"mode": "line+area"}
+          },
+          "min": 0, "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "yellow", "value": null},
+              {"color": "green", "value": 30},
+              {"color": "yellow", "value": 60},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
       "id": 3,
       "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
+        "legend": {"calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "json_data = from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"humidity\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n\nlegacy_data = from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r.sensor_type == \"humidity\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n\nunion(tables: [json_data, legacy_data])",
+        "refId": "A"
+      }],
+      "title": "Humidity - All Rooms",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "min": 0, "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "yellow", "value": null},
+              {"color": "green", "value": 30},
+              {"color": "yellow", "value": 60},
+              {"color": "red", "value": 80}
+            ]
+          },
+          "unit": "percent"
         }
       },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "refId": "A"
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "id": 4,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "values": false},
+        "showThresholdMarkers": true
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "json_data = from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"humidity\")\n  |> last()\n  |> group(columns: [\"room_id\"])\n\nlegacy_data = from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r.sensor_type == \"humidity\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> last()\n  |> group(columns: [\"room_id\"])\n\nunion(tables: [json_data, legacy_data])",
+        "refId": "A"
+      }],
+      "title": "Current Humidity by Room",
+      "type": "gauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 20},
+      "id": 52,
+      "panels": [],
+      "title": " Luminosity by Room",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "Light Level (%)",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0, "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "dark-blue", "value": null},
+              {"color": "yellow", "value": 30},
+              {"color": "orange", "value": 70}
+            ]
+          },
+          "unit": "percent"
         }
-      ],
-      "title": "New panel",
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
+      "id": 5,
+      "options": {
+        "legend": {"calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "json_data = from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"light_percent\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n\nlegacy_data = from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r.sensor_type == \"luminosity\" or r.sensor_type == \"ldr_percent\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n\nunion(tables: [json_data, legacy_data])",
+        "refId": "A"
+      }],
+      "title": "Light Level - All Rooms",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "min": 0, "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "dark-blue", "value": null},
+              {"color": "blue", "value": 20},
+              {"color": "yellow", "value": 50},
+              {"color": "orange", "value": 80}
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 21},
+      "id": 6,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "values": false},
+        "showThresholdMarkers": true
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "json_data = from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"light_percent\")\n  |> last()\n  |> group(columns: [\"room_id\"])\n\nlegacy_data = from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r.sensor_type == \"luminosity\" or r.sensor_type == \"ldr_percent\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> last()\n  |> group(columns: [\"room_id\"])\n\nunion(tables: [json_data, legacy_data])",
+        "refId": "A"
+      }],
+      "title": "Current Light Level by Room",
+      "type": "gauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 29},
+      "id": 53,
+      "panels": [],
+      "title": " Gas Sensor by Room",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisLabel": "Gas Level (ppm)",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": true,
+            "thresholdsStyle": {"mode": "line+area"}
+          },
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 100},
+              {"color": "orange", "value": 200},
+              {"color": "red", "value": 400}
+            ]
+          },
+          "unit": "ppm"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
+      "id": 7,
+      "options": {
+        "legend": {"calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "json_data = from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"gas_level\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n\nlegacy_data = from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r.sensor_type == \"gas\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n\nunion(tables: [json_data, legacy_data])",
+        "refId": "A"
+      }],
+      "title": "Gas Level - All Rooms",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "min": 0, "max": 500,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 100},
+              {"color": "orange", "value": 200},
+              {"color": "red", "value": 400}
+            ]
+          },
+          "unit": "ppm"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
+      "id": 8,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "values": false},
+        "showThresholdMarkers": true
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "json_data = from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"gas_level\")\n  |> last()\n  |> group(columns: [\"room_id\"])\n\nlegacy_data = from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r.sensor_type == \"gas\")\n  |> filter(fn: (r) => r._field == \"value\")\n  |> last()\n  |> group(columns: [\"room_id\"])\n\nunion(tables: [json_data, legacy_data])",
+        "refId": "A"
+      }],
+      "title": "Current Gas Level by Room",
+      "type": "gauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 38},
+      "id": 54,
+      "panels": [],
+      "title": " Room Status Overview",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 39},
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["count"], "values": false}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"temperature\")\n  |> distinct(column: \"room_id\")\n  |> count()",
+        "refId": "A"
+      }],
+      "title": "Active Rooms (Last 5 min)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 39},
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["count"], "values": false}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "from(bucket: \"sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> count()",
+        "refId": "A"
+      }],
+      "title": "Total Data Points",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 26},
+              {"color": "red", "value": 30}
+            ]
+          },
+          "unit": "celsius"
+        }
+      },
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 39},
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["mean"], "values": false}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "from(bucket: \"sensors\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"temperature\")\n  |> mean()",
+        "refId": "A"
+      }],
+      "title": "Avg Temperature (1h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "blue", "value": 1}
+            ]
+          },
+          "mappings": [
+            {"options": {"true": {"text": "ON", "color": "blue"}}, "type": "value"},
+            {"options": {"false": {"text": "OFF", "color": "green"}}, "type": "value"}
+          ],
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 39},
+      "id": 12,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "values": false}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"heating\")\n  |> last()\n  |> group(columns: [\"room_id\"])",
+        "refId": "A"
+      }],
+      "title": "Heating Status by Room",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 45},
+      "id": 55,
+      "panels": [],
+      "title": " Thermostat & State Info",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "celsius"
+        }
+      },
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 46},
+      "id": 13,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "values": false}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"target_temp\")\n  |> last()\n  |> group(columns: [\"room_id\"])",
+        "refId": "A"
+      }],
+      "title": "Target Temperature by Room",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "purple", "value": null}]},
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 46},
+      "id": 14,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "values": false}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"thermostat_mode\")\n  |> last()\n  |> group(columns: [\"room_id\"])",
+        "refId": "A"
+      }],
+      "title": "Thermostat Mode by Room",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "influxdb"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]},
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 46},
+      "id": 15,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "values": false}
+      },
+      "targets": [{
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "from(bucket: \"sensors\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> filter(fn: (r) => r._field == \"fan_speed\")\n  |> last()\n  |> group(columns: [\"room_id\"])",
+        "refId": "A"
+      }],
+      "title": "Fan Speed by Room",
+      "type": "stat"
     }
   ],
-  "preload": false,
-  "refresh": "",
-  "schemaVersion": 42,
-  "tags": [],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["smart-hotel", "iot", "esp32", "json-telemetry"],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {"selected": true, "text": "All", "value": "$__all"},
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "definition": "from(bucket: \"sensors\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> keep(columns: [\"room_id\"])\n  |> distinct(column: \"room_id\")",
+        "includeAll": true,
+        "label": "Room",
+        "multi": true,
+        "name": "room",
+        "query": "from(bucket: \"sensors\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"esp_telemetry\")\n  |> keep(columns: [\"room_id\"])\n  |> distinct(column: \"room_id\")",
+        "refresh": 2,
+        "type": "query"
+      }
+    ]
   },
-  "time": {
-    "from": "now-1h",
-    "to": "now"
-  },
-  "timepicker": {},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {"refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h"]},
   "timezone": "",
-  "title": "Default Dashboard",
-  "uid": "default-dashboard",
+  "title": "Smart Hotel - Room Sensors",
+  "uid": "smart-hotel-rooms",
   "version": 2
 }

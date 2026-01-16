@@ -1,0 +1,226 @@
+Smart Hotel API Endpoints Documentation
+========================================
+Last Updated: 2026-01-10
+
+================================================================================
+MRZ BACKEND SERVICE v3.1 (Flask - Port 5000) - WebRTC Mode
+================================================================================
+Production API service for MRZ extraction with WebRTC stream support.
+Camera is handled by browser via getUserMedia, server receives frames.
+
+Architecture:
+- Layer 1: WebRTC Stream (browser camera, YOLO detection, stability)
+- Layer 2: Image Enhancer (passthrough, future: filters)
+- Layer 3: MRZ Extraction (OCR, field parsing)
+- Layer 4: Document Filling (PDF generation)
+
+--------------------------------------------------------------------------------
+WEBRTC STREAM MODE ENDPOINTS (Browser Camera)
+--------------------------------------------------------------------------------
+
+1. /api/stream/session [POST]
+   - Create a new WebRTC stream session.
+   - Returns: session_id.
+   - Call this first before sending frames.
+
+2. /api/stream/frame [POST]
+   - Process a frame from WebRTC stream.
+   - Accepts: JSON with session_id, image (base64).
+   - Returns: detected, confidence, corners, stable_count, stable_required,
+     ready_for_capture, quality_score.
+   - Call in a loop (e.g., every 100ms) until ready_for_capture=true.
+
+3. /api/stream/capture [POST]
+   - Capture the best frame from stream session.
+   - Accepts: JSON with session_id.
+   - Returns: session_id, MRZ data, quality score, timestamp.
+   - Call when ready_for_capture is true.
+
+4. /api/stream/session/<session_id> [DELETE]
+   - Close and cleanup a stream session.
+   - Returns: success status.
+
+--------------------------------------------------------------------------------
+WEB MODE ENDPOINTS (Image Upload)
+--------------------------------------------------------------------------------
+
+5. /api/extract [POST]
+   - Extract MRZ data from an uploaded image.
+   - Accepts: multipart/form-data (image file) or JSON (base64 image).
+   - Returns: session_id, MRZ data, quality metrics, timestamp.
+
+--------------------------------------------------------------------------------
+COMMON ENDPOINTS
+--------------------------------------------------------------------------------
+
+6. /health [GET]
+   - Health check endpoint for service discovery and load balancers.
+   - Returns: service status, version, mode, capabilities, model_loaded,
+     active_sessions count.
+
+7. /api/status [GET]
+   - Get service status and capabilities.
+   - Returns: service info, mode, model status, document filler availability,
+     active_stream_sessions, directory paths, and endpoint list.
+
+8. /api/detect [POST]
+   - Detect if a document is present in a single image.
+   - Accepts: JSON (base64 image) or multipart/form-data (image file).
+   - Returns: detection status, confidence, corners, quality metrics.
+
+9. /api/mrz/update [POST]
+   - Update guest information after MRZ extraction and trigger document filling.
+   - Accepts: JSON with session_id and guest_data.
+   - Auto-detects if data was edited by comparing with original extraction.
+   - Returns: session_id, timestamp, guest_data, is_edited flag, edit_details,
+     filled_document path.
+
+10. /api/document/preview [POST]
+    - Get document preview as HTML with current data.
+    - Accepts: JSON with guest_data, optional session_id.
+    - Returns: preview_html for display.
+
+11. /api/document/pdf/<session_id> [GET]
+    - Serve generated PDF file for preview.
+    - Query param: file=<filename>
+    - Returns: PDF binary file for embedding in viewer.
+
+
+================================================================================
+KIOSK SERVICE (Django - Port 8000)
+================================================================================
+Main kiosk application handling user interface, signature capture,
+document signing, and database storage.
+
+DOCUMENT MANAGEMENT API
+-----------------------
+7. /api/document/update/ [POST]
+   - Update guest information and generate preview.
+   - Accepts: JSON with session_id, guest_data, accompanying_guests.
+   - Returns: session_id, document_preview_html, timestamp.
+
+8. /api/document/preview/ [POST]
+   - Get document preview for legal review before signing.
+   - Accepts: JSON with session_id and/or guest_data.
+   - Returns: preview_html, fields.
+
+9. /api/document/sign/ [POST]
+   - Sign document digitally with SVG signature.
+   - Signature and document stored in kiosk database.
+   - Accepts: JSON with session_id, guest_data, signature_svg, guest_id, reservation_id.
+   - Returns: document_id, signature_path, pdf_path, stored_in_database=true.
+
+10. /api/document/submit-physical/ [POST]
+    - Submit document for physical signature at front desk.
+    - Creates pending document request for front desk staff.
+    - Accepts: JSON with session_id, guest_data, reservation_id, room_number.
+    - Returns: submission_id, status, front_desk_notified.
+
+11. /api/document/list/ [GET]
+    - List signed documents, optionally filtered.
+    - Query params: guest_id, reservation_id (optional).
+    - Returns: list of documents with metadata.
+
+12. /api/document/<document_id>/ [GET]
+    - Get a specific signed document by document_id.
+    - Returns: full document record including guest_data and signature_svg.
+
+
+PASSPORT IMAGE STORAGE API
+--------------------------
+13. /api/save-passport-data/ [POST]
+    - Save extracted passport data and image to database.
+    - Accepts: JSON with MRZ fields, image_base64 or image_path, guest_id, reservation_id.
+    - Returns: passport_image_stored, passport_image_id.
+
+14. /api/passport/list/ [GET]
+    - List passport images, optionally filtered.
+    - Query params: guest_id, reservation_id (optional).
+    - Returns: list of passport images with metadata.
+
+15. /api/passport/<passport_image_id>/ [GET]
+    - Get a specific passport image by passport_image_id.
+    - Returns: passport image record including mrz_data and image_path.
+
+
+MRZ SERVICE PROXY API
+---------------------
+16. /api/mrz/detect/ [POST]
+    - Proxy document detection request to MRZ backend.
+    - Used for auto-capture with browser camera.
+
+17. /api/mrz/extract/ [POST]
+    - Proxy MRZ extraction request to MRZ backend.
+    - Used for browser-based passport scanning.
+
+18. /api/mrz/health/ [GET]
+    - Check if MRZ microservice is healthy.
+
+
+GUEST ACCOUNT API (Dashboard Integration)
+-----------------------------------------
+19. /api/guest/create/ [POST]
+    - Create a guest account in the Dashboard for room access.
+    - Accepts: JSON with first_name, last_name, email, room_number, checkout_date.
+    - Returns: username, password, room_number.
+
+20. /api/guest/deactivate/ [POST]
+    - Deactivate a guest account on checkout.
+    - Accepts: JSON with username.
+    - Returns: success message.
+
+
+RFID CARD API
+-------------
+21. /api/rfid/revoke/ [POST]
+    - Revoke/deactivate an RFID card.
+
+
+================================================================================
+KIOSK UI PAGES (New Flow)
+================================================================================
+
+1. /dw-registration/ [GET, POST]
+   - DW Registration Card form with passport data pre-filled.
+   - POST: Submit form data and redirect to signing page.
+
+2. /dw-registration/pdf-sign/ [GET, POST]
+   - PDF preview page with embedded document viewer (PDF.js).
+   - Shows single-page registration PDF with signature zone overlay.
+   - User signs DIRECTLY ON THE PDF using canvas overlay.
+   - Two options:
+     a) Digital signature: Draw on PDF → Confirm → Access method selection.
+     b) Physical signature: Print document → Sign at front desk → Access method selection.
+   - POST with signature_type='digital': Save digital signature and redirect.
+   - POST with signature_type='physical': Mark as printed and redirect.
+
+3. /dw-registration/preview-pdf/ [GET]
+   - Serve the preview PDF for embedding in the PDF viewer.
+   - Returns PDF binary with inline Content-Disposition.
+
+4. /select-access-method/ [GET, POST]
+   - SEPARATE PAGE: Access method selection (keycard, face ID, or both).
+   - Moved from inline form to its own dedicated page.
+   - POST: Store selections and proceed to face enrollment or finalize.
+
+5. /dw-registration/sign/ [GET, POST]
+   - Legacy HTML preview signing page (used for physical signature option).
+
+6. /dw-registration/print/ [GET]
+   - Generate printable PDF/HTML document for physical signature.
+
+
+================================================================================
+ARCHITECTURE NOTES
+================================================================================
+- MRZ Backend: Handles MRZ extraction and PDF document generation.
+- Kiosk Service: Handles all user interaction, signature capture, and database
+  storage for signed documents and passport images.
+- PDF Preview: Registration document shown as embedded PDF viewer (single page).
+- Digital Signature: User signs on canvas, signature stored as SVG/PNG.
+- Access Method Selection: Moved to separate page for better UX.
+- Signatures are stored as SVG files in media/signatures/.
+- Passport images are stored in media/passport_scans/.
+- Generated PDFs are stored in media/filled_documents/.
+- Database records stored in kiosk emulator (in-memory for demo, replace with
+  proper database in production).

@@ -1,11 +1,20 @@
 apiVersion: 1
+
+deleteDatasources:
+  - name: InfluxDB
+    orgId: 1
+
 datasources:
 - name: InfluxDB
+  uid: influxdb
   type: influxdb
   access: proxy
   url: http://influxdb:8086
   isDefault: true
+  editable: false
   jsonData:
     version: Flux
+    organization: smarthotel
+    defaultBucket: sensors
   secureJsonData:
-    token: ${INFLUX_TOKEN}
+    token: 23aa1dc465d34c2861021998cb324ac97b913999af4dab429e7d621ed0d95df3

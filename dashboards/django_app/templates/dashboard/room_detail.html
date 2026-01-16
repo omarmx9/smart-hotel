@@ -41,6 +41,40 @@
     .room-badge.occupied { background-color: rgba(66, 133, 244, 0.15); color: var(--color-accent-blue); }
     .room-badge.vacant { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
     .room-badge.maintenance { background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange); }
+    
+    /* Sensor and Door Status Badges */
+    .sensor-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .sensor-status.online { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .sensor-status.offline { background-color: rgba(234, 67, 53, 0.15); color: var(--color-accent-red); }
+    
+    .door-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .door-status.open { background-color: rgba(249, 171, 0, 0.15); color: var(--color-accent-orange); }
+    .door-status.closed { background-color: rgba(66, 133, 244, 0.15); color: var(--color-accent-blue); }
+    
+    .status-badges {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-left: 12px;
+    }
 
     .dashboard-grid {
         display: grid;
@@ -204,6 +238,73 @@
 
     .chart-wrapper {
         height: 300px;
+    }
+    
+    /* Access Logs Card */
+    .access-logs-card {
+        grid-column: span 12;
+    }
+    
+    .access-logs-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .access-logs-table th,
+    .access-logs-table td {
+        padding: 12px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--color-border);
+    }
+    
+    .access-logs-table th {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        background-color: var(--color-bg-elevated);
+    }
+    
+    .access-logs-table td {
+        font-size: 13px;
+        color: var(--color-text-secondary);
+    }
+    
+    .access-logs-table tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .access-result {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .access-result.granted { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .access-result.denied { background-color: rgba(234, 67, 53, 0.15); color: var(--color-accent-red); }
+    
+    .door-opened-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .door-opened-badge.yes { background-color: rgba(52, 168, 83, 0.15); color: var(--color-accent-green); }
+    .door-opened-badge.no { background-color: rgba(100, 100, 100, 0.15); color: var(--color-text-muted); }
+    
+    .no-logs-message {
+        text-align: center;
+        padding: 32px;
+        color: var(--color-text-muted);
+        font-size: 13px;
     }
 
     .no-control-notice {
@@ -413,6 +514,24 @@
     <div class="room-title">
         <h1 class="header-title">Room {{ room.room_number }}</h1>
         <span class="room-badge {{ room.status }}">{{ room.get_status_display }}</span>
+        <div class="status-badges">
+            <span class="sensor-status {% if room.is_sensor_online %}online{% else %}offline{% endif %}" id="sensor-status">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
+                </svg>
+                {% if room.is_sensor_online %}Online{% else %}Offline{% endif %}
+            </span>
+            <span class="door-status {% if room.door_open %}open{% else %}closed{% endif %}" id="door-status">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                    {% if room.door_open %}
+                    <path d="M3 21h18M6 3v18l12-3V6L6 3z"/><circle cx="14" cy="12" r="1" fill="currentColor"/>
+                    {% else %}
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M9 3v18"/><circle cx="6" cy="12" r="1" fill="currentColor"/>
+                    {% endif %}
+                </svg>
+                {% if room.door_open %}Open{% else %}Closed{% endif %}
+            </span>
+        </div>
     </div>
 </div>
 
@@ -459,15 +578,15 @@
         <div class="card-header">
             <div class="card-title">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-                Luminosity
+                Light Sensor
             </div>
         </div>
         <div class="card-body">
             <div class="metric-value">
-                <span id="luminosity-sensor">{{ room.luminosity }}</span>
-                <span class="metric-unit">lux</span>
+                <span id="luminosity-sensor">{{ room.ldr_percentage }}</span>
+                <span class="metric-unit">%</span>
             </div>
-            <div class="metric-label">Light intensity</div>
+            <div class="metric-label">Ambient light level</div>
         </div>
     </div>
 
@@ -579,25 +698,60 @@
         </div>
         <div class="card-body">
             {% if can_control %}
-            <div class="control-section" style="border-bottom: none; padding-top: 8px;">
-                <div class="light-toggle">
+            <!-- Mode Selection -->
+            <div class="control-section">
+                <div class="control-section-label">Mode</div>
+                <div class="light-toggle" style="justify-content: flex-start;">
                     <button type="button" class="light-btn light-mode-btn {% if room.light_mode == 'auto' %}active{% endif %}" data-mode="auto" id="light-auto">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/><circle cx="12" cy="12" r="4"/><path d="M12 8a4 4 0 0 1 0 8" fill="currentColor" opacity="0.3"/></svg>
                         <span>Auto</span>
                     </button>
-                    <button type="button" class="light-btn light-level-btn {% if room.light_mode == 'manual' and room.luminosity == 0 %}active{% endif %}" data-level="0" id="light-0" {% if room.light_mode == 'auto' %}disabled{% endif %}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5" opacity="0.3"/><line x1="12" y1="1" x2="12" y2="3" opacity="0.3"/><line x1="12" y1="21" x2="12" y2="23" opacity="0.3"/></svg>
-                        <span>Off</span>
-                    </button>
-                    <button type="button" class="light-btn light-level-btn {% if room.light_mode == 'manual' and room.luminosity == 1 %}active{% endif %}" data-level="1" id="light-1" {% if room.light_mode == 'auto' %}disabled{% endif %}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
-                        <span>1 Light</span>
-                    </button>
-                    <button type="button" class="light-btn light-level-btn {% if room.light_mode == 'manual' and room.luminosity == 2 %}active{% endif %}" data-level="2" id="light-2" {% if room.light_mode == 'auto' %}disabled{% endif %}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5" fill="currentColor"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
-                        <span>2 Lights</span>
+                    <button type="button" class="light-btn light-mode-btn {% if room.light_mode == 'manual' %}active{% endif %}" data-mode="manual" id="light-manual">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                        <span>Manual</span>
                     </button>
                 </div>
+            </div>
+
+            <!-- Individual LED Controls (visible only in manual mode) -->
+            <div class="control-section {% if room.light_mode != 'manual' %}hidden{% endif %}" id="led-control-section" style="border-bottom: none;">
+                <div class="control-section-label">LED Controls</div>
+                <div class="led-controls" style="display: flex; gap: 24px; justify-content: center;">
+                    <!-- LED 1 Toggle -->
+                    <div class="led-toggle-container" style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                        <span class="led-label" style="font-size: 12px; color: var(--color-text-secondary);">LED 1</span>
+                        <button type="button" class="light-btn led-btn {% if room.led1_status %}active{% endif %}" data-led="1" id="led-1-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="5" {% if room.led1_status %}fill="currentColor"{% endif %}/>
+                                <line x1="12" y1="1" x2="12" y2="3"/>
+                                <line x1="12" y1="21" x2="12" y2="23"/>
+                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                            </svg>
+                            <span id="led-1-status">{% if room.led1_status %}ON{% else %}OFF{% endif %}</span>
+                        </button>
+                    </div>
+                    <!-- LED 2 Toggle -->
+                    <div class="led-toggle-container" style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                        <span class="led-label" style="font-size: 12px; color: var(--color-text-secondary);">LED 2</span>
+                        <button type="button" class="light-btn led-btn {% if room.led2_status %}active{% endif %}" data-led="2" id="led-2-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="5" {% if room.led2_status %}fill="currentColor"{% endif %}/>
+                                <line x1="12" y1="1" x2="12" y2="3"/>
+                                <line x1="12" y1="21" x2="12" y2="23"/>
+                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                            </svg>
+                            <span id="led-2-status">{% if room.led2_status %}ON{% else %}OFF{% endif %}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Light Sensor Reading -->
+            <div class="current-status" style="margin-top: 16px;">
+                <span class="current-status-label">Light Sensor (LDR)</span>
+                <span class="current-status-value"><span id="ldr-display">{{ room.ldr_percentage }}</span>%</span>
             </div>
             {% else %}
             <div class="no-control-notice">
@@ -624,6 +778,34 @@
             </div>
         </div>
     </div>
+    
+    <!-- Access Logs Card -->
+    <div class="card access-logs-card">
+        <div class="card-header">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+                Access Logs
+            </div>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <table class="access-logs-table" id="access-logs-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Name</th>
+                        <th>Confidence</th>
+                        <th>Result</th>
+                        <th>Door</th>
+                    </tr>
+                </thead>
+                <tbody id="access-logs-body">
+                    <tr>
+                        <td colspan="5" class="no-logs-message">Loading access logs...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endif %}
 {% endblock %}
@@ -635,9 +817,10 @@
     const csrfToken = '{{ csrf_token }}';
     let ws = null;
     let currentClimateMode = '{{ room.climate_mode }}';
-    let currentLuminosity = {{ room.luminosity }};
     let currentLightMode = '{{ room.light_mode }}';
     let currentFanSpeed = '{{ room.fan_speed }}';
+    let led1Status = {{ room.led1_status|yesno:"true,false" }};
+    let led2Status = {{ room.led2_status|yesno:"true,false" }};
 
     // Chart setup
     const ctx = document.getElementById('sensorChart').getContext('2d');
@@ -693,10 +876,16 @@
         document.getElementById('humidity').textContent = Math.round(data.humidity);
         document.getElementById('gas-value').textContent = data.gas_level;
         
-        // Update luminosity sensor reading
+        // Update LDR sensor reading
+        const ldrDisplay = document.getElementById('ldr-display');
+        if (ldrDisplay && data.ldr_percentage !== undefined) {
+            ldrDisplay.textContent = data.ldr_percentage;
+        }
+        
+        // Update luminosity sensor reading (legacy support)
         const luminositySensor = document.getElementById('luminosity-sensor');
-        if (luminositySensor && data.luminosity !== undefined) {
-            luminositySensor.textContent = data.luminosity;
+        if (luminositySensor && data.ldr_percentage !== undefined) {
+            luminositySensor.textContent = data.ldr_percentage;
         }
         
         // Update current temp display in climate card
@@ -705,14 +894,37 @@
             currentTempDisplay.textContent = data.temperature.toFixed(1);
         }
 
-        // Update luminosity/light status
-        if (data.luminosity !== undefined) {
-            currentLuminosity = data.luminosity;
-            updateLightButtons(data.luminosity);
-            const lightStatusText = document.getElementById('light-status-text');
-            if (lightStatusText) {
-                const labels = ['Off', '1 Light', '2 Lights'];
-                lightStatusText.textContent = labels[data.luminosity] || 'Off';
+        // Update LED statuses
+        if (data.led1_status !== undefined) {
+            led1Status = data.led1_status;
+            updateLEDButton(1, led1Status);
+        }
+        if (data.led2_status !== undefined) {
+            led2Status = data.led2_status;
+            updateLEDButton(2, led2Status);
+        }
+        
+        // Update light mode
+        if (data.light_mode !== undefined && data.light_mode !== currentLightMode) {
+            currentLightMode = data.light_mode;
+            updateLightModeButtons(data.light_mode);
+            updateLEDControlVisibility(data.light_mode);
+        }
+        
+        // Update light status text
+        const lightStatusText = document.getElementById('light-status-text');
+        if (lightStatusText) {
+            if (currentLightMode === 'auto') {
+                lightStatusText.textContent = 'Auto';
+            } else {
+                const ledCount = (led1Status ? 1 : 0) + (led2Status ? 1 : 0);
+                if (ledCount === 0) {
+                    lightStatusText.textContent = 'Off';
+                } else if (ledCount === 1) {
+                    lightStatusText.textContent = '1 Light';
+                } else {
+                    lightStatusText.textContent = '2 Lights';
+                }
             }
         }
 
@@ -751,6 +963,41 @@
             chart.data.datasets[1].data = data.history.map(h => h.humidity);
             chart.update('none');
         }
+        
+        // Update sensor status
+        const sensorStatus = document.getElementById('sensor-status');
+        if (sensorStatus && data.sensor_online !== undefined) {
+            const isOnline = data.sensor_online;
+            sensorStatus.className = 'sensor-status ' + (isOnline ? 'online' : 'offline');
+            sensorStatus.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
+                </svg>
+                ${isOnline ? 'Online' : 'Offline'}
+            `;
+        }
+        
+        // Update door status
+        const doorStatus = document.getElementById('door-status');
+        if (doorStatus && data.door_open !== undefined) {
+            const isOpen = data.door_open;
+            doorStatus.className = 'door-status ' + (isOpen ? 'open' : 'closed');
+            if (isOpen) {
+                doorStatus.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                        <path d="M3 21h18M6 3v18l12-3V6L6 3z"/><circle cx="14" cy="12" r="1" fill="currentColor"/>
+                    </svg>
+                    Open
+                `;
+            } else {
+                doorStatus.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M9 3v18"/><circle cx="6" cy="12" r="1" fill="currentColor"/>
+                    </svg>
+                    Closed
+                `;
+            }
+        }
     }
 
     // Helper functions for updating button states
@@ -766,10 +1013,36 @@
         });
     }
 
-    function updateLightButtons(level) {
-        document.querySelectorAll('.light-btn').forEach(btn => {
-            btn.classList.toggle('active', parseInt(btn.dataset.level) === level);
+    function updateLEDButton(ledNumber, isOn) {
+        const btn = document.getElementById(`led-${ledNumber}-btn`);
+        const statusText = document.getElementById(`led-${ledNumber}-status`);
+        if (btn) {
+            btn.classList.toggle('active', isOn);
+            const circle = btn.querySelector('circle');
+            if (circle) {
+                if (isOn) {
+                    circle.setAttribute('fill', 'currentColor');
+                } else {
+                    circle.removeAttribute('fill');
+                }
+            }
+        }
+        if (statusText) {
+            statusText.textContent = isOn ? 'ON' : 'OFF';
+        }
+    }
+    
+    function updateLightModeButtons(mode) {
+        document.querySelectorAll('.light-mode-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
         });
+    }
+    
+    function updateLEDControlVisibility(mode) {
+        const ledSection = document.getElementById('led-control-section');
+        if (ledSection) {
+            ledSection.classList.toggle('hidden', mode !== 'manual');
+        }
     }
 
     function updateControlVisibility(mode) {
@@ -856,21 +1129,24 @@
             });
         });
 
-        // Light mode button (Auto)
+        // Light mode buttons (Auto/Manual)
         document.querySelectorAll('.light-mode-btn').forEach(btn => {
             btn.addEventListener('click', function() {
-                currentLightMode = 'auto';
+                const mode = this.dataset.mode;
+                currentLightMode = mode;
                 
                 // Update button states
-                document.querySelectorAll('.light-mode-btn').forEach(b => b.classList.add('active'));
-                document.querySelectorAll('.light-level-btn').forEach(b => {
-                    b.classList.remove('active');
-                    b.disabled = true;
-                });
+                updateLightModeButtons(mode);
+                updateLEDControlVisibility(mode);
                 
                 const lightStatusText = document.getElementById('light-status-text');
                 if (lightStatusText) {
-                    lightStatusText.textContent = 'Auto';
+                    if (mode === 'auto') {
+                        lightStatusText.textContent = 'Auto';
+                    } else {
+                        const ledCount = (led1Status ? 1 : 0) + (led2Status ? 1 : 0);
+                        lightStatusText.textContent = ledCount === 0 ? 'Off' : ledCount === 1 ? '1 Light' : '2 Lights';
+                    }
                 }
                 
                 fetch(`/api/room/${roomId}/set_light_mode/`, {
@@ -879,51 +1155,43 @@
                         'Content-Type': 'application/json',
                         'X-CSRFToken': csrfToken
                     },
-                    body: JSON.stringify({ mode: 'auto' })
+                    body: JSON.stringify({ mode: mode })
                 });
             });
         });
 
-        // Light level buttons (Manual control)
-        document.querySelectorAll('.light-level-btn').forEach(btn => {
+        // Individual LED toggle buttons
+        document.querySelectorAll('.led-btn').forEach(btn => {
             btn.addEventListener('click', function() {
-                if (this.disabled) return;
+                const ledNumber = parseInt(this.dataset.led);
+                let newState;
                 
-                const level = parseInt(this.dataset.level);
-                currentLuminosity = level;
-                currentLightMode = 'manual';
-                
-                // Update button states
-                document.querySelectorAll('.light-mode-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.light-level-btn').forEach(b => {
-                    b.classList.remove('active');
-                    b.disabled = false;
-                });
-                this.classList.add('active');
-                
-                const labels = ['Off', '1 Light', '2 Lights'];
-                const lightStatusText = document.getElementById('light-status-text');
-                if (lightStatusText) {
-                    lightStatusText.textContent = labels[level];
+                if (ledNumber === 1) {
+                    newState = !led1Status;
+                    led1Status = newState;
+                } else {
+                    newState = !led2Status;
+                    led2Status = newState;
                 }
                 
-                // First set mode to manual, then set luminosity
-                fetch(`/api/room/${roomId}/set_light_mode/`, {
+                // Update button visual
+                updateLEDButton(ledNumber, newState);
+                
+                // Update light status text
+                const lightStatusText = document.getElementById('light-status-text');
+                if (lightStatusText) {
+                    const ledCount = (led1Status ? 1 : 0) + (led2Status ? 1 : 0);
+                    lightStatusText.textContent = ledCount === 0 ? 'Off' : ledCount === 1 ? '1 Light' : '2 Lights';
+                }
+                
+                // Send LED control command
+                fetch(`/api/room/${roomId}/set_led/${ledNumber}/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': csrfToken
                     },
-                    body: JSON.stringify({ mode: 'manual' })
-                }).then(() => {
-                    fetch(`/api/room/${roomId}/set_luminosity/`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrfToken
-                        },
-                        body: JSON.stringify({ luminosity: level })
-                    });
+                    body: JSON.stringify({ state: newState })
                 });
             });
         });
@@ -936,5 +1204,58 @@
             .then(updateUI)
             .catch(() => {});
     }, 5000);
+    
+    // Access Logs functions
+    function formatTimestamp(isoString) {
+        const date = new Date(isoString);
+        return date.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+    
+    function renderAccessLogs(logs) {
+        const tbody = document.getElementById('access-logs-body');
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="no-logs-message">No access logs found</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = logs.map(log => `
+            <tr>
+                <td>${formatTimestamp(log.timestamp)}</td>
+                <td>${log.name || 'Unknown'}</td>
+                <td>${log.confidence !== null ? (log.confidence * 100).toFixed(1) + '%' : 'N/A'}</td>
+                <td><span class="access-result ${log.result === 'success' ? 'granted' : 'denied'}">${log.result === 'success' ? '✓ Granted' : '✕ Denied'}</span></td>
+                <td><span class="door-opened-badge ${log.door_opened ? 'yes' : 'no'}">${log.door_opened ? 'Opened' : 'Not Opened'}</span></td>
+            </tr>
+        `).join('');
+    }
+    
+    function fetchAccessLogs() {
+        fetch(`/api/room/${roomId}/access-logs/`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.access_logs) {
+                    renderAccessLogs(data.access_logs);
+                } else if (data.results) {
+                    renderAccessLogs(data.results);
+                } else if (Array.isArray(data)) {
+                    renderAccessLogs(data);
+                }
+            })
+            .catch(err => {
+                console.error('Failed to fetch access logs:', err);
+                document.getElementById('access-logs-body').innerHTML = 
+                    '<tr><td colspan="5" class="no-logs-message">Failed to load access logs</td></tr>';
+            });
+    }
+    
+    // Fetch access logs on page load and every 10 seconds
+    fetchAccessLogs();
+    setInterval(fetchAccessLogs, 10000);
 </script>
 {% endblock %}

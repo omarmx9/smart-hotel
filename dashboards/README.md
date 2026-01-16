@@ -21,7 +21,7 @@
 - [WebSocket Endpoints](#websocket-endpoints)
 - [Project Structure](#project-structure)
 - [Security Notes](#security-notes)
-- [Password Management](#password-management)
+- [User Management](#user-management)
 - [Theme Support](#theme-support)
 
 ## Overview
@@ -30,41 +30,46 @@ The Smart Hotel Dashboard is the central management interface for hotel staff. I
 
 ## Features
 
-### Authentication via Authentik
-- **Single Sign-On (SSO)** using OpenID Connect (OIDC)
-- **Centralized User Management** in Authentik identity provider
-- **Role Mapping** from Authentik groups to Django permissions
-- See [cloud/README.md - Authentik Setup](../../cloud/README.md#authentik-setup) for configuration
+### Authentication
+
+- **Django-based Authentication** using standard session management
+- **User Management** via Django admin panel
+- **Role-Based Permissions** using Django groups
 
 ### Role-Based Access Control
+
 - **Admin**: Full access to all rooms, control temperature and lighting, manage guest accounts
 - **Monitor**: View-only access to all rooms, cannot modify settings
 - **Guest**: Access to assigned room only, can control their room's temperature
 
 ### Real-time Monitoring
+
 - Temperature, humidity, luminosity, and gas level sensors
 - WebSocket-based live updates (no page refresh needed)
 - Historical data charts with InfluxDB integration
 - Alert notifications for abnormal readings
 
 ### Device Control
+
 - **Temperature Control**: Set target temperature, monitor heating status
 - **Light Control**: Manual brightness levels (0-100%) or Auto mode
 - **Real-time Feedback**: Immediate visual confirmation of control changes
 
 ### Guest Account Management
-- Create guest accounts in Authentik with room assignments
-- Auto-expire accounts based on custom attributes
+
+- Guest accounts are created automatically during kiosk check-in
+- Accounts include room assignments and expiration dates
 - Send credentials via unified notification system (Telegram → SMS fallback)
-- Track active guest sessions synced from Authentik
-- See [cloud/README.md#authentik-setup](../../cloud/README.md#authentik-setup) for identity provider security
+- Track active guest sessions in Django admin
+- Rooms synced with Front Desk system for reservation management
 
 ### Notification Center (Admin/Monitor)
+
 - Real-time service status (Telegram, SMS configuration)
 - Delivery statistics dashboard
 - Send test notifications
 - View failed delivery attempts
- - Notifications are routed through the Node-RED gateway (Telegram → SMS fallback). Configure credentials and MQTT endpoint in the top-level `.env` (see `cloud/README.md`).
+- Notifications are routed through the Node-RED gateway (Telegram → SMS fallback). Configure credentials and MQTT endpoint in the top-level `.env` (see `cloud/README.md`).
 
 ## Architecture
 
@@ -114,7 +119,7 @@ flowchart TB
 ### Component Responsibilities
 
 | Component | File | Purpose |
-|-----------|------|---------|
+| ----------- | ------ | --------- |
 | **Views** | `views.py` | HTTP request handling, REST API endpoints |
 | **Consumers** | `consumers.py` | WebSocket connection management, real-time updates |
 | **MQTT Client** | `mqtt_client.py` | MQTT pub/sub, sensor data reception, control commands |
@@ -176,7 +181,7 @@ daphne -b 0.0.0.0 -p 8000 smart_hotel.asgi:application
 
 ### 4. Access the Dashboard
 
-- URL: http://localhost:8000
+- URL: <http://localhost:8000>
 - Admin: `admin` / `admin123`
 - Monitor: `monitor` / `monitor123`
 
@@ -185,7 +190,7 @@ daphne -b 0.0.0.0 -p 8000 smart_hotel.asgi:application
 ### Environment Variables
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| ---------- | ------------- | --------- |
 | `DJANGO_SECRET_KEY` | Django secret key | dev key (change in production) |
 | `DJANGO_DEBUG` | Debug mode | True |
 | `MQTT_BROKER` | MQTT broker hostname | mqtt.saddevastator.qzz.io |
@@ -198,6 +203,7 @@ daphne -b 0.0.0.0 -p 8000 smart_hotel.asgi:application
 1. Create a Telegram bot via @BotFather
 2. Get your chat ID
 3. Set environment variables:
+
    ```bash
    export TELEGRAM_BOT_TOKEN="your-bot-token"
    export TELEGRAM_CHAT_ID="your-chat-id"
@@ -205,39 +211,40 @@ daphne -b 0.0.0.0 -p 8000 smart_hotel.asgi:application
 
 ## MQTT Topics
 
-
-### Overview
+### Topic Overview
 
 The dashboard uses MQTT for real-time communication with ESP32 devices and the notification gateway. It subscribes to room telemetry topics and publishes control, notification, and alert messages. All topics use simple string or JSON payloads as described below.
 
 #### Topic Conventions
+
 - `<room_no>`: Room identifier (e.g., 101)
 - `+`: MQTT single-level wildcard
 
 ### Subscribed Topics (Dashboard as Subscriber)
 
-| Topic Pattern                              | Description                        | Payload Type |
-|--------------------------------------------|------------------------------------|-------------|
-| /hotel/+/telemetry/temperature             | Room temperature updates           | float (as string) |
-| /hotel/+/telemetry/humidity                | Room humidity updates              | float (as string) |
-| /hotel/+/telemetry/luminosity              | Room luminosity updates            | int (as string) |
-| /hotel/+/telemetry/gas                     | Room gas sensor updates            | int (as string) |
-| /hotel/+/telemetry/heating                 | Heating status                     | 'true'/'false' |
-| /hotel/+/telemetry/climate_mode            | Climate mode                       | 'auto'/'manual'/'off' |
-| /hotel/+/telemetry/fan_speed               | Fan speed                          | 'low'/'medium'/'high' |
+| Topic Pattern | Description | Payload Type |
+| --------------- | ------------- | -------------- |
+| `/hotel/+/telemetry/temperature` | Room temperature updates | float (as string) |
+| `/hotel/+/telemetry/humidity` | Room humidity updates | float (as string) |
+| `/hotel/+/telemetry/luminosity` | Room luminosity updates | int (as string) |
+| `/hotel/+/telemetry/gas` | Room gas sensor updates | int (as string) |
+| `/hotel/+/telemetry/heating` | Heating status | `true`/`false` |
+| `/hotel/+/telemetry/climate_mode` | Climate mode | `auto`/`manual`/`off` |
+| `/hotel/+/telemetry/fan_speed` | Fan speed | `low`/`medium`/`high` |
 
 ### ESP32-CAM Topics (Face Recognition)
 
 The dashboard subscribes to ESP32-CAM events for real-time face recognition:
 
-| Topic Pattern                              | Description                        | Payload Type |
-|--------------------------------------------|------------------------------------|-------------|
-| hotel/kiosk/+/face/recognized              | Known person identified            | JSON |
-| hotel/kiosk/+/face/unknown                 | Unknown face detected              | JSON |
-| hotel/kiosk/+/status                       | Camera device status               | JSON |
-| hotel/kiosk/+/heartbeat                    | Periodic health check              | JSON |
+| Topic Pattern | Description | Payload Type |
+| --------------- | ------------- | -------------- |
+| `hotel/kiosk/+/face/recognized` | Known person identified | JSON |
+| `hotel/kiosk/+/face/unknown` | Unknown face detected | JSON |
+| `hotel/kiosk/+/status` | Camera device status | JSON |
+| `hotel/kiosk/+/heartbeat` | Periodic health check | JSON |
 
 **Face Recognition Payload:**
+
 ```json
 {
   "name": "person_name",
@@ -248,6 +255,7 @@ The dashboard subscribes to ESP32-CAM events for real-time face recognition:
 ```
 
 **Device Status Payload:**
+
 ```json
 {
   "status": "online",
@@ -261,40 +269,43 @@ The dashboard subscribes to ESP32-CAM events for real-time face recognition:
 
 **Control Commands (Dashboard publishes):**
 
-| Topic Pattern                              | Description                        | Payload Example |
-|--------------------------------------------|------------------------------------|----------------|
-| hotel/kiosk/<device_id>/control            | Send command to ESP32-CAM          | `{"command": "status"}` |
+| Topic Pattern | Description | Payload Example |
+| --------------- | ------------- | ----------------- |
+| `hotel/kiosk/<device_id>/control` | Send command to ESP32-CAM | `{"command": "status"}` |
 
 Available commands: `status`, `restart`, `capture`
 
 ### Published Topics (Dashboard as Publisher)
 
-| Topic Pattern                              | Description                        | Payload Example |
-|--------------------------------------------|------------------------------------|----------------|
-| /hotel/<room_no>/control/target_temperature| Set target temperature             | "22.5" |
-| /hotel/<room_no>/control/climate_mode      | Set climate mode                   | "auto" |
-| /hotel/<room_no>/control/fan_speed         | Set fan speed                      | "medium" |
-| /hotel/<room_no>/control/luminosity        | Set luminosity level               | "80" |
-| /hotel/<room_no>/control/light_mode        | Set light mode                     | "manual" |
-| hotel/notifications/send                   | Send notification (to Node-RED)    | JSON (see below) |
-| hotel/alerts/<alert_type>                  | Publish system alert               | JSON (see below) |
+| Topic Pattern | Description | Payload Example |
+| --------------- | ------------- | ----------------- |
+| `/hotel/<room_no>/control/target_temperature` | Set target temperature | `"22.5"` |
+| `/hotel/<room_no>/control/climate_mode` | Set climate mode | `"auto"` |
+| `/hotel/<room_no>/control/fan_speed` | Set fan speed | `"medium"` |
+| `/hotel/<room_no>/control/luminosity` | Set luminosity level | `"80"` |
+| `/hotel/<room_no>/control/light_mode` | Set light mode | `"manual"` |
+| `hotel/notifications/send` | Send notification (to Node-RED) | JSON (see below) |
+| `hotel/alerts/<alert_type>` | Publish system alert | JSON (see below) |
 
 ### Example Payloads
 
 **Telemetry (subscribe):**
-```
+
+```text
 "22.5"  # temperature (float as string)
 "true"  # heating status
 "auto"  # climate_mode
 ```
 
 **Control (publish):**
-```
+
+```text
 "23"  # target_temperature
 "manual"  # light_mode
 ```
 
 **Notification (publish to hotel/notifications/send):**
+
 ```json
 {
   "type": "guest_credentials",
@@ -306,6 +317,7 @@ Available commands: `status`, `restart`, `capture`
 ```
 
 **Alert (publish to hotel/alerts/<alert_type>):**
+
 ```json
 {
   "room": "101",
@@ -319,18 +331,17 @@ Available commands: `status`, `restart`, `capture`
 ### Room Management
 
 | Endpoint | Method | Description | Access |
-|----------|--------|-------------|--------|
+| ---------- | -------- | ------------- | -------- |
 | `/api/rooms/` | GET | List accessible rooms | Authenticated |
 | `/api/room/<id>/` | GET | Room details with history | Room access |
 | `/api/room/<id>/set_target/` | POST | Set target temperature | Can control |
 | `/api/room/<id>/set_light_mode/` | POST | Set light mode (auto/manual) | Can control |
 | `/api/room/<id>/history/` | GET | Sensor history | Room access |
 
-> **Note:** Guest account management has been moved to Authentik. See [AUTHENTIK_SETUP.md](../../AUTHENTIK_SETUP.md) for details.
-
 ### Request/Response Examples
 
 **Set Target Temperature:**
+
 ```bash
 curl -X POST http://localhost:8000/api/room/1/set_target/ \
   -H "Content-Type: application/json" \
@@ -338,6 +349,7 @@ curl -X POST http://localhost:8000/api/room/1/set_target/ \
 ```
 
 **Set Light Mode:**
+
 ```bash
 curl -X POST http://localhost:8000/api/room/1/set_light_mode/ \
   -H "Content-Type: application/json" \
@@ -347,16 +359,15 @@ curl -X POST http://localhost:8000/api/room/1/set_light_mode/ \
 ## WebSocket Endpoints
 
 | Endpoint | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `/ws/dashboard/` | Dashboard-wide updates |
 | `/ws/room/<id>/` | Single room updates |
 | `/ws/admin/` | Admin operations (view synced guests) |
 
-> **Note:** Guest generation/revocation has been moved to Authentik. The admin WebSocket now only supports read-only guest list queries.
-
 ### WebSocket Message Format
 
 **Incoming (from server):**
+
 ```json
 {
   "type": "room_update",
@@ -371,6 +382,7 @@ curl -X POST http://localhost:8000/api/room/1/set_light_mode/ \
 ```
 
 **Outgoing (to server):**
+
 ```json
 {
   "type": "set_target",
@@ -381,7 +393,7 @@ curl -X POST http://localhost:8000/api/room/1/set_light_mode/ \
 
 ## Project Structure
 
-```
+```text
 django_app/
 ├── manage.py
 ├── requirements.txt
@@ -415,49 +427,45 @@ django_app/
 
 ## Security Notes
 
-- All authentication is handled by Authentik (OIDC/SSO)
+- Authentication is handled by Django's built-in session authentication
 - Set a proper `DJANGO_SECRET_KEY` in production (use `generate-env.sh`)
 - Use HTTPS in production with a reverse proxy
 - Configure session timeouts appropriately in `.env`
-- See [AUTHENTIK_SETUP.md](../../AUTHENTIK_SETUP.md) for identity provider security
 
 ## User Management
 
-### Authentication via Authentik
+### Django Admin
 
-All user management (creating users, password resets, MFA) is handled through Authentik:
+All user management is handled through Django admin:
 
-1. **Access Authentik Admin**: http://localhost:9000/if/admin/
-2. **Create Users**: Directory → Users → Create
+1. **Access Django Admin**: <http://localhost:8001/admin/>
+2. **Create Users**: Accounts → Users → Add User
 3. **Assign Roles**: Add users to appropriate groups:
-   - `smart-hotel-admins` - Full admin access
-   - `smart-hotel-monitors` - View-only access
-   - `smart-hotel-guests` - Guest room access
+   - `Admins` - Full admin access
+   - `Monitors` - View-only access
+   - `Guests` - Guest room access
 
 ### Password Reset
 
-Users can reset their passwords through Authentik:
-1. Click "Forgot Password" on the login page
-2. Authentik sends reset email (requires SMTP configuration)
-3. User follows link to set new password
+Admins can reset passwords through Django admin:
+
+1. Go to Accounts → Users
+2. Select the user
+3. Click "Change password" link
 
 ### Guest Account Setup
 
-For hotel guests:
-1. Create user in Authentik
-2. Add to `smart-hotel-guests` group
-3. Set custom attributes:
-   ```json
-   {
-     "room_number": "101",
-     "expires_at": "2026-01-10T12:00:00Z"
-   }
-   ```
-4. Credentials are synced to Django on first login
+Guest accounts are created automatically during kiosk check-in:
+
+1. Guest checks in at kiosk with passport scan
+2. Account is created with room assignment
+3. Credentials are sent via notification system
+4. Account expires at checkout date
 
 ## Theme Support
 
 The dashboard supports both dark and light themes:
+
 - Users can switch themes via **Settings** page
 - Theme preference is saved in browser localStorage
 - Theme persists across sessions

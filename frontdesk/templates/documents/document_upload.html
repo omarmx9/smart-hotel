@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Document{% endblock %}
+{% block page_title %}Upload Document{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="table-card">
+            <div class="card-header">
+                <i class="bi bi-upload me-2"></i> Upload Document for {{ guest.full_name }}
+            </div>
+            <div class="card-body p-4">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Document Type *</label>
+                        {{ form.document_type }}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">File *</label>
+                        {{ form.file }}
+                        <small class="text-muted">Accepted: Images (JPG, PNG) or PDF</small>
+                    </div>
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Document Number</label>
+                            {{ form.document_number }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Issuing Country</label>
+                            {{ form.issuing_country }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Issue Date</label>
+                            {{ form.issue_date }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Expiry Date</label>
+                            {{ form.expiry_date }}
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <label class="form-label">Notes</label>
+                        {{ form.notes }}
+                    </div>
+                    
+                    <div class="mt-4 d-flex justify-content-between">
+                        <a href="{% url 'reservations:guest_detail' guest.pk %}" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-upload me-1"></i> Upload Document
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

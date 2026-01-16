@@ -7,11 +7,10 @@ class User(AbstractUser):
     """
     Custom user model with role-based access control.
     
-    With Authentik integration:
-    - User authentication is handled by Authentik OIDC
-    - User data is synced from Authentik claims
-    - Roles are mapped from Authentik groups
-    - This model stores user profile and role locally for quick access
+    This model stores user profile and role for access control:
+    - Admins: Full access to all rooms and controls
+    - Monitors: View-only access to all rooms
+    - Guests: Access to assigned room only
     """
     
     ROLE_ADMIN = 'admin'
@@ -32,6 +31,13 @@ class User(AbstractUser):
         blank=True,
         related_name='assigned_guests'
     )
+    # Rooms that monitors can access (empty means all rooms)
+    allowed_rooms = models.ManyToManyField(
+        'rooms.Room',
+        blank=True,
+        related_name='allowed_monitors',
+        help_text='Rooms this monitor can view. Leave empty for all rooms.'
+    )
     expires_at = models.DateTimeField(null=True, blank=True)
     phone_number = models.CharField(max_length=20, blank=True)
     created_by = models.ForeignKey(
@@ -42,8 +48,8 @@ class User(AbstractUser):
         related_name='created_users'
     )
     
-    # OIDC subject identifier (Authentik user ID)
-    oidc_sub = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    # External ID for integrations (optional)
+    external_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
     
     class Meta:
         db_table = 'accounts_user'
@@ -73,13 +79,23 @@ class User(AbstractUser):
     
     @property
     def can_view_all_rooms(self):
-        """Check if user can view all rooms"""
-        return self.role in [self.ROLE_ADMIN, self.ROLE_MONITOR]
+        """Check if user can view all rooms (admins always, monitors only if no room restrictions)"""
+        if self.role == self.ROLE_ADMIN:
+            return True
+        if self.role == self.ROLE_MONITOR:
+            # Monitors can view all rooms only if no specific rooms are assigned
+            return not self.allowed_rooms.exists()
+        return False
     
     def get_accessible_rooms(self):
         """Get rooms this user can access"""
         from rooms.models import Room
-        if self.can_view_all_rooms:
+        if self.role == self.ROLE_ADMIN:
+            return Room.objects.all()
+        elif self.role == self.ROLE_MONITOR:
+            # If monitor has specific rooms, return only those
+            if self.allowed_rooms.exists():
+                return self.allowed_rooms.all()
             return Room.objects.all()
         elif self.assigned_room:
             return Room.objects.filter(pk=self.assigned_room.pk)

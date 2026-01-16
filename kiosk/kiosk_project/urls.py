@@ -6,6 +6,6 @@ urlpatterns = [
     path('', include('kiosk.urls')),
 ]
 
-# In DEBUG mode, serve static files directly (useful for local/dev and container debugging)
-if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+# Serve static files - WhiteNoise handles this in production but we add as fallback
+# This ensures /static/i18n/*.json files are always accessible
+urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

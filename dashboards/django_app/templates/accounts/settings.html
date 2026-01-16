@@ -69,7 +69,7 @@
                 </div>
             </div>
             
-            <!-- Security Section - Managed by Authentik -->
+            <!-- Security Section -->
             <div class="settings-section">
                 <h2>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
@@ -81,16 +81,8 @@
                 <div class="setting-item">
                     <div class="setting-info">
                         <span class="setting-label">Password & Security</span>
-                        <span class="setting-description">Manage your password, MFA, and security settings in Authentik</span>
+                        <span class="setting-description">Contact an administrator to change your password</span>
                     </div>
-                    <a href="{{ security_url }}" class="btn btn-secondary" target="_blank" rel="noopener">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                            <polyline points="15 3 21 3 21 9"/>
-                            <line x1="10" y1="14" x2="21" y2="3"/>
-                        </svg>
-                        Open in Authentik
-                    </a>
                 </div>
             </div>
             
@@ -125,33 +117,6 @@
                     </div>
                 </div>
                 {% endif %}
-                <div class="setting-item">
-                    <div class="setting-info">
-                        <span class="setting-label">Edit Profile</span>
-                        <span class="setting-description">Update your profile information in Authentik</span>
-                    </div>
-                    <a href="{{ settings_url }}" class="btn btn-secondary" target="_blank" rel="noopener">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                            <polyline points="15 3 21 3 21 9"/>
-                            <line x1="10" y1="14" x2="21" y2="3"/>
-                        </svg>
-                        Open in Authentik
-                    </a>
-                </div>
-            </div>
-            
-            <!-- Authentik Notice -->
-            <div class="authentik-notice">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="16" x2="12" y2="12"/>
-                    <line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-                <div>
-                    <strong>Account managed by Authentik</strong>
-                    <p>Your user account, password, and security settings are managed through Authentik. Use the links above to modify your account settings.</p>
-                </div>
             </div>
         </div>
         
@@ -393,35 +358,6 @@
     background: rgba(239, 68, 68, 0.1);
     color: var(--color-danger);
     border: 1px solid var(--color-danger);
-}
-
-.authentik-notice {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    padding: 1rem 1.25rem;
-    background: rgba(253, 126, 20, 0.1);
-    border: 1px solid #fd7e14;
-    border-radius: var(--radius-md);
-}
-
-.authentik-notice svg {
-    flex-shrink: 0;
-    color: #fd7e14;
-    margin-top: 2px;
-}
-
-.authentik-notice strong {
-    display: block;
-    color: #fd7e14;
-    margin-bottom: 0.25rem;
-}
-
-.authentik-notice p {
-    margin: 0;
-    font-size: 0.8rem;
-    color: var(--color-text-secondary);
-    line-height: 1.5;
 }
 </style>
 

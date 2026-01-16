@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Reservations{% endblock %}
+{% block page_title %}Reservations{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <form method="get" class="d-flex gap-2 flex-grow-1 me-3">
+        <input type="text" name="query" value="{{ request.GET.query }}" class="form-control" placeholder="Search reservations..." style="max-width: 300px;">
+        <select name="status" class="form-select" style="max-width: 150px;">
+            <option value="">All Statuses</option>
+            {% for value, label in form.fields.status.choices %}
+            {% if value %}
+            <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-outline-primary">
+            <i class="bi bi-search"></i>
+        </button>
+    </form>
+    <a href="{% url 'reservations:reservation_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i> New Reservation
+    </a>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Reservation #</th>
+                    <th>Guest</th>
+                    <th>Room</th>
+                    <th>Check-In</th>
+                    <th>Check-Out</th>
+                    <th>Status</th>
+                    <th>Payment</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for res in reservations %}
+                <tr>
+                    <td><a href="{% url 'reservations:reservation_detail' res.pk %}" class="fw-bold text-decoration-none">{{ res.reservation_number }}</a></td>
+                    <td>
+                        <a href="{% url 'reservations:guest_detail' res.guest.pk %}" class="text-decoration-none">
+                            {{ res.guest.full_name }}
+                        </a>
+                        {% if res.guest.vip %}<span class="vip-badge ms-1">VIP</span>{% endif %}
+                    </td>
+                    <td>{{ res.room.room_number|default:"-" }}</td>
+                    <td>{{ res.check_in_date }}</td>
+                    <td>{{ res.check_out_date }}</td>
+                    <td>
+                        <span class="badge-status badge-{{ res.status|lower|slugify }}">
+                            {{ res.get_status_display }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge-status badge-{% if res.payment_status == 'paid' %}checked-in{% elif res.payment_status == 'pending' %}pending{% else %}confirmed{% endif %}">
+                            {{ res.get_payment_status_display }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'reservations:reservation_detail' res.pk %}" class="btn btn-outline-secondary" title="View">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            {% if res.status in 'pending,confirmed' %}
+                            <a href="{% url 'reservations:check_in' res.pk %}" class="btn btn-outline-success" title="Check In">
+                                <i class="bi bi-box-arrow-in-right"></i>
+                            </a>
+                            {% elif res.status == 'checked_in' %}
+                            <a href="{% url 'reservations:check_out' res.pk %}" class="btn btn-outline-warning" title="Check Out">
+                                <i class="bi bi-box-arrow-right"></i>
+                            </a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-5">
+                        <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>
+                        No reservations found
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pagination -->
+{% if reservations.has_other_pages %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if reservations.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ reservations.previous_page_number }}{% if request.GET.query %}&query={{ request.GET.query }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Previous</a>
+        </li>
+        {% endif %}
+        
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ reservations.number }} of {{ reservations.paginator.num_pages }}</span>
+        </li>
+        
+        {% if reservations.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ reservations.next_page_number }}{% if request.GET.query %}&query={{ request.GET.query }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}

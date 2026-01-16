@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="table-card">
+            <div class="card-header">
+                <i class="bi bi-door-open me-2"></i> {{ title }}
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Room Number *</label>
+                            {{ form.room_number }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Floor</label>
+                            {{ form.floor }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Room Type</label>
+                            {{ form.room_type }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            {{ form.status }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Max Guests</label>
+                            {{ form.max_guests }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Base Rate (per night)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                {{ form.base_rate }}
+                            </div>
+                        </div>
+                        
+                        <div class="col-12"><hr></div>
+                        
+                        <div class="col-12">
+                            <label class="form-label d-block">Amenities</label>
+                            <div class="d-flex gap-4">
+                                <div class="form-check">
+                                    {{ form.has_balcony }}
+                                    <label class="form-check-label" for="id_has_balcony">Balcony</label>
+                                </div>
+                                <div class="form-check">
+                                    {{ form.has_sea_view }}
+                                    <label class="form-check-label" for="id_has_sea_view">Sea View</label>
+                                </div>
+                                <div class="form-check">
+                                    {{ form.has_kitchen }}
+                                    <label class="form-check-label" for="id_has_kitchen">Kitchen</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 d-flex justify-content-between">
+                        <a href="{% url 'reservations:room_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i> {% if room %}Update{% else %}Create{% endif %} Room
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -28,15 +28,31 @@ def on_connect(client, userdata, flags, rc):
         logger.info("[MQTT] Connected to broker")
         mqtt_connected = True
         
-        # Subscribe to all room telemetry topics
-        # Topic structure: /hotel/<room_no>/telemetry/<sensor>
-        client.subscribe("/hotel/+/telemetry/temperature")
-        client.subscribe("/hotel/+/telemetry/humidity")
-        client.subscribe("/hotel/+/telemetry/luminosity")
-        client.subscribe("/hotel/+/telemetry/gas")
-        client.subscribe("/hotel/+/telemetry/heating")
-        client.subscribe("/hotel/+/telemetry/climate_mode")
-        client.subscribe("/hotel/+/telemetry/fan_speed")
+        # ========================================
+        # JSON Telemetry (NEW - PREFERRED FORMAT)
+        # ========================================
+        # Topic: hotel/<room_id>/telemetry/json
+        # ESP32 sends complete JSON payload with all sensors
+        client.subscribe("hotel/+/telemetry/json")
+        
+        # ========================================
+        # Legacy Telemetry (DEPRECATED - for backward compatibility)
+        # ========================================
+        # Topic structure: hotel/<room_no>/telemetry/<sensor>
+        client.subscribe("hotel/+/telemetry/temperature")
+        client.subscribe("hotel/+/telemetry/humidity")
+        client.subscribe("hotel/+/telemetry/luminosity")
+        client.subscribe("hotel/+/telemetry/ldr_percent")
+        client.subscribe("hotel/+/telemetry/gas")
+        client.subscribe("hotel/+/telemetry/heating")
+        client.subscribe("hotel/+/telemetry/climate_mode")
+        client.subscribe("hotel/+/telemetry/fan_speed")
+        
+        # Subscribe to LED status topics
+        # Topic structure: hotel/<room_no>/status/<led>
+        client.subscribe("hotel/+/status/led1")
+        client.subscribe("hotel/+/status/led2")
+        client.subscribe("hotel/+/status/room_mode")
         
         # Subscribe to ESP32-CAM face recognition events
         # Topic structure: hotel/kiosk/<room_id>/FaceRecognition/Authentication
@@ -47,8 +63,19 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe("hotel/kiosk/+/status")
         client.subscribe("hotel/kiosk/+/heartbeat")
         
-        logger.info("[MQTT] Subscribed to room telemetry topics")
+        # Subscribe to door control events from ESP32-CAM
+        # Topic: hotel/<room_id>/door/open
+        client.subscribe("hotel/+/door/open")
+        client.subscribe("hotel/+/door/close")
+        
+        # Subscribe to access log events (JSON format)
+        # Topic: hotel/<room_id>/access/log
+        client.subscribe("hotel/+/access/log")
+        
+        logger.info("[MQTT] Subscribed to JSON telemetry topic (hotel/+/telemetry/json)")
+        logger.info("[MQTT] Subscribed to legacy telemetry topics (backward compatibility)")
         logger.info("[MQTT] Subscribed to ESP32-CAM face recognition topics")
+        logger.info("[MQTT] Subscribed to door control and access log topics")
     else:
         logger.error(f"[MQTT] Connection failed with code {rc}")
         mqtt_connected = False
@@ -64,6 +91,26 @@ def on_message(client, userdata, msg):
     """Handle incoming MQTT messages and update room data"""
     try:
         topic_parts = msg.topic.split('/')
+        
+        # Handle door control events
+        # Topic structure: hotel/<room_id>/door/<action>
+        if (len(topic_parts) >= 4 and 
+            topic_parts[0] == 'hotel' and 
+            topic_parts[2] == 'door'):
+            room_number = topic_parts[1]
+            action = topic_parts[3]
+            handle_door_control(room_number, action, msg.payload.decode())
+            return
+        
+        # Handle access log events (JSON format)
+        # Topic: hotel/<room_id>/access/log
+        if (len(topic_parts) >= 4 and 
+            topic_parts[0] == 'hotel' and 
+            topic_parts[2] == 'access' and
+            topic_parts[3] == 'log'):
+            room_number = topic_parts[1]
+            handle_access_log(room_number, msg.payload.decode())
+            return
         
         # Handle ESP32-CAM face recognition topic
         # Topic structure: hotel/kiosk/<room_id>/FaceRecognition/Authentication
@@ -91,12 +138,27 @@ def on_message(client, userdata, msg):
                 handle_espcam_heartbeat(device_id, msg.payload.decode())
             return
         
-        # Handle room telemetry
-        # Topic structure: /hotel/<room_no>/telemetry/<sensor>
-        # After split: ['', 'hotel', '<room_no>', 'telemetry', '<sensor>']
-        if len(topic_parts) >= 5 and topic_parts[1] == 'hotel' and topic_parts[3] == 'telemetry':
-            room_number = topic_parts[2]
-            sensor_type = topic_parts[4]
+        # ========================================
+        # Handle JSON telemetry (NEW FORMAT)
+        # ========================================
+        # Topic structure: hotel/<room_id>/telemetry/json
+        # Payload: {"room":"Room101","timestamp":...,"sensors":{...},"state":{...}}
+        if (len(topic_parts) >= 4 and 
+            topic_parts[0] == 'hotel' and 
+            topic_parts[2] == 'telemetry' and
+            topic_parts[3] == 'json'):
+            room_number = topic_parts[1]
+            handle_json_telemetry(room_number, msg.payload.decode())
+            return
+        
+        # ========================================
+        # Handle legacy room telemetry (DEPRECATED)
+        # ========================================
+        # Topic structure: hotel/<room_no>/telemetry/<sensor>
+        # After split: ['hotel', '<room_no>', 'telemetry', '<sensor>']
+        if len(topic_parts) >= 4 and topic_parts[0] == 'hotel' and topic_parts[2] == 'telemetry':
+            room_number = topic_parts[1]
+            sensor_type = topic_parts[3]
             payload = msg.payload.decode()
             
             # Import here to avoid circular imports
@@ -108,13 +170,16 @@ def on_message(client, userdata, msg):
                 logger.warning(f"[MQTT] Room {room_number} not found")
                 return
             
+            # Update sensor timestamp for online/offline detection
+            room.update_sensor_timestamp()
+            
             # Update sensor value
             if sensor_type == 'temperature':
                 room.temperature = float(payload)
             elif sensor_type == 'humidity':
                 room.humidity = float(payload)
-            elif sensor_type == 'luminosity':
-                room.luminosity = int(payload)
+            elif sensor_type in ('luminosity', 'ldr_percent'):
+                room.ldr_percentage = int(payload)
             elif sensor_type == 'gas':
                 room.gas_level = int(payload)
             elif sensor_type == 'heating':
@@ -137,10 +202,155 @@ def on_message(client, userdata, msg):
             if on_message.counter % 10 == 0:
                 SensorHistory.record(room)
             
-            logger.debug(f"[MQTT] {room_number}/{sensor_type}: {payload}")
+            logger.debug(f"[MQTT] Legacy {room_number}/{sensor_type}: {payload}")
+            return
+        
+        # Handle LED status messages
+        # Topic structure: hotel/<room_no>/status/<led>
+        # After split: ['hotel', '<room_no>', 'status', '<led>']
+        if len(topic_parts) >= 4 and topic_parts[0] == 'hotel' and topic_parts[2] == 'status':
+            room_number = topic_parts[1]
+            status_type = topic_parts[3]
+            payload = msg.payload.decode()
+            
+            # Import here to avoid circular imports
+            from rooms.models import Room
+            
+            try:
+                room = Room.objects.get(room_number=room_number)
+            except Room.DoesNotExist:
+                logger.warning(f"[MQTT] Room {room_number} not found")
+                return
+            
+            if status_type == 'led1':
+                room.led1_status = payload.upper() == 'ON'
+                room.save()
+                logger.debug(f"[MQTT] {room_number}/led1: {payload}")
+            elif status_type == 'led2':
+                room.led2_status = payload.upper() == 'ON'
+                room.save()
+                logger.debug(f"[MQTT] {room_number}/led2: {payload}")
+            elif status_type == 'room_mode':
+                mode = payload.lower()
+                if mode in ['auto', 'manual', 'off']:
+                    room.light_mode = mode
+                    room.save()
+                    logger.debug(f"[MQTT] {room_number}/room_mode: {payload}")
+            return
             
     except Exception as e:
         logger.error(f"[MQTT] Error processing message: {e}")
+
+
+# ==================== JSON TELEMETRY HANDLER ====================
+
+def handle_json_telemetry(room_number, payload):
+    """
+    Handle JSON telemetry messages from ESP32 devices.
+    
+    Topic: hotel/<room_id>/telemetry/json
+    
+    Payload format:
+        {
+            "room": "Room101",
+            "timestamp": 123456789,
+            "sensors": {
+                "temperature": 25.5,
+                "humidity": 60.0,
+                "light_percent": 75,
+                "gas_level": 120,
+                "target_temp": 24.0
+            },
+            "state": {
+                "thermostat_mode": "AUTO",
+                "fan_speed": "LOW",
+                "heating": false,
+                "room_mode": "MANUAL",
+                "led1": "ON",
+                "led2": "OFF"
+            }
+        }
+    """
+    try:
+        data = json.loads(payload)
+        
+        # Import here to avoid circular imports
+        from rooms.models import Room, SensorHistory
+        
+        try:
+            room = Room.objects.get(room_number=room_number)
+        except Room.DoesNotExist:
+            logger.warning(f"[MQTT JSON] Room {room_number} not found")
+            return
+        
+        # Extract sensor readings
+        sensors = data.get('sensors', {})
+        state = data.get('state', {})
+        
+        # Update sensor timestamp for online/offline detection
+        room.update_sensor_timestamp()
+        
+        # Update sensor values
+        if 'temperature' in sensors:
+            room.temperature = float(sensors['temperature'])
+        
+        if 'humidity' in sensors:
+            room.humidity = float(sensors['humidity'])
+        
+        if 'light_percent' in sensors:
+            room.ldr_percentage = int(sensors['light_percent'])
+        
+        if 'gas_level' in sensors:
+            room.gas_level = int(sensors['gas_level'])
+        
+        if 'target_temp' in sensors:
+            room.target_temperature = float(sensors['target_temp'])
+        
+        # Update state values
+        if 'thermostat_mode' in state:
+            mode = state['thermostat_mode'].lower()
+            if mode in ['auto', 'manual', 'off']:
+                room.climate_mode = mode
+        
+        if 'fan_speed' in state:
+            speed = state['fan_speed'].lower()
+            if speed in ['low', 'medium', 'high', 'off']:
+                room.fan_speed = speed if speed != 'off' else 'low'
+        
+        if 'heating' in state:
+            room.heating_status = bool(state['heating'])
+        
+        if 'room_mode' in state:
+            mode = state['room_mode'].lower()
+            if mode in ['auto', 'manual', 'off']:
+                room.light_mode = mode
+        
+        if 'led1' in state:
+            room.led1_status = state['led1'].upper() == 'ON'
+        
+        if 'led2' in state:
+            room.led2_status = state['led2'].upper() == 'ON'
+        
+        room.save()
+        
+        # Record history for JSON messages (once per message since it contains all data)
+        if hasattr(handle_json_telemetry, 'counter'):
+            handle_json_telemetry.counter += 1
+        else:
+            handle_json_telemetry.counter = 1
+        
+        # Record history every 6 messages (~1 minute at 10s intervals)
+        if handle_json_telemetry.counter % 6 == 0:
+            SensorHistory.record(room)
+        
+        logger.debug(f"[MQTT JSON] {room_number}: T={sensors.get('temperature', 'N/A')}°C, "
+                    f"H={sensors.get('humidity', 'N/A')}%, "
+                    f"Gas={sensors.get('gas_level', 'N/A')}")
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"[MQTT JSON] Invalid JSON payload from {room_number}: {e}")
+    except Exception as e:
+        logger.error(f"[MQTT JSON] Error handling telemetry from {room_number}: {e}")
 
 
 # ==================== ESP32-CAM FACE RECOGNITION HANDLERS ====================
@@ -167,13 +377,23 @@ def handle_face_recognition_auth(room_id, payload):
         
         logger.info(f"[FaceRecog] Room {room_id}: {name} - {result} ({confidence*100:.1f}%)")
         
-        # Store recognition event
+        # Store recognition event and create access log
         store_face_recognition_event(room_id, name, confidence, result)
         
         # Handle different results
         if result == 'success':
-            # Guest authenticated successfully - could trigger room unlock
+            # Guest authenticated successfully - trigger room unlock for 5 seconds
             logger.info(f"[FaceRecog] Guest '{name}' authenticated for room {room_id}")
+            
+            # Open door for 5 seconds
+            try:
+                from rooms.models import Room
+                room = Room.objects.get(room_number=room_id)
+                room.open_door(duration_seconds=5)
+                logger.info(f"[FaceRecog] Door opened for {name} at room {room_id}")
+            except Exception as e:
+                logger.warning(f"[FaceRecog] Could not open door: {e}")
+                
         elif result == 'denied':
             # Access denied - possible security event
             logger.warning(f"[FaceRecog] Access denied for '{name}' at room {room_id}")
@@ -285,22 +505,156 @@ def handle_espcam_heartbeat(device_id, payload):
         logger.error(f"[ESP32-CAM] Error handling heartbeat: {e}")
 
 
-def store_face_recognition_event(device_id, name, confidence):
-    """Store face recognition event for kiosk integration."""
-    # This can be extended to:
-    # 1. Store in database for analytics
-    # 2. Trigger kiosk auto-fill if guest profile exists
-    # 3. Update real-time dashboard via WebSocket
+# ==================== DOOR CONTROL HANDLERS ====================
+
+def handle_door_control(room_number, action, payload):
+    """
+    Handle door control commands from ESP32-CAM.
+    Door opens for 5 seconds then auto-closes.
+    
+    Topic: hotel/<room_id>/door/open or hotel/<room_id>/door/close
+    
+    Payload (optional JSON):
+        {
+            "name": "person_name",
+            "reason": "face_recognized"
+        }
+    """
+    try:
+        from rooms.models import Room, AccessLog
+        
+        try:
+            room = Room.objects.get(room_number=room_number)
+        except Room.DoesNotExist:
+            logger.warning(f"[Door] Room {room_number} not found")
+            return
+        
+        if action == 'open':
+            # Open door for 5 seconds
+            room.open_door(duration_seconds=5)
+            logger.info(f"[Door] Room {room_number} door OPENED (auto-close in 5s)")
+            
+            # Parse optional payload for access log
+            name = 'Unknown'
+            reason = 'mqtt_command'
+            try:
+                if payload:
+                    data = json.loads(payload)
+                    name = data.get('name', 'Unknown')
+                    reason = data.get('reason', 'mqtt_command')
+            except json.JSONDecodeError:
+                pass
+            
+            # Log access event
+            AccessLog.log_access(
+                room=room,
+                device_id=f"door_{room_number}",
+                name=name,
+                confidence=1.0,
+                result='success',
+                door_opened=True
+            )
+            
+        elif action == 'close':
+            room.close_door()
+            logger.info(f"[Door] Room {room_number} door CLOSED")
+            
+    except Exception as e:
+        logger.error(f"[Door] Error handling door control: {e}")
+
+
+def handle_access_log(room_number, payload):
+    """
+    Handle access log events sent as JSON via MQTT.
+    
+    Topic: hotel/<room_id>/access/log
+    
+    Payload format (JSON):
+        {
+            "name": "John Doe",
+            "timestamp": "2026-01-09T12:00:00",
+            "result": "success" | "denied" | "unknown",
+            "confidence": 0.95,
+            "door_opened": true
+        }
+    """
+    try:
+        data = json.loads(payload)
+        
+        from rooms.models import Room, AccessLog
+        from django.utils import timezone
+        from datetime import datetime
+        
+        # Get room (optional - might be device-based)
+        room = None
+        try:
+            room = Room.objects.get(room_number=room_number)
+        except Room.DoesNotExist:
+            logger.warning(f"[AccessLog] Room {room_number} not found, logging without room")
+        
+        # Extract fields
+        name = data.get('name', 'Unknown')
+        result = data.get('result', 'unknown')
+        confidence = float(data.get('confidence', 0.0))
+        door_opened = bool(data.get('door_opened', False))
+        
+        # Create access log entry
+        access_log = AccessLog.log_access(
+            room=room,
+            device_id=f"espcam_{room_number}",
+            name=name,
+            confidence=confidence,
+            result=result,
+            door_opened=door_opened
+        )
+        
+        logger.info(f"[AccessLog] {room_number}: {name} - {result} (door_opened={door_opened})")
+        
+        # If door should open on successful access
+        if door_opened and room and result == 'success':
+            room.open_door(duration_seconds=5)
+            logger.info(f"[AccessLog] Room {room_number} door opened for {name}")
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"[AccessLog] Invalid JSON payload: {e}")
+    except Exception as e:
+        logger.error(f"[AccessLog] Error handling access log: {e}")
+
+
+def store_face_recognition_event(device_id, name, confidence, result='success'):
+    """Store face recognition event for kiosk integration and access log."""
     try:
         from django.core.cache import cache
+        from rooms.models import Room, AccessLog
         
-        # Store latest recognition for quick lookup
+        # Store latest recognition for quick lookup in cache
         cache_key = f"espcam_recognition_{device_id}"
         cache.set(cache_key, {
             'name': name,
             'confidence': confidence,
-            'timestamp': json.dumps({}),  # Would be actual timestamp
+            'result': result,
         }, timeout=300)  # 5 minute TTL
+        
+        # Also store in database as access log
+        # Try to find room from device_id (e.g., "Room101" or "espcam_Room101")
+        room = None
+        room_number = device_id.replace('espcam_', '').replace('kiosk_', '')
+        try:
+            room = Room.objects.get(room_number=room_number)
+        except Room.DoesNotExist:
+            pass
+        
+        # Create access log entry
+        AccessLog.log_access(
+            room=room,
+            device_id=device_id,
+            name=name,
+            confidence=confidence,
+            result=result,
+            door_opened=(result == 'success')
+        )
+        
+        logger.info(f"[FaceRecog] Stored access log: {name} at {device_id} - {result}")
         
     except Exception as e:
         logger.error(f"[ESP32-CAM] Error storing recognition: {e}")
@@ -470,17 +824,39 @@ def publish_fan_speed(room, speed):
 
 
 def publish_luminosity(room, level):
-    """Publish luminosity level to MQTT broker"""
+    """Publish luminosity level by controlling LED1 and LED2
+    
+    level 0: Both LEDs off
+    level 1: LED1 on, LED2 off
+    level 2: Both LEDs on
+    """
+    led1_state = "ON" if level >= 1 else "OFF"
+    led2_state = "ON" if level >= 2 else "OFF"
+    
+    result1 = publish_led_control(room, 1, led1_state)
+    result2 = publish_led_control(room, 2, led2_state)
+    
+    return result1 and result2
+
+
+def publish_led_control(room, led_number, state):
+    """Publish LED control command to MQTT broker
+    
+    Args:
+        room: Room object
+        led_number: 1 or 2
+        state: 'ON' or 'OFF'
+    """
     global mqtt_client
     
     if mqtt_client is None or not mqtt_connected:
         logger.warning("[MQTT] Client not connected, cannot publish")
         return False
     
-    topic = f"/hotel/{room.room_number}/control/luminosity"
+    topic = f"hotel/{room.room_number}/control/led{led_number}"
     try:
-        mqtt_client.publish(topic, str(level))
-        logger.info(f"[MQTT] Published luminosity {level} to {topic}")
+        mqtt_client.publish(topic, state)
+        logger.info(f"[MQTT] Published LED{led_number} {state} to {topic}")
         return True
     except Exception as e:
         logger.error(f"[MQTT] Publish error: {e}")
@@ -488,17 +864,27 @@ def publish_luminosity(room, level):
 
 
 def publish_light_mode(room, mode):
-    """Publish light mode (auto/manual) to MQTT broker"""
+    """Publish light mode (auto/manual/off) to MQTT broker
+    
+    Maps to room_mode control topic:
+    - 'auto' -> 'AUTO'
+    - 'manual' -> 'MANUAL'
+    - 'off' -> 'OFF'
+    """
     global mqtt_client
     
     if mqtt_client is None or not mqtt_connected:
         logger.warning("[MQTT] Client not connected, cannot publish")
         return False
     
-    topic = f"/hotel/{room.room_number}/control/light_mode"
+    # Map mode to ESP32 expected format
+    mode_map = {'auto': 'AUTO', 'manual': 'MANUAL', 'off': 'OFF'}
+    esp_mode = mode_map.get(mode, mode.upper())
+    
+    topic = f"hotel/{room.room_number}/control/room_mode"
     try:
-        mqtt_client.publish(topic, mode)
-        logger.info(f"[MQTT] Published light mode {mode} to {topic}")
+        mqtt_client.publish(topic, esp_mode)
+        logger.info(f"[MQTT] Published room mode {esp_mode} to {topic}")
         return True
     except Exception as e:
         logger.error(f"[MQTT] Publish error: {e}")

@@ -42,6 +42,21 @@ generate_hex() {
     openssl rand -hex "$length" 2>/dev/null
 }
 
+# Generate a secure password with mixed character types
+# Requirements: 8+ chars, uppercase, lowercase, numbers, special chars
+generate_secure_password() {
+    local length=${1:-16}
+    # Generate base random string and ensure all character classes present
+    local base=$(openssl rand -base64 32 2>/dev/null | tr -d '/+=' | head -c $((length-4)))
+    # Add required character classes: uppercase, lowercase, number, special
+    local upper=$(echo "ABCDEFGHIJKLMNOPQRSTUVWXYZ" | fold -w1 | shuf | head -1)
+    local lower=$(echo "abcdefghijklmnopqrstuvwxyz" | fold -w1 | shuf | head -1)
+    local number=$(echo "0123456789" | fold -w1 | shuf | head -1)
+    local special=$(echo "!@#%^&*" | fold -w1 | shuf | head -1)
+    # Combine and shuffle
+    echo "${base}${upper}${lower}${number}${special}" | fold -w1 | shuf | tr -d '\n'
+}
+
 # Show help
 show_help() {
     cat << EOF
@@ -57,7 +72,6 @@ This script generates a .env file with secure random secrets for all services:
   • PostgreSQL passwords
   • InfluxDB tokens
   • Django secret keys
-  • Authentik secrets
   • Node-RED credential secrets
   • Grafana admin password
   • Kiosk secret key
@@ -82,6 +96,27 @@ check_dependencies() {
     fi
 }
 
+# Update Grafana datasource config with InfluxDB token
+update_grafana_datasource() {
+    local token="$1"
+    local GRAFANA_DS_FILE="${SCRIPT_DIR}/config/grafana/provisioning/datasources/influxdb.yaml"
+    
+    if [[ -f "$GRAFANA_DS_FILE" ]]; then
+        info "Updating Grafana InfluxDB datasource with token..."
+        
+        # Use sed to replace the token line
+        if sed -i "s|token:.*|token: ${token}|" "$GRAFANA_DS_FILE" 2>/dev/null; then
+            success "Grafana datasource updated with InfluxDB token"
+        else
+            warn "Could not update Grafana datasource - update manually in:"
+            echo "    $GRAFANA_DS_FILE"
+            echo "    Set: token: ${token}"
+        fi
+    else
+        warn "Grafana datasource file not found: $GRAFANA_DS_FILE"
+    fi
+}
+
 # Generate .env file
 generate_env() {
     info "Generating secure secrets..."
@@ -93,13 +128,12 @@ generate_env() {
     local INFLUX_TOKEN=$(generate_hex 32)
     local DJANGO_SECRET_KEY=$(generate_secret 64)
     local GRAFANA_ADMIN_PASSWORD=$(generate_secret 24)
-    local AUTHENTIK_SECRET_KEY=$(generate_secret 64)
-    local AUTHENTIK_POSTGRES_PASSWORD=$(generate_secret 32)
-    local AUTHENTIK_BOOTSTRAP_TOKEN=$(generate_hex 32)
-    local OIDC_CLIENT_SECRET=$(generate_secret 48)
     local NODERED_CREDENTIAL_SECRET=$(generate_hex 32)
     local KIOSK_SECRET_KEY=$(generate_secret 64)
     local KIOSK_API_TOKEN=$(generate_hex 32)
+    local FRONTDESK_DB_PASSWORD=$(generate_secret 32)
+    local FRONTDESK_SECRET_KEY=$(generate_secret 64)
+    local FRONTDESK_ADMIN_PASSWORD=$(generate_secure_password 16)
 
     # Create .env file
     cat > "$ENV_FILE" << EOF
@@ -121,7 +155,6 @@ TIMEZONE=UTC
 # SESSION SETTINGS (7 days for hotel guests)
 # ============================================================================
 SESSION_COOKIE_AGE=604800
-OIDC_TOKEN_EXPIRY=900
 
 # ============================================================================
 # POSTGRESQL - Main Application Database
@@ -153,37 +186,15 @@ MQTT_WS_PORT=9001
 DASHBOARD_PORT=8001
 DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
 DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+DJANGO_ALLOWED_HOSTS=dashboard.saddevastator.qzz.io,localhost,127.0.0.1
 
 # ============================================================================
 # GRAFANA
 # ============================================================================
 GRAFANA_PORT=3000
 GRAFANA_ADMIN_USER=admin
-GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
-GRAFANA_ROOT_URL=http://localhost:3000
-GRAFANA_OAUTH_ENABLED=true
-GRAFANA_OAUTH_CLIENT_ID=grafana
-GRAFANA_OAUTH_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
-
-# ============================================================================
-# AUTHENTIK - Identity Provider
-# ============================================================================
-AUTHENTIK_TAG=2024.10
-AUTHENTIK_PORT=9000
-AUTHENTIK_PORT_HTTPS=9443
-AUTHENTIK_EXTERNAL_URL=http://localhost:9000
-AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
-AUTHENTIK_POSTGRES_PASSWORD=${AUTHENTIK_POSTGRES_PASSWORD}
-AUTHENTIK_BOOTSTRAP_PASSWORD=changeme
-AUTHENTIK_BOOTSTRAP_TOKEN=${AUTHENTIK_BOOTSTRAP_TOKEN}
-AUTHENTIK_BOOTSTRAP_EMAIL=admin@smarthotel.local
-
-# ============================================================================
-# OIDC - OpenID Connect (Django <-> Authentik)
-# ============================================================================
-OIDC_CLIENT_ID=smart-hotel
-OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+GRAFANA_ADMIN_PASSWORD=\${GRAFANA_ADMIN_PASSWORD}
+GRAFANA_ROOT_URL=https://grafana.saddevastator.qzz.io
 
 # ============================================================================
 # KIOSK - Guest Registration Terminal
@@ -193,6 +204,19 @@ KIOSK_SECRET_KEY=${KIOSK_SECRET_KEY}
 KIOSK_DEBUG=0
 KIOSK_ALLOWED_HOSTS=*
 KIOSK_API_TOKEN=${KIOSK_API_TOKEN}
+
+# ============================================================================
+# FRONTDESK - Front Desk Employee Application
+# ============================================================================
+FRONTDESK_PORT=8003
+FRONTDESK_DB=frontdesk
+FRONTDESK_DB_USER=frontdesk
+FRONTDESK_DB_PASSWORD=${FRONTDESK_DB_PASSWORD}
+FRONTDESK_SECRET_KEY=${FRONTDESK_SECRET_KEY}
+# Default admin account (created on first run)
+FRONTDESK_ADMIN_USER=admin
+FRONTDESK_ADMIN_PASSWORD=${FRONTDESK_ADMIN_PASSWORD}
+FRONTDESK_ADMIN_EMAIL=admin@hotel.local
 
 # ============================================================================
 # NODE-RED - SMS Gateway (Headless)
@@ -218,7 +242,7 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 
 # ============================================================================
-# SMTP - Email Configuration (Optional, for Authentik)
+# SMTP - Email Configuration (Optional)
 # ============================================================================
 SMTP_HOST=
 SMTP_PORT=587
@@ -229,6 +253,10 @@ SMTP_FROM=noreply@example.com
 EOF
 
     success ".env file generated successfully!"
+    
+    # Update Grafana datasource with the generated token
+    update_grafana_datasource "$INFLUX_TOKEN"
+    
     echo ""
     
     # Print summary
@@ -239,10 +267,10 @@ EOF
     echo "  • InfluxDB admin password and token"
     echo "  • Django secret key"
     echo "  • Grafana admin password"
-    echo "  • Authentik secret key, database password, and bootstrap token"
-    echo "  • OIDC client secret"
     echo "  • Node-RED credential secret"
     echo "  • Kiosk secret key and API token"
+    echo "  • Frontdesk database password and secret key"
+    echo "  • Frontdesk admin account"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
@@ -261,14 +289,6 @@ EOF
     echo "    4. Start a chat with your bot"
     echo "    5. Get chat ID from: https://api.telegram.org/bot<TOKEN>/getUpdates"
     echo "    6. Update TELEGRAM_* variables in .env"
-    echo ""
-    echo "  ${YELLOW}Authentik Setup:${NC}"
-    echo "    1. Start the stack: docker compose up -d"
-    echo "    2. Access Authentik: http://localhost:9000/if/flow/initial-setup/"
-    echo "    3. Create admin account"
-    echo "    4. Create OAuth2 Provider for 'smart-hotel'"
-    echo "    5. Update OIDC_CLIENT_SECRET in .env with the generated secret"
-    echo "    6. Restart dashboard: docker compose restart dashboard"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
